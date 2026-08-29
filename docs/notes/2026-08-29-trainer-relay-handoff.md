@@ -411,3 +411,24 @@ GOG/Epic validation remains explicitly pending.
   asset verification, `.7` kit creation, and physical confirmation that the
   folder button exposes Decky's navigable picker on Decky 3.2.6. Do not promote
   to stable before one GOG and one Epic runtime checklist passes.
+
+### Experimental.7 publication checkpoint
+
+- Runtime/release commit `9798b7a8dd0e5c4260e50fa4a9e73d66b964a00f`
+  was pushed to `origin/feat/trainer-relay` and `origin/main` and tagged
+  `v0.1.0-experimental.7`.
+- Branch runs `33278844376` and `33278846042` passed. Tag/release run
+  `33278862228` passed frontend, backend, build/package, and publication jobs.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.7
+  The downloaded asset is 176,394 bytes and SHA-256
+  `6375AF2391AB01179103F1A3E9A374CF56C69C0E4D377FC43E337B40CFEA6B73`,
+  byte-identical to the fresh local archive.
+- `.6` remains available and is marked superseded with a link to `.7`; no
+  historical tag or asset was removed.
+- Created `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.7-kit`
+  with the verified versioned installation ZIP and Portuguese guide.
+- Remaining physical validation: replace `.6` with `.7`, open the GOG shortcut,
+  press the compact folder button, navigate to and select the trainer `.exe`,
+  verify that the read-only field updates, enable the relay, and run the GOG
+  checklist. Then repeat with one Epic title. If the picker still fails, capture
+  fresh CEF logs while pressing the folder button; do not reintroduce typing.
