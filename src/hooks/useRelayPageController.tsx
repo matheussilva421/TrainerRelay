@@ -5,6 +5,7 @@ import type { LaunchIdentity, RelayConfigV1, RelayGameConfig } from "../domain/r
 import { buildTrainerRelayViewModel } from "../domain/relay/viewModel";
 import { browseFiles, getHomePath, sendNotice } from "../infra/decky";
 import { emptyRelayConfig, persistRelayGameConfig, relayRpc } from "../infra/relayRpc";
+import { bindBrowserTimers } from "./browserTimers";
 import { activateVerifiedLegacyMigration } from "./legacyMigrationActivation";
 import type { LegacyMigrationVerificationResult } from "./migrationVerification";
 import { disableTrainerRelay, enableTrainerRelay, selectTrainerPath } from "./relayActions";
@@ -34,6 +35,7 @@ const migrationResultMessage = (result: LegacyMigrationVerificationResult): stri
 };
 
 export const useRelayPageController = (appid: number) => {
+  const browserTimers = bindBrowserTimers(window);
   const appDetails = useRelayAppDetails(appid);
   const [configState, setConfigState] = useState<ConfigState>({
     status: "loading",
@@ -83,8 +85,8 @@ export const useRelayPageController = (appid: number) => {
       identity,
       poll: () => relayRpc.getRelayStatus({ identity }),
       onStatus: setRelayStatus,
-      setInterval: window.setInterval,
-      clearInterval: (handle) => window.clearInterval(handle as number),
+      setInterval: browserTimers.setInterval,
+      clearInterval: browserTimers.clearInterval,
     });
   }, [identity]);
 
@@ -186,8 +188,8 @@ export const useRelayPageController = (appid: number) => {
             appDetails.writeLaunchOptions(source);
           },
           subscribe: appDetails.subscribe,
-          setTimer: window.setTimeout,
-          clearTimer: (handle) => window.clearTimeout(handle as number),
+          setTimer: browserTimers.setTimeout,
+          clearTimer: browserTimers.clearTimeout,
         },
       });
       updateGameConfig(supportedIdentity, result.config);

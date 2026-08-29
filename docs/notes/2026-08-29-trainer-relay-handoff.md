@@ -13,9 +13,9 @@ repository.
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
 - Current frontend suite: 148 Vitest tests passed using a single fork worker.
 - Current backend suite: 46 unittest tests passed.
-- Current package: 19 deterministic stored archive entries; 173,662 bytes;
+- Current package: 19 deterministic stored archive entries; 174,040 bytes;
   SHA-256
-  `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`.
+  `4AFD5979757B0CFD517A0EB89D3A2B424B6A90B262CA1ACF8625BDC10570E060`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -246,3 +246,29 @@ and `33267536034` passed. Steam Deck validation remains explicitly pending.
   ZIP was rehashed as
   `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`.
   No runtime/release asset changes were required.
+
+## On-device Decky 3.2.6 crash hotfix — experimental.4
+
+- User photographs from a physical Steam Deck showed BioShock 2 Remastered's
+  UniFiDeck shortcut with literal identity `gog:482265568`, followed by Decky's
+  plugin error screen. The trace was `TypeError: Illegal invocation` at
+  `startRelayStatusPolling`, with `RelayPage` in the component stack.
+- A deterministic controller-mount regression test reproduced the exact error
+  by using browser-style timer methods that reject a missing receiver. The RED
+  command produced the same `Illegal invocation` before any status response.
+- Root cause: `useRelayPageController` passed `window.setInterval` and
+  `window.setTimeout` as unbound callbacks. Decky/CEF invokes these WebIDL
+  methods only with their original `window` receiver. Existing unit tests used
+  plain functions and therefore did not model this browser contract.
+- Added `bindBrowserTimers`, which wraps all four timer operations and calls
+  them as methods of the original browser scope. Polling now binds
+  set/clearInterval, and migration verification binds set/clearTimeout.
+- Added regression coverage for both the real controller call site and all four
+  browser timer methods. Focused RED became 2/2 GREEN; full local validation is
+  46/46 backend and 150/150 frontend tests, with Biome, both TypeScript
+  typechecks, compileall, and Rollup green.
+- Delivery version advanced to `v0.1.0-experimental.4`. The deterministic
+  19-entry package is 174,040 bytes with SHA-256
+  `4AFD5979757B0CFD517A0EB89D3A2B424B6A90B262CA1ACF8625BDC10570E060`.
+  Commit, Actions, release, replacement kit, and second physical-device result
+  remain to be recorded. Do not reinstall `.3`; use `.4` after publication.
