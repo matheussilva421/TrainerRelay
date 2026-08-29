@@ -24,6 +24,10 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
             with zipfile.ZipFile(archive) as bundle:
+                self.assertTrue(
+                    all(entry.compress_type == zipfile.ZIP_STORED for entry in bundle.infolist()),
+                    "stored entries keep package bytes independent of zlib versions",
+                )
                 names = set(bundle.namelist())
                 text_entries = [
                     name

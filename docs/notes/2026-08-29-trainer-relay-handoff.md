@@ -13,8 +13,9 @@ repository.
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
 - Current frontend suite: 148 Vitest tests passed using a single fork worker.
 - Current backend suite: 46 unittest tests passed.
-- Current package: 19 deterministic archive entries; 53,227 bytes; SHA-256
-  `3E3A83C282D935BFE9EF8FA0D76267EBEC2A20864190C15CA908920A2AF301FD`.
+- Current package: 19 deterministic stored archive entries; 173,662 bytes;
+  SHA-256
+  `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -199,3 +200,21 @@ and `33267536034` passed. Steam Deck validation remains explicitly pending.
   `3E3A83C282D935BFE9EF8FA0D76267EBEC2A20864190C15CA908920A2AF301FD`.
   Commit, Actions, and release details will be recorded after publication.
 - Physical Steam Deck validation remains pending; do not promote to stable.
+
+## Cross-runtime package reproducibility follow-up — experimental.3
+
+- The `.2` tag workflow passed and published a prerelease, but independent
+  download verification found that its ZIP container hash differed from the
+  locally validated ZIP: all 19 entry names, sizes, and uncompressed SHA-256
+  values matched, while Deflate output differed across Python/zlib runtimes.
+- Added a RED package regression test requiring stored ZIP entries, then
+  changed the packager from Deflate to `ZIP_STORED`. This removes compressor
+  implementation/version variability while retaining deterministic metadata,
+  LF-normalized text, exact layout, and the same runtime contents.
+- `.2` remains immutable as historical evidence and is superseded by `.3`.
+  No existing tag was moved and no release asset was overwritten.
+- Delivery version advanced to `v0.1.0-experimental.3`. The current local ZIP
+  has 19 stored entries, is 173,662 bytes, and has SHA-256
+  `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`.
+- Final commit, Actions run, and published-asset hash will be appended after
+  the `.3` publication is independently verified.

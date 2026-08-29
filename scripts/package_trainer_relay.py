@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,14 +49,14 @@ def validate_sources(files: list[Path]) -> None:
 
 def write_archive(output: Path, files: list[Path]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    with ZipFile(output, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
+    with ZipFile(output, "w", compression=ZIP_STORED) as archive:
         for source in sorted(files, key=lambda path: path.relative_to(ROOT).as_posix()):
             relative_path = Path("TrainerRelay") / source.relative_to(ROOT)
             archive_name = relative_path.as_posix()
             info = ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
             info.create_system = 3
             info.external_attr = 0o644 << 16
-            info.compress_type = ZIP_DEFLATED
+            info.compress_type = ZIP_STORED
             content = source.read_bytes()
             if source.suffix.lower() in TEXT_SUFFIXES:
                 content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
