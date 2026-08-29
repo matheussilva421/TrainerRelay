@@ -229,3 +229,20 @@ and `33267536034` passed. Steam Deck validation remains explicitly pending.
 - The only remaining product gate is physical Steam Deck validation with one
   Epic and one GOG title. Stable promotion remains blocked until that manual
   checklist passes.
+
+## User installation kit checkpoint
+
+- Added `docs/GUIA-INSTALACAO-TESTES-E-LOGS.md`, a Portuguese end-user guide
+  covering ZIP/hash verification, local/URL Decky installation, Epic/GOG
+  configuration, legacy migration, state meanings, minimum device checks,
+  privacy-bounded backend/frontend/plugin logs, a report template,
+  troubleshooting, and rollback.
+- The guide points only to `v0.1.0-experimental.3` and records the independently
+  verified 173,662-byte ZIP/SHA-256. It does not weaken the physical Epic/GOG
+  validation gate or expand the v1 runtime scope.
+- Created the versioned user kit at
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.3-kit` with the
+  installation ZIP and an identical `LEIA-ME` copy of the guide. The copied
+  ZIP was rehashed as
+  `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`.
+  No runtime/release asset changes were required.
