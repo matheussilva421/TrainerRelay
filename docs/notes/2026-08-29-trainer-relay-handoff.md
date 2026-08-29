@@ -216,5 +216,16 @@ and `33267536034` passed. Steam Deck validation remains explicitly pending.
 - Delivery version advanced to `v0.1.0-experimental.3`. The current local ZIP
   has 19 stored entries, is 173,662 bytes, and has SHA-256
   `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`.
-- Final commit, Actions run, and published-asset hash will be appended after
-  the `.3` publication is independently verified.
+- `.3` was published and independently verified. Runtime/package commit:
+  `0e054dca8ed4b3518e39d4c427b3bf228a5c4671`. Branch and main runs
+  `33273940797` and `33273952986` passed. Tag/release run `33273992659`
+  passed all backend, frontend, build-plugin, layout, artifact, and publication
+  jobs.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.3
+- The downloaded GitHub asset is a prerelease ZIP with exactly 173,662 bytes
+  and SHA-256
+  `94808E9493AF40BC752749D3604CA1E2F56BCE9C7F1CBDBA84E1E931FDBB8443`,
+  byte-identical to the fresh local package.
+- The only remaining product gate is physical Steam Deck validation with one
+  Epic and one GOG title. Stable promotion remains blocked until that manual
+  checklist passes.
