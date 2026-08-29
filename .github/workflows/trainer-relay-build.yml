@@ -5,7 +5,7 @@ on:
     branches:
       - '**'
     tags:
-      - 'v*.*.*'
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -14,8 +14,7 @@ permissions:
   contents: write
 
 jobs:
-  lint-frontend:
-    if: github.event_name == 'pull_request'
+  frontend:
     runs-on: ubuntu-latest
     env:
       CI: true
@@ -30,26 +29,32 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Validate frontend source
+      - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile
-          pnpm run check
+      - name: Lint frontend
+        run: pnpm run lint
+      - name: Typecheck frontend
+        run: pnpm run typecheck
+      - name: Test frontend
+        run: pnpm run test -- --pool=forks --maxWorkers=1 --no-file-parallelism
+      - name: Build frontend
+        run: pnpm run build
 
-  lint-backend:
-    if: github.event_name == 'pull_request'
+  backend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      - name: Setup up Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           check-latest: true
-      - name: Install flake8
-        run: pip install flake8
-      - name: Lint backend source
-        run: flake8 --max-line-length=120 main.py
+      - name: Run backend tests
+        run: python -m unittest discover -s tests_backend -p "test_*.py"
+      - name: Compile backend sources
+        run: python -m compileall -q main.py trainer_relay tests_backend tests_packaging
 
   build-plugin:
     runs-on: ubuntu-latest
@@ -70,18 +75,14 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
-          mkdir -p output/TrainerRelay/dist
-          cp dist/index.js  output/TrainerRelay/dist
-          cp main.py        output/TrainerRelay
-          cp plugin.json    output/TrainerRelay
-          cp package.json   output/TrainerRelay
-          cp README.md      output/TrainerRelay
-          cp LICENSE        output/TrainerRelay
+          pnpm run package TrainerRelay.zip
+      - name: Verify package layout
+        run: python -m unittest discover -s tests_packaging -p "test_*.py"
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: TrainerRelay
-          path: output/*
+          path: TrainerRelay.zip
 
   publish-release:
     if: github.ref_type == 'tag'
@@ -93,17 +94,13 @@ jobs:
         with:
           name: TrainerRelay
           path: release
-      - name: Package plugin
-        run: |
-          cd release
-          zip -r TrainerRelay.zip TrainerRelay
       - name: Publish to Github release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
           draft: false
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref, 'pre') }}
+          prerelease: ${{ contains(github.ref_name, 'experimental') || contains(github.ref_name, 'pre') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           files: release/TrainerRelay.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

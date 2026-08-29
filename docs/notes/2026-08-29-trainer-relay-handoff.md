@@ -12,6 +12,9 @@ repository.
 - Branch: `feat/trainer-relay`
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
 - Current frontend suite: 136 Vitest tests passed using a single fork worker.
+- Current backend suite: 41 unittest tests passed.
+- Current package: 18 deterministic archive entries; SHA-256
+  `465BF6FE086FDBDFC559E029D11BF682BF5A77AB219ABB7B21C17FBD1B8B9E64`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -26,8 +29,9 @@ repository.
 - Task 2 added strict Epic/GOG shortcut classification, immutable v1 config
   decoding/helpers, and fail-closed legacy launch-option migration.
 - Task 2 validation: 115/115 Vitest tests, both TypeScript typechecks, and
-  focused Biome checks are green. The repository-wide Biome command still
-  reports the inherited CRLF formatting baseline outside Task 2 files.
+  focused Biome checks are green. Biome now explicitly uses the repository's
+  CRLF line-ending convention, so the repository-wide check is green without
+  changing removed or unrelated history.
 - Task 3 implemented the Python runtime, stable `/proc` session discovery,
   environment/UMU resolution, owned process-group lifecycle and typed RPCs.
 - Task 3 review added coverage for UniFiDeck's real negative signed app IDs;
@@ -41,20 +45,46 @@ repository.
 - Task 4 validation: 136/136 Vitest tests, 41/41 backend tests, both
   TypeScript typechecks, Biome and Rollup are green. Details are in
   `.superpowers/sdd/2026-08-29-trainer-relay-implementation-plan/task-4-report.md`.
+- Task 5 added deterministic packaging, artifact-layout tests, complete Python
+  runtime packaging, CI gates, the experimental release documentation, and
+  the physical Steam Deck validation checklist. The local package test is
+  green and the extracted package compiles successfully.
 
 ## Next action
 
-Continue with Task 5 of
-`.superpowers/sdd/2026-08-29-trainer-relay-implementation-plan/task-5-brief.md`:
-package and gate the complete plugin, update user documentation, perform the
-final review, then push and publish the experimental fork release.
+Local Task 5 gates are complete. Next: inspect the final diff/security scan,
+commit and push `feat/trainer-relay`, fast-forward the fork's `main` only if
+it has not diverged, create the annotated experimental tag, publish the
+validated ZIP, and update this handoff with the resulting URLs.
 
 ## GitHub
 
-The formal fork exists, but implementation commits have not yet been pushed.
-No upstream PR will be opened. Tag/release remain pending until all local gates
-pass; Steam Deck validation will remain explicitly pending after the first
-experimental release.
+The formal fork exists, but the Task 5 changes are not yet pushed. No upstream
+PR will be opened. Local gates pass; main/tag/release remain pending until the
+final commit and remote-state checks. Steam Deck validation remains explicitly
+pending after the first experimental release.
+
+## Task 5 local checkpoint — package and gates complete
+
+- Added `scripts/package_trainer_relay.py`, which emits a deterministic
+  `TrainerRelay.zip` with one top-level directory and only relocatable runtime
+  files. The package includes the complete `trainer_relay/` directory and
+  excludes tests, caches, lockfiles, logs, environment files, and source maps.
+- Added `tests_packaging/test_package_layout.py` and the `package`/
+  `test:package` scripts. The focused and discovery package tests pass.
+- Rewrote `README.md`, added `docs/STEAM-DECK-VALIDATION.md`, extended
+  `CONTEXT.md`, corrected package ownership metadata, and removed obsolete
+  generic settings RPCs from `main.py` and `src/infra/decky.ts`.
+- Updated `.github/workflows/trainer-relay-build.yml` to gate pushes and pull
+  requests with backend tests/compileall, frontend lint/typecheck/test/build,
+  package-layout verification, and complete artifact packaging. `v*` tags
+  publish the ZIP and experimental markers set prerelease status.
+- Fresh local results: 41/41 backend unittest, compileall, Biome, both
+  TypeScript typechecks, 136/136 Vitest, Rollup build, 1/1 package-layout test,
+  extracted-package compileall, deterministic hash comparison — all green.
+- No physical Steam Deck is attached. Do not promote this release to stable;
+  execute `docs/STEAM-DECK-VALIDATION.md` on one Epic and one GOG title after
+  publication.
 
 ## Task 3 incremental checkpoint — RED config/map/runtime contracts
 

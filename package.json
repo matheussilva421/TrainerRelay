@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "package": "python scripts/package_trainer_relay.py",
+    "test:package": "python -m unittest discover -s tests_packaging -p \"test_*.py\""
   },
   "repository": {
     "type": "git",
@@ -24,7 +26,7 @@
     "steam-deck",
     "deck"
   ],
-  "author": "SheffeyG",
+  "author": "matheussilva421",
   "license": "GPL-3.0-or-later",
   "bugs": {
     "url": "https://github.com/matheussilva421/TrainerRelay/issues"

@@ -108,21 +108,5 @@ class Plugin:
         return await _service().retry_relay(data)
 
     @classmethod
-    async def read_settings(cls) -> Any:
-        return settings.read()
-
-    @classmethod
-    async def commit_settings(cls) -> Any:
-        return settings.commit()
-
-    @classmethod
-    async def get_setting(cls, data: Mapping[str, Any]) -> Any:
-        return settings.getSetting(data["key"], data.get("defaults"))
-
-    @classmethod
-    async def set_setting(cls, data: Mapping[str, Any]) -> Any:
-        return settings.setSetting(data["key"], data.get("value"))
-
-    @classmethod
     async def get_env(cls, env: str) -> Any:
         return getattr(decky, env)
