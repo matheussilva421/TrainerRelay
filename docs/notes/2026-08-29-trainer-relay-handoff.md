@@ -331,3 +331,33 @@ GOG/Epic validation remains explicitly pending.
 - Pending only: commit/push this final documentation checkpoint and physically
   confirm that `.5` enables browsing/configuration for `gog:1482265568`, then
   complete the one-GOG/one-Epic runtime checklist. Do not promote to stable.
+
+## On-device Decky file-picker fallback — experimental.6
+
+- A physical Deck photograph confirmed that `.5` fixed the plain-identity
+  migration blocker for `gog:1482265568`: the legacy warning disappeared and
+  the configuration section became available. The remaining failure was that
+  **Choose trainer** did not produce a usable file-picker interaction.
+- Remote CEF inspection showed no Trainer Relay JavaScript exception. Decky
+  emitted a visible-modal focus warning, indicating that the picker request was
+  accepted but its SteamUI modal was not usable from the active Quick Access
+  layer. The later CEF connection timed out after remote debugging became
+  unavailable, so the release does not claim an upstream Decky modal fix.
+- TDD RED added a rendered page regression requiring an editable manual trainer
+  path and a **Save trainer path** action even when Decky's picker cannot be
+  used. A second RED proved that a relative `trainer.exe` was sent toward
+  persistence instead of being rejected locally.
+- The minimal fix keeps the existing picker and adds a synchronized manual
+  path field. Saving trims the value, requires an absolute `.exe`, persists the
+  per-game configuration disabled, and still requires explicit enablement.
+  The shared action now rejects unsafe paths before any backend RPC.
+- Focused GREEN: 6/6 tests. Full local validation: 153/153 frontend, 46/46
+  backend, 1/1 package-layout test, Biome, both TypeScript typechecks,
+  compileall, Rollup build, and `git diff --check` all passed.
+- Delivery version advanced to `v0.1.0-experimental.6`. The deterministic
+  19-entry ZIP is 176,555 bytes with SHA-256
+  `95F9B39942F36651B82CD9E2B2734906D51C55A1B9EAA345D5982D16304AE7E6`.
+- Pending: commit/push, publish and independently verify the `.6` release
+  asset, create the `.6` user kit, mark `.5` superseded, then physically enter
+  a real absolute trainer path and complete one GOG plus one Epic runtime
+  checklist. Do not promote to stable.

@@ -7,7 +7,7 @@ export type RelayActionResult =
   | { status: "persisted_disabled"; config: RelayGameConfig }
   | { status: "enabled"; config: RelayGameConfig }
   | { status: "disabled"; config: RelayGameConfig }
-  | { status: "blocked"; diagnostic: "trainer_required" | "migration_required" }
+  | { status: "blocked"; diagnostic: "trainer_required" | "migration_required" | "invalid_trainer_path" }
   | { status: "failed"; config: RelayGameConfig; diagnostic: "persistence_failed" };
 
 const disabledConfig = (config: RelayGameConfig, trainerPath = config.trainerPath): RelayGameConfig => ({
@@ -22,6 +22,9 @@ export const selectTrainerPath = async (
   current: RelayGameConfig,
   trainerPath: string,
 ): Promise<RelayActionResult> => {
+  if (!isAbsoluteExecutablePath(trainerPath)) {
+    return { status: "blocked", diagnostic: "invalid_trainer_path" };
+  }
   const config = disabledConfig(current, trainerPath);
   try {
     return { status: "persisted_disabled", config: await persistRelayGameConfig(rpc, identity, config) };
