@@ -11,7 +11,7 @@ repository.
 - Worktree: `C:\Users\slvma\Downloads\Github\Mods\.worktrees\trainer-relay`
 - Branch: `feat/trainer-relay`
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
-- Current frontend suite: 148 Vitest tests passed using a single fork worker.
+- Current frontend suite: 150 Vitest tests passed using a single fork worker.
 - Current backend suite: 46 unittest tests passed.
 - Current package: 19 deterministic stored archive entries; 174,040 bytes;
   SHA-256
@@ -62,20 +62,21 @@ repository.
 
 ## Next action
 
-Task 5 local gates and GitHub publication are complete. Next: run the physical
-Steam Deck checklist for one Epic and one GOG title; keep the release
-experimental until both pass.
+The Decky 3.2.6 frontend crash is fixed and experimental.4 is published. Next:
+replace experimental.3 on the physical Steam Deck with experimental.4, repeat
+the photographed GOG launch, then run the complete checklist for one GOG and
+one Epic title. Keep the release experimental until both pass.
 
 ## GitHub
 
-The formal fork contains the complete implementation through `e082589` on
-both `feat/trainer-relay` and `main`. The annotated tag
-`v0.1.0-experimental.1` remains safely at `276e55c`; it was not overwritten.
-Its published prerelease asset was replaced with the canonical, validated ZIP
-whose digest is recorded above. No upstream PR was opened. The tag-triggered
-run for the first commit failed only on the two platform-only issues recorded
-above; subsequent `main` gates `33267343177`, `33267324072`, `33267539436`,
-and `33267536034` passed. Steam Deck validation remains explicitly pending.
+The formal fork contains the runtime hotfix commit
+`9e6e9837d5d41c41b6584dcc89212419a4b8c586` on both
+`feat/trainer-relay` and `main`. The earlier tags and assets remain preserved.
+`v0.1.0-experimental.3` is explicitly marked superseded, and
+`v0.1.0-experimental.4` is the recommended prerelease. Branch/main runs
+`33275180521` and `33275182249`, plus tag/release run `33275289569`, all
+passed. No upstream PR was opened. Physical GOG/Epic validation remains
+explicitly pending.
 
 ## Task 5 local checkpoint — package and gates complete
 
@@ -270,5 +271,20 @@ and `33267536034` passed. Steam Deck validation remains explicitly pending.
 - Delivery version advanced to `v0.1.0-experimental.4`. The deterministic
   19-entry package is 174,040 bytes with SHA-256
   `4AFD5979757B0CFD517A0EB89D3A2B424B6A90B262CA1ACF8625BDC10570E060`.
-  Commit, Actions, release, replacement kit, and second physical-device result
-  remain to be recorded. Do not reinstall `.3`; use `.4` after publication.
+  Runtime hotfix commit: `9e6e9837d5d41c41b6584dcc89212419a4b8c586`.
+- Branch/main runs `33275180521` and `33275182249` passed. Tag/release run
+  `33275289569` passed frontend, backend, build/package and publication jobs.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.4
+  The downloaded GitHub asset is exactly 174,040 bytes and SHA-256
+  `4AFD5979757B0CFD517A0EB89D3A2B424B6A90B262CA1ACF8625BDC10570E060`,
+  byte-identical to the locally validated package.
+- The `.3` tag and asset were preserved for traceability, while its release is
+  marked superseded with a link to `.4`.
+- Created the replacement user kit at
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.4-kit`.
+  Its renamed installation ZIP has the same verified SHA-256; the kit also
+  contains the updated Portuguese installation, test and log guide. The `.3`
+  kit was not changed or removed.
+- Pending: uninstall/replace `.3` on the physical Deck, confirm the plugin page
+  renders on Decky 3.2.6, repeat BioShock 2 Remastered (`gog:482265568`), and
+  complete one GOG plus one Epic validation. Do not promote to stable yet.
