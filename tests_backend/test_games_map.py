@@ -11,14 +11,14 @@ class GamesMapTests(unittest.TestCase):
                     "# comments and blanks are ignored",
                     "epic:one=/games/one.exe",
                     "gog:two=/games/two.exe\t/home/deck/games/two",
-                    "epic:three=/games/name=with-equals.exe\t/home/deck/games/three\t123456",
+                    "epic:three=/games/name=with-equals.exe\t/home/deck/games/three\t-759876716",
                 ]
             )
         )
         self.assertIsNone(result.diagnostic)
         self.assertEqual(result.entries["epic:one"].executable, "/games/one.exe")
         self.assertEqual(result.entries["gog:two"].work_dir, "/home/deck/games/two")
-        self.assertEqual(result.entries["epic:three"].signed_app_id, 123456)
+        self.assertEqual(result.entries["epic:three"].signed_app_id, -759876716)
         self.assertEqual(result.entries["epic:three"].executable, "/games/name=with-equals.exe")
 
     def test_malformed_file_is_diagnostic_and_has_no_partially_trusted_entries(self):

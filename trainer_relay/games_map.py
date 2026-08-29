@@ -38,7 +38,7 @@ class GamesMapResult:
         return self.entries.get(identity)
 
 
-_INTEGER_APP_ID = re.compile(r"^[0-9]+$")
+_INTEGER_APP_ID = re.compile(r"^-?[0-9]+$")
 
 
 def default_games_map_path(home: str | os.PathLike[str] | None = None) -> Path:

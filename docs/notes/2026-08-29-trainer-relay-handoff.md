@@ -28,6 +28,10 @@ repository.
 - Task 2 validation: 115/115 Vitest tests, both TypeScript typechecks, and
   focused Biome checks are green. The repository-wide Biome command still
   reports the inherited CRLF formatting baseline outside Task 2 files.
+- Task 3 implemented the Python runtime, stable `/proc` session discovery,
+  environment/UMU resolution, owned process-group lifecycle and typed RPCs.
+- Task 3 review added coverage for UniFiDeck's real negative signed app IDs;
+  40/40 backend tests and compileall are green.
 
 ## Next action
 
