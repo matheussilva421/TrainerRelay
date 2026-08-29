@@ -467,3 +467,22 @@ GOG/Epic validation remains explicitly pending.
   once, and capture the complete sequence. The last emitted event identifies
   whether the failure is UI activation, controller readiness, home RPC,
   Decky modal creation, modal settlement, or persistence.
+
+### Experimental.8 publication checkpoint
+
+- Runtime/docs commit: `83b4c2c5cbbcacaedcf682e500c6b67794603c81`
+  (`fix: expose file picker diagnostics`). It was pushed to both
+  `origin/feat/trainer-relay` and `origin/main`.
+- Tag `v0.1.0-experimental.8` points to that commit. Release:
+  https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.8
+- Direct asset:
+  https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.8/TrainerRelay.zip
+- GitHub Actions passed for the branch (`33280628086`), main
+  (`33280629868`), and tag/release (`33280639918`). The only annotation is the
+  unrelated `actions/setup-python@v5` Node 20 deprecation notice; GitHub forced
+  that action to Node 24 and all jobs passed.
+- The official release asset is a 179,470-byte prerelease ZIP with GitHub
+  digest `sha256:6c193e5b237102fe5614cdc5833bc9e177771c224b4ebb3236b7d4c266b4caf9`.
+  An independent download matched the locally verified ZIP byte-for-byte.
+- Release notes explicitly state that `.8` is diagnostic and does not claim
+  the device-only file-picker issue is fixed.
