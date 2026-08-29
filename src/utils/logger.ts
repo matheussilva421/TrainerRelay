@@ -1,10 +1,22 @@
-const log = (level: string, background: string, ...args: unknown[]) => {
-  console.log(
-    `%c Trainer Relay %c ${level} `,
-    "background: #16a085; color: black;",
-    `background: ${background}; color: black;`,
-    ...args,
-  );
+type LogLevel = "DEBUG" | "INFO" | "WARNING" | "ERROR";
+
+const log = (level: LogLevel, background: string, ...args: unknown[]) => {
+  const prefix = `%c Trainer Relay ${level} `;
+  const style = `background: ${background}; color: black;`;
+  switch (level) {
+    case "DEBUG":
+      console.debug(prefix, style, ...args);
+      return;
+    case "INFO":
+      console.info(prefix, style, ...args);
+      return;
+    case "WARNING":
+      console.warn(prefix, style, ...args);
+      return;
+    case "ERROR":
+      console.error(prefix, style, ...args);
+      return;
+  }
 };
 
 export const logger = {

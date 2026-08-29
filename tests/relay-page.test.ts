@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   vi.stubGlobal("window", {
@@ -97,6 +97,10 @@ const textContent = (value: unknown): string => {
 };
 
 describe("Trainer Relay page", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("uses the CheatDeck-style focused folder picker without a manual path action", () => {
     const onBrowse = vi.fn();
     const nodes = descendants(TrainerFilePicker({ disabled: false, value: "", onBrowse }));
@@ -109,9 +113,30 @@ describe("Trainer Relay page", () => {
         (node) =>
           node.type === "DialogButton" &&
           descendants(node.props?.children).some((child) => child.type === "FaFolderOpen") &&
-          node.props?.onClick === onBrowse,
+          node.props?.onClick instanceof Function,
       ),
     ).toBe(true);
     expect(textContent(RelayPage({ appid: 48_226_5568 }))).not.toContain("Save trainer path");
+  });
+
+  it("logs activation before delegating to the Decky browser handler", () => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const onBrowse = vi.fn();
+    const nodes = descendants(TrainerFilePicker({ disabled: false, value: "", onBrowse }));
+    const browseButton = nodes.find(
+      (node) =>
+        node.type === "DialogButton" &&
+        descendants(node.props?.children).some((child) => child.type === "FaFolderOpen"),
+    );
+
+    (browseButton?.props?.onClick as (() => void) | undefined)?.();
+
+    expect(consoleInfo).toHaveBeenCalledWith(
+      expect.stringContaining("Trainer Relay"),
+      expect.any(String),
+      "[TrainerRelay:picker] ui-activated",
+      { disabled: false },
+    );
+    expect(onBrowse).toHaveBeenCalledOnce();
   });
 });

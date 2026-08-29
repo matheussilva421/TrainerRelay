@@ -432,3 +432,38 @@ GOG/Epic validation remains explicitly pending.
   verify that the read-only field updates, enable the relay, and run the GOG
   checklist. Then repeat with one Epic title. If the picker still fails, capture
   fresh CEF logs while pressing the folder button; do not reintroduce typing.
+
+## File-picker CEF instrumentation — experimental.8
+
+- Physical Deck validation reported that `.7` still rendered the folder control
+  but did not expose a usable selection flow. This turn intentionally did not
+  guess at another UI fix; it instrumented the button-to-Decky API chain first.
+- Live remote CEF inspection succeeded at
+  `http://192.168.1.247:8081`. The Console was configured as **Errors only**,
+  hiding 2,065 lower-level messages. The existing logger routed every severity,
+  including `logger.error`, through `console.log`, so Trainer Relay diagnostics
+  could not appear under that filter.
+- TDD RED proved three missing contracts: error events were absent from
+  `console.error`, info events were absent from `console.info`, and activating
+  the folder button emitted no picker event. A second RED proved the
+  `openFilePicker` call and resolution/rejection boundaries were silent.
+- The minimal diagnostic implementation now emits scoped events prefixed with
+  `[TrainerRelay:picker]`: `plugin-loaded`, `ui-activated`, `handler-enter`,
+  `handler-blocked`, `home-requested`, `home-resolved`, `api-call`,
+  `api-resolved`, `api-rejected`, `selection-received`, `persistence-result`,
+  and `handler-failed`. Logger levels now map to the matching Console methods.
+- Privacy boundary: events record booleans, status names, requested extension,
+  and a bounded failure reason. They do not record the full trainer/home path,
+  process environment, launch options, cookies, tokens, or credentials.
+- Focused GREEN: 6/6 tests. Fresh full gates: Biome checked 49 files; both
+  TypeScript typechecks passed; Vitest passed 158/158 across 19 files; backend
+  unittest passed 46/46; compileall, Rollup, package layout 1/1, and
+  `git diff --check` passed.
+- Diagnostic delivery version is `v0.1.0-experimental.8`. The deterministic
+  19-entry ZIP is 179,470 bytes with SHA-256
+  `6C193E5B237102FE5614CDC5833BC9E177771C224B4EBB3236B7D4C266B4CAF9`.
+- Next physical step: install `.8`, keep CEF Console on **Default levels**,
+  filter `[TrainerRelay:picker]`, open Trainer Relay, press the folder button
+  once, and capture the complete sequence. The last emitted event identifies
+  whether the failure is UI activation, controller readiness, home RPC,
+  Decky modal creation, modal settlement, or persistence.

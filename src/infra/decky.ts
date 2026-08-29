@@ -1,4 +1,5 @@
 import { callable, type FilePickerRes, FileSelectionType, openFilePicker, type ToastData, toaster } from "@decky/api";
+import { logger } from "../utils/logger";
 
 const getEnvironmentValue = callable<[string], string>("get_env");
 
@@ -10,6 +11,17 @@ export const getHomePath = (): Promise<string> => deckyBackend.getEnvironmentVal
 
 export type FilePickerFilter = RegExp | ((file: File) => boolean) | undefined;
 
+const rejectionReason = (reason: unknown): string => {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === "string") return reason;
+  return "unknown";
+};
+
+const selectedExtension = (path: string): string | null => {
+  const match = /\.([^.\\/]+)$/.exec(path);
+  return match?.[1]?.toLowerCase() ?? null;
+};
+
 export const browseFiles = (
   startPath: string,
   includeFiles?: boolean,
@@ -17,6 +29,11 @@ export const browseFiles = (
   filter?: FilePickerFilter,
   defaultHidden?: boolean,
 ): Promise<FilePickerRes> => {
+  logger.info("[TrainerRelay:picker] api-call", {
+    hasStartPath: startPath.length > 0,
+    includeFiles: Boolean(includeFiles),
+    extensions: validFileExtensions ?? [],
+  });
   return new Promise((resolve, reject) => {
     openFilePicker(
       FileSelectionType.FILE,
@@ -27,7 +44,19 @@ export const browseFiles = (
       validFileExtensions,
       defaultHidden,
       false,
-    ).then(resolve, () => reject("User Canceled"));
+    ).then(
+      (selection) => {
+        logger.info("[TrainerRelay:picker] api-resolved", {
+          hasPath: selection.path.length > 0,
+          extension: selectedExtension(selection.path),
+        });
+        resolve(selection);
+      },
+      (reason: unknown) => {
+        logger.error("[TrainerRelay:picker] api-rejected", { reason: rejectionReason(reason) });
+        reject("User Canceled");
+      },
+    );
   });
 };
 

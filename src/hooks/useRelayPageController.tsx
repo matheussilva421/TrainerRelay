@@ -5,6 +5,7 @@ import type { LaunchIdentity, RelayConfigV1, RelayGameConfig } from "../domain/r
 import { buildTrainerRelayViewModel } from "../domain/relay/viewModel";
 import { browseFiles, getHomePath, sendNotice } from "../infra/decky";
 import { emptyRelayConfig, persistRelayGameConfig, relayRpc } from "../infra/relayRpc";
+import { logger } from "../utils/logger";
 import { bindBrowserTimers } from "./browserTimers";
 import { activateVerifiedLegacyMigration } from "./legacyMigrationActivation";
 import type { LegacyMigrationVerificationResult } from "./migrationVerification";
@@ -98,19 +99,36 @@ export const useRelayPageController = (appid: number) => {
   };
 
   const chooseTrainer = async () => {
-    if (model.kind !== "supported" || configState.status !== "ready") return;
+    logger.info("[TrainerRelay:picker] handler-enter", {
+      modelKind: model.kind,
+      configStatus: configState.status,
+    });
+    if (model.kind !== "supported" || configState.status !== "ready") {
+      logger.warning("[TrainerRelay:picker] handler-blocked", {
+        modelKind: model.kind,
+        configStatus: configState.status,
+      });
+      return;
+    }
     setBusy(true);
     try {
+      logger.info("[TrainerRelay:picker] home-requested");
       const home = await getHomePath();
+      logger.info("[TrainerRelay:picker] home-resolved", { hasHome: home.length > 0 });
       const selection = await browseFiles(home, true, ["exe"]);
+      logger.info("[TrainerRelay:picker] selection-received", { hasPath: selection.path.length > 0 });
       const result = await selectTrainerPath(relayRpc, model.identity, config ?? defaultGameConfig(), selection.path);
+      logger.info("[TrainerRelay:picker] persistence-result", { status: result.status });
       if (result.status === "persisted_disabled") {
         updateGameConfig(model.identity, result.config);
         setMigrationMessage("Trainer selected. Enable it explicitly when ready.");
       } else {
         sendNotice("Trainer path could not be saved; relay remains disabled.");
       }
-    } catch {
+    } catch (reason) {
+      logger.error("[TrainerRelay:picker] handler-failed", {
+        reason: reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "unknown",
+      });
       sendNotice("Trainer selection cancelled or unavailable.");
     } finally {
       setBusy(false);

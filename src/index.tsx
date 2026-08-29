@@ -3,10 +3,12 @@ import { definePlugin, staticClasses } from "@decky/ui";
 import { FaWrench as PluginIcon } from "react-icons/fa";
 
 import contextMenuPatch, { LibraryContextMenu } from "./patch";
+import { logger } from "./utils/logger";
 import Content from "./views/Content";
 import PageRouter from "./views/PageRouter";
 
 export default definePlugin(() => {
+  logger.info("[TrainerRelay:picker] plugin-loaded", { diagnosticsVersion: 1 });
   const menuPatches = contextMenuPatch(LibraryContextMenu);
 
   routerHook.addRoute("/trainer-relay/:appid", PageRouter, { exact: true });

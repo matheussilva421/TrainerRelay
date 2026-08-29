@@ -1,6 +1,7 @@
 import { DialogButton, Field, Focusable, TextField } from "@decky/ui";
 import { type CSSProperties, type FC, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaFolderOpen } from "react-icons/fa6";
+import { logger } from "../utils/logger";
 
 interface TrainerFilePickerProps {
   disabled?: boolean;
@@ -56,6 +57,11 @@ export const TrainerFilePicker: FC<TrainerFilePickerProps> = ({ disabled, value,
     boxSizing: "border-box",
   } satisfies CSSProperties;
 
+  const handleBrowse = () => {
+    logger.info("[TrainerRelay:picker] ui-activated", { disabled: Boolean(disabled) });
+    onBrowse();
+  };
+
   return (
     <Focusable style={{ boxShadow: "none", marginTop: "-4px" }}>
       <Field
@@ -67,7 +73,7 @@ export const TrainerFilePicker: FC<TrainerFilePickerProps> = ({ disabled, value,
       >
         <Focusable style={rowStyle} ref={rowRef}>
           <TextField style={pathStyle} disabled={true} value={value} />
-          <DialogButton disabled={disabled} onClick={onBrowse} style={browseButtonStyle}>
+          <DialogButton disabled={disabled} onClick={handleBrowse} style={browseButtonStyle}>
             <FaFolderOpen />
           </DialogButton>
         </Focusable>
