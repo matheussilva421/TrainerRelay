@@ -14,7 +14,7 @@ repository.
 - Current frontend suite: 136 Vitest tests passed using a single fork worker.
 - Current backend suite: 41 unittest tests passed.
 - Current package: 18 deterministic archive entries; SHA-256
-  `465BF6FE086FDBDFC559E029D11BF682BF5A77AB219ABB7B21C17FBD1B8B9E64`.
+  `FFE03A31AB849982C3FFD5EC4AC13773E6B6452888C1CEE8C3644319D1251683`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -30,7 +30,7 @@ repository.
   decoding/helpers, and fail-closed legacy launch-option migration.
 - Task 2 validation: 115/115 Vitest tests, both TypeScript typechecks, and
   focused Biome checks are green. Biome now explicitly uses the repository's
-  CRLF line-ending convention, so the repository-wide check is green without
+  LF line-ending convention, so the repository-wide check is green without
   changing removed or unrelated history.
 - Task 3 implemented the Python runtime, stable `/proc` session discovery,
   environment/UMU resolution, owned process-group lifecycle and typed RPCs.
@@ -53,24 +53,28 @@ repository.
   temporary fixtures lacked executable bits, and the frontend checkout used
   LF while the repository baseline used CRLF. The fixture now sets execute
   permission and the maintained frontend is normalized to LF with Biome.
-  Fresh local gates remain green and the package hash is unchanged.
+  Fresh local gates remain green and the package is now canonical across
+  Windows and Linux checkout newline conversion.
+- Package text entries are normalized to LF before compression, making the
+  archive bytes independent of Windows checkout newline conversion. The
+  release asset now matches the local validated hash exactly.
 
 ## Next action
 
-Local Task 5 gates are complete. Next: inspect the final diff/security scan,
-commit and push `feat/trainer-relay`, fast-forward the fork's `main` only if
-it has not diverged, create the annotated experimental tag, publish the
-validated ZIP, and update this handoff with the resulting URLs.
+Task 5 local gates and GitHub publication are complete. Next: run the physical
+Steam Deck checklist for one Epic and one GOG title; keep the release
+experimental until both pass.
 
 ## GitHub
 
-The formal fork contains the first Task 5 commit and the experimental tag was
-created from it. The follow-up Linux CI fix is not yet pushed. No upstream PR
-will be opened. The tag-triggered run for the first commit failed on the two
-platform-only issues recorded above; after the follow-up is pushed, `main` will
-be gated again and the existing tag will not be overwritten. The ZIP itself is
-unchanged and can be published manually against the existing tag after the
-green `main` run. Steam Deck validation remains explicitly pending.
+The formal fork contains the complete implementation through `e082589` on
+both `feat/trainer-relay` and `main`. The annotated tag
+`v0.1.0-experimental.1` remains safely at `276e55c`; it was not overwritten.
+Its published prerelease asset was replaced with the canonical, validated ZIP
+whose digest is recorded above. No upstream PR was opened. The tag-triggered
+run for the first commit failed only on the two platform-only issues recorded
+above; subsequent `main` gates `33267343177`, `33267324072`, `33267539436`,
+and `33267536034` passed. Steam Deck validation remains explicitly pending.
 
 ## Task 5 local checkpoint — package and gates complete
 
@@ -104,10 +108,25 @@ green `main` run. Steam Deck validation remains explicitly pending.
 - Fresh results after the fix: 41/41 backend unittest, compileall, Biome,
   both TypeScript typechecks, 136/136 Vitest, Rollup, and 1/1 package-layout
   test all green. `TrainerRelay.zip` remains SHA-256
-  `465BF6FE086FDBDFC559E029D11BF682BF5A77AB219ABB7B21C17FBD1B8B9E64`.
-- Next action is commit/push this follow-up, confirm the push-triggered `main`
-  workflow is green, then publish the existing experimental tag's release
-  asset without moving the tag.
+  `FFE03A31AB849982C3FFD5EC4AC13773E6B6452888C1CEE8C3644319D1251683`.
+- The follow-up and cross-platform package normalization were committed and
+  pushed. The existing experimental tag was preserved; the release asset was
+  updated only after the final `main` gates passed.
+
+## Final publication checkpoint
+
+- Feature branch and fork `main`: `e0825892b61f1f24e90a75cd4d0360f71508f3ac`.
+- Tag `v0.1.0-experimental.1`: `276e55c64ae82bfb1fce996c5413200581605f4e`.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.1
+- Asset: `TrainerRelay.zip`, 52,220 bytes, SHA-256
+  `FFE03A31AB849982C3FFD5EC4AC13773E6B6452888C1CEE8C3644319D1251683`.
+- Main-gate runs: `33267343177`, `33267324072`, `33267539436`, and
+  `33267536034`, all successful.
+- Earlier tag-run failures `33267031544`, `33267058241`, and `33266971804`
+  are retained as history; they did not change the runtime package and were
+  superseded by the follow-up gates.
+- No upstream PR was opened. Do not install the ZIP on Windows as Decky.
+- Pending only: physical Steam Deck validation and any later stable promotion.
 
 ## Task 3 incremental checkpoint — RED config/map/runtime contracts
 
