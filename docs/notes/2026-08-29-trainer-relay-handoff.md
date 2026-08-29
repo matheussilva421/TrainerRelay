@@ -361,3 +361,24 @@ GOG/Epic validation remains explicitly pending.
   asset, create the `.6` user kit, mark `.5` superseded, then physically enter
   a real absolute trainer path and complete one GOG plus one Epic runtime
   checklist. Do not promote to stable.
+
+### Experimental.6 publication checkpoint
+
+- Runtime/release commit `962042bb0ddea7bbdb142b31aaae5509711fb8fa`
+  was pushed to both `origin/feat/trainer-relay` and `origin/main` and tagged
+  `v0.1.0-experimental.6`.
+- Branch runs `33278100648` and `33278101875` passed. Tag/release run
+  `33278126873` passed frontend, backend, build/package, and publication jobs.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.6
+  The downloaded asset is 176,555 bytes and SHA-256
+  `95F9B39942F36651B82CD9E2B2734906D51C55A1B9EAA345D5982D16304AE7E6`,
+  byte-identical to the independently generated local archive.
+- `.5` remains available for traceability and is marked superseded with a link
+  to `.6`. No historical tag or asset was removed.
+- Created `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.6-kit`
+  containing the verified versioned installation ZIP and the Portuguese
+  installation/testing/log guide.
+- Remaining physical validation: replace `.5` with `.6`, enter the exact
+  absolute Linux trainer path in the new field, press **Save trainer path**,
+  enable the relay, and run the GOG checklist. Then repeat with one Epic title.
+  Any remaining runtime failure requires fresh filtered Decky and CEF logs.
