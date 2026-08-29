@@ -1,9 +1,15 @@
+import stat
 import tempfile
 import unittest
 from pathlib import Path
 
 from trainer_relay.environment import build_sanitized_environment
 from trainer_relay.umu import UmuResolutionError, resolve_umu_run
+
+
+def write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
 class EnvironmentTests(unittest.TestCase):
@@ -48,14 +54,14 @@ class UmuResolutionTests(unittest.TestCase):
             home = Path(directory)
             candidate = home / "homebrew" / "plugins" / "Unifideck" / "bin" / "umu" / "umu" / "umu-run"
             candidate.parent.mkdir(parents=True)
-            candidate.write_text("runner", encoding="utf-8")
+            write_executable(candidate, "runner")
             result = resolve_umu_run(home, which=lambda _: (_ for _ in ()).throw(AssertionError("PATH used")))
             self.assertEqual(result, candidate.resolve())
 
     def test_falls_back_to_path_when_no_bundled_candidate_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             path_candidate = Path(directory) / "umu-run"
-            path_candidate.write_text("runner", encoding="utf-8")
+            write_executable(path_candidate, "runner")
             result = resolve_umu_run(Path(directory), which=lambda _: str(path_candidate))
             self.assertEqual(result, path_candidate.resolve())
 
@@ -66,8 +72,8 @@ class UmuResolutionTests(unittest.TestCase):
             second = home / "two" / "umu-run"
             first.parent.mkdir()
             second.parent.mkdir()
-            first.write_text("one", encoding="utf-8")
-            second.write_text("two", encoding="utf-8")
+            write_executable(first, "one")
+            write_executable(second, "two")
             with self.assertRaisesRegex(UmuResolutionError, "umu_not_found"):
                 resolve_umu_run(home, which=lambda _: None, bundled_candidates=[])
             with self.assertRaisesRegex(UmuResolutionError, "umu_ambiguous"):
@@ -76,6 +82,6 @@ class UmuResolutionTests(unittest.TestCase):
     def test_deduplicates_identical_bundled_candidates(self):
         with tempfile.TemporaryDirectory() as directory:
             candidate = Path(directory) / "umu-run"
-            candidate.write_text("runner", encoding="utf-8")
+            write_executable(candidate, "runner")
             result = resolve_umu_run(Path(directory), which=lambda _: None, bundled_candidates=[candidate, candidate])
             self.assertEqual(result, candidate.resolve())

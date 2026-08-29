@@ -49,6 +49,11 @@ repository.
   runtime packaging, CI gates, the experimental release documentation, and
   the physical Steam Deck validation checklist. The local package test is
   green and the extracted package compiles successfully.
+- The first tag-triggered Actions run exposed two Linux-only gate issues: UMU
+  temporary fixtures lacked executable bits, and the frontend checkout used
+  LF while the repository baseline used CRLF. The fixture now sets execute
+  permission and the maintained frontend is normalized to LF with Biome.
+  Fresh local gates remain green and the package hash is unchanged.
 
 ## Next action
 
@@ -59,10 +64,13 @@ validated ZIP, and update this handoff with the resulting URLs.
 
 ## GitHub
 
-The formal fork exists, but the Task 5 changes are not yet pushed. No upstream
-PR will be opened. Local gates pass; main/tag/release remain pending until the
-final commit and remote-state checks. Steam Deck validation remains explicitly
-pending after the first experimental release.
+The formal fork contains the first Task 5 commit and the experimental tag was
+created from it. The follow-up Linux CI fix is not yet pushed. No upstream PR
+will be opened. The tag-triggered run for the first commit failed on the two
+platform-only issues recorded above; after the follow-up is pushed, `main` will
+be gated again and the existing tag will not be overwritten. The ZIP itself is
+unchanged and can be published manually against the existing tag after the
+green `main` run. Steam Deck validation remains explicitly pending.
 
 ## Task 5 local checkpoint — package and gates complete
 
@@ -85,6 +93,21 @@ pending after the first experimental release.
 - No physical Steam Deck is attached. Do not promote this release to stable;
   execute `docs/STEAM-DECK-VALIDATION.md` on one Epic and one GOG title after
   publication.
+
+## Task 5 follow-up checkpoint — Linux CI portability fix
+
+- Root cause from failed Actions run `33267031544`: Linux correctly rejected
+  non-executable temporary UMU fixtures, and the CI checkout presented the
+  frontend files as LF while Biome was configured for CRLF.
+- Fixed only the test fixtures and maintained frontend formatting convention.
+  No production watcher behavior or packaged runtime file changed.
+- Fresh results after the fix: 41/41 backend unittest, compileall, Biome,
+  both TypeScript typechecks, 136/136 Vitest, Rollup, and 1/1 package-layout
+  test all green. `TrainerRelay.zip` remains SHA-256
+  `465BF6FE086FDBDFC559E029D11BF682BF5A77AB219ABB7B21C17FBD1B8B9E64`.
+- Next action is commit/push this follow-up, confirm the push-triggered `main`
+  workflow is green, then publish the existing experimental tag's release
+  asset without moving the tag.
 
 ## Task 3 incremental checkpoint — RED config/map/runtime contracts
 
