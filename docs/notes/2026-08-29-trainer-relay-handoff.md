@@ -75,8 +75,9 @@ The formal fork contains the runtime hotfix commit
 `v0.1.0-experimental.3` is explicitly marked superseded, and
 `v0.1.0-experimental.4` is the recommended prerelease. Branch/main runs
 `33275180521` and `33275182249`, plus tag/release run `33275289569`, all
-passed. No upstream PR was opened. Physical GOG/Epic validation remains
-explicitly pending.
+passed. Documentation follow-up runs `33275665417` (feature branch) and
+`33275681132` (`main`) also passed. No upstream PR was opened. Physical
+GOG/Epic validation remains explicitly pending.
 
 ## Task 5 local checkpoint — package and gates complete
 
