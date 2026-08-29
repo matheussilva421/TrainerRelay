@@ -15,6 +15,13 @@ vi.hoisted(() => {
   });
 });
 
+vi.mock("react", () => ({
+  useEffect: vi.fn(),
+  useLayoutEffect: (effect: () => void) => effect(),
+  useRef: <T>() => ({ current: null as T | null }),
+  useState: <T>(initial: T) => [initial, vi.fn()],
+}));
+
 const controller = vi.hoisted(() => ({
   model: {
     kind: "supported" as const,
@@ -67,6 +74,7 @@ vi.mock("react-icons/fa6", () => ({
   FaShieldHalved: "FaShieldHalved",
 }));
 
+import { TrainerFilePicker } from "../src/components/TrainerFilePicker";
 import RelayPage from "../src/views/RelayPage";
 
 interface ElementNode {
@@ -81,26 +89,29 @@ const descendants = (value: unknown): ElementNode[] => {
   return [node, ...descendants(node.props?.children)];
 };
 
+const textContent = (value: unknown): string => {
+  if (Array.isArray(value)) return value.map(textContent).join("");
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (!value || typeof value !== "object") return "";
+  return textContent((value as ElementNode).props?.children);
+};
+
 describe("Trainer Relay page", () => {
-  it("keeps manual trainer path configuration available when the Decky picker cannot be used", () => {
-    const nodes = descendants(RelayPage({ appid: 48_226_5568 }));
+  it("uses the CheatDeck-style focused folder picker without a manual path action", () => {
+    const onBrowse = vi.fn();
+    const nodes = descendants(TrainerFilePicker({ disabled: false, value: "", onBrowse }));
 
     expect(
-      nodes.some(
-        (node) =>
-          node.type === "TextField" &&
-          node.props?.value === "" &&
-          node.props?.disabled === false &&
-          node.props?.onChange instanceof Function,
-      ),
+      nodes.some((node) => node.type === "TextField" && node.props?.value === "" && node.props?.disabled === true),
     ).toBe(true);
     expect(
       nodes.some(
         (node) =>
           node.type === "DialogButton" &&
-          node.props?.children === "Save trainer path" &&
-          node.props?.onClick instanceof Function,
+          descendants(node.props?.children).some((child) => child.type === "FaFolderOpen") &&
+          node.props?.onClick === onBrowse,
       ),
     ).toBe(true);
+    expect(textContent(RelayPage({ appid: 48_226_5568 }))).not.toContain("Save trainer path");
   });
 });

@@ -30,7 +30,7 @@ describe("Trainer Relay configuration actions", () => {
     expect(setRelayGameConfig).toHaveBeenCalledWith({ identity, config: disabled });
   });
 
-  it("rejects an unsafe manual trainer path before persistence", async () => {
+  it("rejects an unsafe selected trainer path before persistence", async () => {
     const setRelayGameConfig = vi.fn();
 
     await expect(selectTrainerPath(client(setRelayGameConfig), identity, current, "trainer.exe")).resolves.toEqual({

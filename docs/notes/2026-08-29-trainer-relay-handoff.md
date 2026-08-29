@@ -382,3 +382,32 @@ GOG/Epic validation remains explicitly pending.
   absolute Linux trainer path in the new field, press **Save trainer path**,
   enable the relay, and run the GOG checklist. Then repeat with one Epic title.
   Any remaining runtime failure requires fresh filtered Decky and CEF logs.
+
+## CheatDeck-style native file picker — experimental.7
+
+- The user rejected manual trainer-path entry and clarified that the installed
+  CheatDeck already provides controller/touch folder navigation. `.6` therefore
+  remains a diagnostic fallback release, not the desired interaction.
+- Analysis compared CheatDeck tags `v0.5.1`, `v1.0.0`, `v1.1.6`, `v1.2.1`,
+  and `v2.0.0`. Every inspected version calls Decky's native
+  `openFilePicker(FileSelectionType.FILE, ...)`; the modern function signature
+  was already identical in Trainer Relay.
+- The reusable difference is CheatDeck's UI/focus contract: a disabled path
+  `TextField` and compact folder `DialogButton` share a dedicated `Focusable`
+  row, and the button receives `onBrowse` directly. Trainer Relay `.6` instead
+  used a large textual button plus an editable path field.
+- TDD RED required the CheatDeck-style read-only field/folder-button contract
+  and absence of **Save trainer path**. The minimal implementation adds
+  `src/components/TrainerFilePicker.tsx`, ports the focus/layout behavior from
+  CheatDeck, removes manual draft state/actions, and retains the existing
+  absolute `.exe` validation before persistence.
+- Focused GREEN: 6/6 tests. Full local gates: 153/153 frontend, 46/46 backend,
+  1/1 package layout, Biome, both TypeScript typechecks, compileall, and Rollup
+  passed.
+- Delivery version is `v0.1.0-experimental.7`. The deterministic 19-entry ZIP
+  is 176,394 bytes with SHA-256
+  `6375AF2391AB01179103F1A3E9A374CF56C69C0E4D377FC43E337B40CFEA6B73`.
+- Pending: final diff review, commit/push/tag/release publication, independent
+  asset verification, `.7` kit creation, and physical confirmation that the
+  folder button exposes Decky's navigable picker on Decky 3.2.6. Do not promote
+  to stable before one GOG and one Epic runtime checklist passes.

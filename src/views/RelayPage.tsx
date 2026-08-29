@@ -11,7 +11,8 @@ import {
   ToggleField,
 } from "@decky/ui";
 import type { FC } from "react";
-import { FaArrowsRotate, FaFolderOpen, FaShieldHalved } from "react-icons/fa6";
+import { FaArrowsRotate, FaShieldHalved } from "react-icons/fa6";
+import { TrainerFilePicker } from "../components/TrainerFilePicker";
 import type { LegacyMigrationPlan } from "../domain/relay/migration";
 import type { LaunchIdentity } from "../domain/relay/types";
 import { formatRelayStatus } from "../domain/relay/viewModel";
@@ -33,12 +34,9 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
     busy,
     migrationBusy,
     migrationMessage,
-    trainerDraft,
-    setTrainerDraft,
     prefixDraft,
     setPrefixDraft,
     chooseTrainer,
-    saveTrainer,
     toggleRelay,
     savePrefix,
     retry,
@@ -174,28 +172,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
 
       <PanelSection title="Configuration">
         <PanelSectionRow>
-          <Field
-            label="Trainer executable"
-            description="Choose a file or enter its absolute Linux path. Saving keeps the relay disabled."
-            padding="standard"
-            childrenLayout="below"
-            bottomSeparator="standard"
-          >
-            <DialogButton disabled={controlsDisabled} onClick={() => void chooseTrainer()}>
-              <FaFolderOpen /> {currentConfig.trainerPath || "Choose trainer"}
-            </DialogButton>
-            <TextField
-              disabled={controlsDisabled}
-              value={trainerDraft}
-              onChange={(event) => setTrainerDraft(event.currentTarget.value)}
-            />
-            <DialogButton
-              disabled={controlsDisabled || trainerDraft.trim() === currentConfig.trainerPath}
-              onClick={() => void saveTrainer()}
-            >
-              Save trainer path
-            </DialogButton>
-          </Field>
+          <TrainerFilePicker disabled={controlsDisabled} value={currentConfig.trainerPath} onBrowse={chooseTrainer} />
         </PanelSectionRow>
         <PanelSectionRow>
           <Field

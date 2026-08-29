@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-This repository publishes `v0.1.0-experimental.6`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
+This repository publishes `v0.1.0-experimental.7`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.6).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.7).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -35,7 +35,7 @@ Download the plugin archive, not GitHub's automatically generated `Source code.z
 
 1. Open the UniFiDeck shortcut's game details in Game Mode.
 2. Open the **Trainer Relay** menu.
-3. Select an absolute Windows `.exe` trainer. If Decky's file-picker modal is unavailable, enter the absolute Linux path in the text field and select **Save trainer path**. Trainer Relay rejects relative paths, `.bat` files, and arguments.
+3. Use the focused folder button to browse the Deck and select an absolute Windows `.exe` trainer. The path field is read-only; Trainer Relay rejects relative paths, `.bat` files, and arguments.
 4. Leave **Enable Trainer Relay** off until the path is selected and any migration prompt has been reviewed.
 5. Optionally set an absolute prefix override. When empty, Trainer Relay uses `~/.local/share/unifideck/prefixes/<game_id>`.
 6. Enable the relay and launch the shortcut.
@@ -77,7 +77,7 @@ To roll back, disable the per-game Trainer Relay configuration or uninstall the 
 
 - **Unsupported shortcut:** confirm the launch options contain exactly one literal `epic:<game_id>` or `gog:<game_id>` token supplied by UniFiDeck.
 - **Legacy migration blocks a plain Epic/GOG token:** install `v0.1.0-experimental.5` or newer; `.4` incorrectly required `%command%` while planning migration.
-- **Choose trainer does not show a usable file picker:** install `v0.1.0-experimental.6` or newer, enter the absolute Linux `.exe` path in the manual field, and select **Save trainer path**.
+- **The folder button does not show a usable file picker:** install `v0.1.0-experimental.7` or newer. `.7` ports CheatDeck's focused, read-only file-picker control and direct `onBrowse` flow.
 - **`waiting_for_game`:** launch the shortcut from UniFiDeck and allow the launcher to reach the game process before pressing Retry.
 - **`ambiguous`:** close duplicate launcher/game instances and try again. Trainer Relay will not guess.
 - **`invalid_config`:** remove the legacy variables, or complete the migration prompt and verify the resulting launch options.

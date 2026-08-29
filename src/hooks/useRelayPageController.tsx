@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LegacyMigrationPlan } from "../domain/relay/migration";
-import { isAbsoluteExecutablePath, isAbsolutePath } from "../domain/relay/path";
+import { isAbsolutePath } from "../domain/relay/path";
 import type { LaunchIdentity, RelayConfigV1, RelayGameConfig } from "../domain/relay/types";
 import { buildTrainerRelayViewModel } from "../domain/relay/viewModel";
 import { browseFiles, getHomePath, sendNotice } from "../infra/decky";
@@ -45,7 +45,6 @@ export const useRelayPageController = (appid: number) => {
   const [busy, setBusy] = useState(false);
   const [migrationBusy, setMigrationBusy] = useState(false);
   const [migrationMessage, setMigrationMessage] = useState<string>();
-  const [trainerDraft, setTrainerDraft] = useState("");
   const [prefixDraft, setPrefixDraft] = useState("");
 
   useEffect(() => {
@@ -74,10 +73,6 @@ export const useRelayPageController = (appid: number) => {
     () => buildTrainerRelayViewModel(appDetails.details, config, relayStatus),
     [appDetails.details, config, relayStatus],
   );
-
-  useEffect(() => {
-    setTrainerDraft(config?.trainerPath ?? "");
-  }, [identity, config?.trainerPath]);
 
   useEffect(() => {
     setPrefixDraft(config?.prefixOverride ?? "");
@@ -111,35 +106,12 @@ export const useRelayPageController = (appid: number) => {
       const result = await selectTrainerPath(relayRpc, model.identity, config ?? defaultGameConfig(), selection.path);
       if (result.status === "persisted_disabled") {
         updateGameConfig(model.identity, result.config);
-        setTrainerDraft(result.config.trainerPath);
         setMigrationMessage("Trainer selected. Enable it explicitly when ready.");
       } else {
         sendNotice("Trainer path could not be saved; relay remains disabled.");
       }
     } catch {
       sendNotice("Trainer selection cancelled or unavailable.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveTrainer = async () => {
-    if (model.kind !== "supported" || configState.status !== "ready") return;
-    const trainerPath = trainerDraft.trim();
-    if (!isAbsoluteExecutablePath(trainerPath)) {
-      sendNotice("Trainer path must be an absolute .exe file.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await selectTrainerPath(relayRpc, model.identity, config ?? defaultGameConfig(), trainerPath);
-      if (result.status === "persisted_disabled") {
-        updateGameConfig(model.identity, result.config);
-        setTrainerDraft(result.config.trainerPath);
-        setMigrationMessage("Trainer path saved. Enable it explicitly when ready.");
-      } else {
-        sendNotice("Trainer path could not be saved; relay remains disabled.");
-      }
     } finally {
       setBusy(false);
     }
@@ -240,12 +212,9 @@ export const useRelayPageController = (appid: number) => {
     busy,
     migrationBusy,
     migrationMessage,
-    trainerDraft,
-    setTrainerDraft,
     prefixDraft,
     setPrefixDraft,
     chooseTrainer,
-    saveTrainer,
     toggleRelay,
     savePrefix,
     retry,
