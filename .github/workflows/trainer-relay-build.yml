@@ -1,4 +1,4 @@
-name: dev-build
+name: trainer-relay-build
 
 on:
   push:
@@ -70,17 +70,17 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
-          mkdir -p output/${{ github.event.repository.name }}/dist
-          cp dist/index.js  output/${{ github.event.repository.name }}/dist
-          cp main.py        output/${{ github.event.repository.name }}
-          cp plugin.json    output/${{ github.event.repository.name }}
-          cp package.json   output/${{ github.event.repository.name }}
-          cp README.md      output/${{ github.event.repository.name }}
-          cp LICENSE        output/${{ github.event.repository.name }}
+          mkdir -p output/TrainerRelay/dist
+          cp dist/index.js  output/TrainerRelay/dist
+          cp main.py        output/TrainerRelay
+          cp plugin.json    output/TrainerRelay
+          cp package.json   output/TrainerRelay
+          cp README.md      output/TrainerRelay
+          cp LICENSE        output/TrainerRelay
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ github.event.repository.name }}
+          name: TrainerRelay
           path: output/*
 
   publish-release:
@@ -91,12 +91,12 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v6
         with:
-          name: ${{ github.event.repository.name }}
+          name: TrainerRelay
           path: release
       - name: Package plugin
         run: |
           cd release
-          zip -r ${{ github.event.repository.name }} *
+          zip -r TrainerRelay.zip TrainerRelay
       - name: Publish to Github release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,6 +104,6 @@ jobs:
           draft: false
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, 'pre') }}
-          files: release/${{ github.event.repository.name }}.zip
+          files: release/TrainerRelay.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

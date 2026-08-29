@@ -1,11 +1,11 @@
 {
-  "name": "CheatDeck",
+  "name": "Trainer Relay",
   "author": "SheffeyG",
   "flags": [],
   "api_version": 1,
   "publish": {
     "tags": [ "cheat", "trainer" ],
-    "description": "A launch options manager allows you to run games with cheats and trainers.",
-    "image": "https://github.com/SheffeyG/CheatDeck/raw/main/docs/settings.jpg"
+    "description": "Configure trainer sidecars for supported UniFiDeck Epic and GOG shortcuts.",
+    "image": "https://github.com/matheussilva421/TrainerRelay/raw/main/docs/settings.jpg"
   }
 }

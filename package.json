@@ -1,8 +1,8 @@
 {
-  "name": "cheatdeck",
+  "name": "trainer-relay",
   "type": "module",
-  "version": "2.0.0",
-  "description": "A launch options manager allows you to run games with cheats and trainers.",
+  "version": "0.1.0-experimental.1",
+  "description": "A Decky Loader plugin for trainer sidecars on supported UniFiDeck shortcuts.",
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w",
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SheffeyG/CheatDeck.git"
+    "url": "git+https://github.com/matheussilva421/TrainerRelay.git"
   },
   "keywords": [
     "decky",
@@ -27,9 +27,9 @@
   "author": "SheffeyG",
   "license": "GPL-3.0-or-later",
   "bugs": {
-    "url": "https://github.com/SheffeyG/CheatDeck/issues"
+    "url": "https://github.com/matheussilva421/TrainerRelay/issues"
   },
-  "homepage": "https://github.com/SheffeyG/CheatDeck#readme",
+  "homepage": "https://github.com/matheussilva421/TrainerRelay#readme",
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@decky/rollup": "^1.0.2",

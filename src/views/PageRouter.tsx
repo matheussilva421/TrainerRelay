@@ -19,7 +19,7 @@ const PageRouter: FC = () => {
     <SettingsProvider>
       <OptionsProvider appid={appid}>
         <SidebarNavigation
-          title="CheatDeck"
+          title="Trainer Relay"
           showTitle={true}
           pages={[
             {

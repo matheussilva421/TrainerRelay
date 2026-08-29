@@ -32,15 +32,15 @@ class GetSettingOptions(typing.TypedDict):
 class Plugin:
     @classmethod
     async def _main(cls):
-        logger.info("[backend] Loading CheatDeck!")
+        logger.info("[backend] Loading Trainer Relay!")
 
     @classmethod
     async def _unload(cls):
-        logger.info("[backend] Unloading CheatDeck!")
+        logger.info("[backend] Unloading Trainer Relay!")
 
     @classmethod
     async def _uninstall(cls):
-        logger.info("[backend] Uninstalling CheatDeck!")
+        logger.info("[backend] Uninstalling Trainer Relay!")
 
     @classmethod
     async def read_settings(cls):

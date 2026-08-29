@@ -6,7 +6,7 @@ import { useSettings } from "../hooks";
 import { QrCode } from "../modals";
 import { t } from "../utils/translate";
 
-const GITHUB = "https://github.com/SheffeyG/CheatDeck";
+const GITHUB = "https://github.com/matheussilva421/TrainerRelay";
 
 const Content: FC = () => {
   const translator = t("CREDIT");

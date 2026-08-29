@@ -1,6 +1,6 @@
 const log = (level: string, background: string, ...args: unknown[]) => {
   console.log(
-    `%c CheatDeck %c ${level} `,
+    `%c Trainer Relay %c ${level} `,
     "background: #16a085; color: black;",
     `background: ${background}; color: black;`,
     ...args,
