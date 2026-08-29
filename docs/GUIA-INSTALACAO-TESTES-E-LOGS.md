@@ -20,9 +20,9 @@ mais de uma sessão do mesmo jogo. Esses casos não fazem parte desta versão.
 
 O arquivo correto tem:
 
-- tamanho: `174246` bytes;
+- tamanho: `174406` bytes;
 - SHA-256:
-  `3751D68BB61E64AA16925A148E3647A09664F6E5647858A830358BCC8EE3D037`.
+  `E2D0418B70E8C4BEC62BEEF45C65FC7700BEABA1DA91095EFAF42A6BD5997125`.
 
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 

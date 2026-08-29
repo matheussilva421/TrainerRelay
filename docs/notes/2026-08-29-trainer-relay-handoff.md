@@ -13,9 +13,9 @@ repository.
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
 - Current frontend suite: 151 Vitest tests passed using a single fork worker.
 - Current backend suite: 46 unittest tests passed.
-- Current package: 19 deterministic stored archive entries; 174,246 bytes;
+- Current package: 19 deterministic stored archive entries; 174,406 bytes;
   SHA-256
-  `3751D68BB61E64AA16925A148E3647A09664F6E5647858A830358BCC8EE3D037`.
+  `E2D0418B70E8C4BEC62BEEF45C65FC7700BEABA1DA91095EFAF42A6BD5997125`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -313,7 +313,21 @@ GOG/Epic validation remains explicitly pending.
   frontend, 1/1 package layout, compileall, Biome, both TypeScript typechecks,
   and Rollup all passed.
 - Delivery version is `v0.1.0-experimental.5`. The deterministic 19-entry ZIP
-  is 174,246 bytes with SHA-256
-  `3751D68BB61E64AA16925A148E3647A09664F6E5647858A830358BCC8EE3D037`.
-- Pending: commit/push, branch/main/tag Actions, release verification,
-  replacement user kit, and physical retest. Preserve all earlier tags/assets.
+  is 174,406 bytes with SHA-256
+  `E2D0418B70E8C4BEC62BEEF45C65FC7700BEABA1DA91095EFAF42A6BD5997125`.
+- Runtime/release commit: `a2615b4ee4370c2ee85a028103d8c26440a636a9`.
+  Branch/main runs `33276936863` and `33276938414` passed. Tag/release run
+  `33277003480` passed frontend, backend, build/package and publication.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.5
+  Its downloaded asset is byte-identical to the fresh local package at the
+  size and SHA-256 above.
+- `.4` is marked superseded with a link to `.5`; its tag and asset remain
+  preserved. `.5` is the recommended prerelease with the verified size/hash.
+- Created `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.5-kit`
+  with the ZIP renamed to `TrainerRelay-v0.1.0-experimental.5.zip` and an
+  updated Portuguese `LEIA-ME`. The kit ZIP is 174,406 bytes and SHA-256
+  `E2D0418B70E8C4BEC62BEEF45C65FC7700BEABA1DA91095EFAF42A6BD5997125`.
+  Kits `.3` and `.4` were not changed or removed.
+- Pending only: commit/push this final documentation checkpoint and physically
+  confirm that `.5` enables browsing/configuration for `gog:1482265568`, then
+  complete the one-GOG/one-Epic runtime checklist. Do not promote to stable.
