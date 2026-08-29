@@ -25,6 +25,13 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
 
             with zipfile.ZipFile(archive) as bundle:
                 names = set(bundle.namelist())
+                text_entries = [
+                    name
+                    for name in names
+                    if Path(name).suffix.lower() in {".js", ".md", ".py", ".json", ""}
+                ]
+                for name in text_entries:
+                    self.assertNotIn(b"\r\n", bundle.read(name), name)
 
         self.assertTrue(names)
         self.assertTrue(all(name.startswith("TrainerRelay/") for name in names))

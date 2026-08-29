@@ -21,6 +21,7 @@ REQUIRED_FILES = (
     "docs/adr/0001-session-watcher.md",
     "docs/STEAM-DECK-VALIDATION.md",
 )
+TEXT_SUFFIXES = {".js", ".md", ".py", ".json", ""}
 
 
 def iter_package_files() -> list[Path]:
@@ -56,7 +57,10 @@ def write_archive(output: Path, files: list[Path]) -> None:
             info.create_system = 3
             info.external_attr = 0o644 << 16
             info.compress_type = ZIP_DEFLATED
-            archive.writestr(info, source.read_bytes())
+            content = source.read_bytes()
+            if source.suffix.lower() in TEXT_SUFFIXES:
+                content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            archive.writestr(info, content)
 
 
 def main() -> int:
