@@ -77,6 +77,7 @@ def _basename(value: str) -> str:
 
 class ProcessDiscoverer:
     REQUIRED_ENVIRONMENT = ("WINEPREFIX", "PROTONPATH", "GAMEID", "STORE")
+    LEGACY_ENVIRONMENT = ("PROTON_REMOTE_DEBUG_CMD", "PRESSURE_VESSEL_FILESYSTEMS_RW")
 
     def __init__(
         self,
@@ -90,7 +91,9 @@ class ProcessDiscoverer:
     def _read(self, path: Path) -> bytes:
         return self._read_bytes(path)
 
-    def _candidate(self, process_dir: Path, identity: str, expected_executable: str, expected_prefix: str) -> tuple[SessionIdentity, dict[str, str]] | None:
+    def _candidate(
+        self, process_dir: Path, identity: str, expected_executable: str, expected_prefix: str
+    ) -> tuple[SessionIdentity, dict[str, str]] | str | None:
         try:
             first_stat = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
             comm = self._read(process_dir / "comm").decode("utf-8").strip()
@@ -128,10 +131,13 @@ class ProcessDiscoverer:
         comm_matches = _basename(comm).casefold() == _basename(expected_executable).casefold()
         if not command_matches and not comm_matches:
             return None
+        if any(key in environment for key in self.LEGACY_ENVIRONMENT):
+            return "legacy"
         return SessionIdentity(int(process_dir.name), first_stat), environment
 
     def discover(self, identity: str, expected_executable: str, expected_prefix: str) -> DiscoveryResult:
         candidates: list[tuple[SessionIdentity, dict[str, str]]] = []
+        legacy_settings_present = False
         try:
             process_dirs = sorted(
                 (entry for entry in self.proc_root.iterdir() if entry.is_dir() and entry.name.isdigit()),
@@ -141,9 +147,14 @@ class ProcessDiscoverer:
             return DiscoveryResult("waiting_for_game", diagnostic="proc_unreadable")
         for process_dir in process_dirs:
             candidate = self._candidate(process_dir, identity, expected_executable, expected_prefix)
+            if candidate == "legacy":
+                legacy_settings_present = True
+                continue
             if candidate is not None:
                 candidates.append(candidate)
         sessions = tuple(candidate[0] for candidate in candidates)
+        if legacy_settings_present:
+            return DiscoveryResult("invalid_config", candidates=sessions, diagnostic="legacy_settings_present")
         if len(candidates) == 0:
             return DiscoveryResult("waiting_for_game")
         if len(candidates) > 1:

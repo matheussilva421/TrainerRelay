@@ -174,6 +174,10 @@ class RelayWatcher:
             await self._stop_owned(state)
             self._set_state(state, "ambiguous", discovery.diagnostic or "multiple_game_sessions")
             return
+        if discovery.state == "invalid_config":
+            await self._stop_owned(state)
+            self._set_state(state, "invalid_config", discovery.diagnostic or "invalid_process_environment")
+            return
         if discovery.state != "session" or discovery.session is None:
             await self._stop_owned(state)
             self._set_state(state, "waiting_for_game", discovery.diagnostic)

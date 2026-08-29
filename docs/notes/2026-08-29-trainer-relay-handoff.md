@@ -11,7 +11,7 @@ repository.
 - Worktree: `C:\Users\slvma\Downloads\Github\Mods\.worktrees\trainer-relay`
 - Branch: `feat/trainer-relay`
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
-- Current frontend suite: 115 Vitest tests passed using a single fork worker.
+- Current frontend suite: 136 Vitest tests passed using a single fork worker.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -31,12 +31,23 @@ repository.
 - Task 3 implemented the Python runtime, stable `/proc` session discovery,
   environment/UMU resolution, owned process-group lifecycle and typed RPCs.
 - Task 3 review added coverage for UniFiDeck's real negative signed app IDs;
-  40/40 backend tests and compileall are green.
+  41/41 backend tests and compileall are green. Matching game processes that
+  carry either legacy CheatDeck environment variable are now invalid_config
+  and cannot launch a relay.
+- Task 4 replaced the inherited generic UI with a focused fail-closed Relay
+  page, typed RPC client, AppDetails hook, verified legacy migration flow,
+  `.exe`-only picker, explicit enablement, prefix override and status/retry
+  controls. Obsolete generic UI/settings files were removed.
+- Task 4 validation: 136/136 Vitest tests, 41/41 backend tests, both
+  TypeScript typechecks, Biome and Rollup are green. Details are in
+  `.superpowers/sdd/2026-08-29-trainer-relay-implementation-plan/task-4-report.md`.
 
 ## Next action
 
-Continue with Task 3 of `docs/superpowers/plans/2026-08-29-trainer-relay-implementation-plan.md`:
-implement the Python watcher/runtime and typed RPC adapter through TDD.
+Continue with Task 5 of
+`.superpowers/sdd/2026-08-29-trainer-relay-implementation-plan/task-5-brief.md`:
+package and gate the complete plugin, update user documentation, perform the
+final review, then push and publish the experimental fork release.
 
 ## GitHub
 

@@ -15,7 +15,18 @@ def proc_stat(pid: int, comm: str, start_time: int) -> str:
     return f"{pid} ({comm}) S " + " ".join(["0"] * 18) + f" {start_time} 0 0"
 
 
-def write_candidate(root: Path, pid: int, *, start_time: int, executable: str, prefix: str, game_id: str, store: str, comm: str = "game.exe") -> None:
+def write_candidate(
+    root: Path,
+    pid: int,
+    *,
+    start_time: int,
+    executable: str,
+    prefix: str,
+    game_id: str,
+    store: str,
+    comm: str = "game.exe",
+    legacy: bool = False,
+) -> None:
     process = root / str(pid)
     process.mkdir()
     (process / "stat").write_text(proc_stat(pid, comm, start_time), encoding="utf-8")
@@ -27,6 +38,9 @@ def write_candidate(root: Path, pid: int, *, start_time: int, executable: str, p
         "GAMEID": game_id,
         "STORE": store,
     }
+    if legacy:
+        environment["PROTON_REMOTE_DEBUG_CMD"] = "/home/deck/legacy.exe"
+        environment["PRESSURE_VESSEL_FILESYSTEMS_RW"] = "/tmp"
     (process / "environ").write_bytes(b"\0".join(f"{key}={value}".encode() for key, value in environment.items()) + b"\0")
 
 
@@ -128,6 +142,30 @@ class ProcessDiscoveryTests(unittest.TestCase):
                 "/home/deck/.local/share/unifideck/prefixes/game",
             )
             self.assertEqual(result.state, "waiting_for_game")
+
+    def test_blocks_a_matching_session_when_legacy_cheatdeck_environment_reappears(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="game",
+                store="gog",
+                legacy=True,
+            )
+
+            result = ProcessDiscoverer(root).discover(
+                "gog:game",
+                "/games/expected.exe",
+                "/home/deck/.local/share/unifideck/prefixes/game",
+            )
+
+            self.assertEqual(result.state, "invalid_config")
+            self.assertEqual(result.diagnostic, "legacy_settings_present")
+            self.assertIsNone(result.session)
 
     def test_returns_ambiguous_for_multiple_matching_stable_sessions(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,65 +1,45 @@
-import { DialogButton, Field, Navigation, PanelSection, PanelSectionRow, showModal, ToggleField } from "@decky/ui";
+import { DialogButton, Field, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
 import type { FC } from "react";
 import { FaGithub } from "react-icons/fa";
-
-import { useSettings } from "../hooks";
-import { QrCode } from "../modals";
-import { t } from "../utils/translate";
 
 const GITHUB = "https://github.com/matheussilva421/TrainerRelay";
 
 const Content: FC = () => {
-  const translator = t("CREDIT");
-  const { showPreview, skipWineCheck, saveShowPreview, saveSkipWineCheck } = useSettings();
-
   const navLink = (url: string) => {
     Navigation.CloseSideMenus();
     Navigation.NavigateToExternalWeb(url);
   };
 
   return (
-    <>
-      <PanelSection title={t("CONTENT_SETTINGS")}>
-        <PanelSectionRow>
-          <ToggleField
-            label={t("CONTENT_PREVIEW_LABEL")}
-            description={t("CONTENT_PREVIEW_DESC")}
-            bottomSeparator="standard"
-            checked={showPreview}
-            onChange={(enable: boolean) => saveShowPreview(enable)}
-          />
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ToggleField
-            label={t("CONTENT_CHECK_WINE_LABEL")}
-            description={t("CONTENT_CHECK_WINE_DESC")}
-            bottomSeparator="standard"
-            checked={skipWineCheck}
-            onChange={(enable: boolean) => saveSkipWineCheck(enable)}
-          />
-        </PanelSectionRow>
-      </PanelSection>
-
-      <PanelSection title={t("CONTENT_INFORMATION")}>
-        <PanelSectionRow>
-          <Field description={t("CONTENT_GH_DESC")} padding="standard" bottomSeparator="none" childrenLayout="below">
-            <DialogButton
-              onClick={() => navLink(GITHUB)}
-              onSecondaryButton={() => showModal(<QrCode url={GITHUB} />, window)}
-              onSecondaryActionDescription={t("CONTENT_QR_DESC")}
-            >
-              <FaGithub /> GitHub
-            </DialogButton>
-          </Field>
-        </PanelSectionRow>
-
-        {translator.length > 0 && (
-          <PanelSectionRow>
-            <Field label={t("TRANSLATION")} description={translator} padding="standard" bottomSeparator="none" />
-          </PanelSectionRow>
-        )}
-      </PanelSection>
-    </>
+    <PanelSection title="Trainer Relay">
+      <PanelSectionRow>
+        <Field
+          label="Epic/GOG trainer sidecars"
+          description="Open a supported UniFiDeck game's context menu to configure one trainer for its Wine prefix."
+          padding="standard"
+          bottomSeparator="standard"
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <Field
+          description="This experimental build is fail-closed: unsupported shortcuts and uncertain process matches expose no controls."
+          padding="standard"
+          bottomSeparator="standard"
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <Field
+          description="Source, diagnostics and validation notes"
+          padding="standard"
+          bottomSeparator="none"
+          childrenLayout="below"
+        >
+          <DialogButton onClick={() => navLink(GITHUB)}>
+            <FaGithub /> GitHub
+          </DialogButton>
+        </Field>
+      </PanelSectionRow>
+    </PanelSection>
   );
 };
 

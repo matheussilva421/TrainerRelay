@@ -1,4 +1,3 @@
-import { OptionsProvider, useOptions } from "./useOptions";
-import { SettingsProvider, useSettings } from "./useSettings";
+import { useRelayAppDetails } from "./useRelayAppDetails";
 
-export { OptionsProvider, SettingsProvider, useOptions, useSettings };
+export { useRelayAppDetails };
