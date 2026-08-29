@@ -529,3 +529,18 @@ GOG/Epic validation remains explicitly pending.
   the same frontend gates were therefore run through the already-installed
   project-local binaries. Two consecutive package runs produced the identical
   179,825-byte SHA-256 above.
+- Runtime/docs commit `2135dd0` (`fix: match CheatDeck routed focus
+  architecture`) was pushed to `origin/feat/trainer-relay` and `origin/main`.
+  Tag `v0.1.0-experimental.9` points to that commit. Branch, main, and tag
+  workflows passed (`33282002167`, `33282010962`, `33282033849`); the tag job
+  published the prerelease and its `TrainerRelay.zip` asset.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.9
+  Direct asset: https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.9/TrainerRelay.zip
+  GitHub reports 179,825 bytes and digest
+  `sha256:b0d73e48543d03ed95b5c8aa192091a1e5410cb342ce1a726341e9312351f213`;
+  an independent download matched the local package exactly.
+- User delivery kit created at
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.9-kit` with the
+  official asset renamed to `TrainerRelay-v0.1.0-experimental.9.zip` and the
+  Portuguese installation/testing/log guide. Physical Steam Deck validation
+  remains the only unresolved gate.
