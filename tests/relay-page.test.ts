@@ -139,4 +139,22 @@ describe("Trainer Relay page", () => {
     );
     expect(onBrowse).toHaveBeenCalledOnce();
   });
+
+  it("mounts the trainer picker directly in the page focus column like CheatDeck", () => {
+    const page = RelayPage({ appid: 48_226_5568 }) as ElementNode;
+    const children = page.props?.children;
+    const directChildren: ElementNode[] = (Array.isArray(children) ? children : [children]).filter(
+      (child): child is ElementNode => Boolean(child) && typeof child === "object",
+    );
+
+    expect(directChildren.some((child) => child?.type === TrainerFilePicker)).toBe(true);
+  });
+
+  it("keeps routed controls out of Quick Access PanelSection wrappers", () => {
+    const page = RelayPage({ appid: 48_226_5568 }) as ElementNode;
+    const nodes = descendants(page);
+
+    expect(page?.type).toBe("Focusable");
+    expect(nodes.some((node) => node.type === "PanelSection" || node.type === "PanelSectionRow")).toBe(false);
+  });
 });

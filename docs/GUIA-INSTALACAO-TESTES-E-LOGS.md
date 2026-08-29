@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.8`
+Versão deste guia: `v0.1.0-experimental.9`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay-v0.1.0-experimental.8.zip`.
+- O arquivo `TrainerRelay-v0.1.0-experimental.9.zip`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -20,14 +20,14 @@ mais de uma sessão do mesmo jogo. Esses casos não fazem parte desta versão.
 
 O arquivo correto tem:
 
-- tamanho: `179470` bytes;
+- tamanho: `179825` bytes;
 - SHA-256:
-  `6C193E5B237102FE5614CDC5833BC9E177771C224B4EBB3236B7D4C266B4CAF9`.
+  `B0D73E48543D03ED95B5C8AA192091A1E5410CB342CE1A726341E9312351F213`.
 
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 
 ```bash
-sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.8.zip"
+sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.9.zip"
 ```
 
 O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
@@ -43,7 +43,7 @@ O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
 4. Abra o Decky Loader e suas configurações.
 5. Ative as opções de desenvolvedor, se a instalação local não estiver visível.
 6. Escolha **Install Plugin from ZIP** ou o nome equivalente da sua versão.
-7. Selecione `TrainerRelay-v0.1.0-experimental.8.zip` em Downloads.
+7. Selecione `TrainerRelay-v0.1.0-experimental.9.zip` em Downloads.
 8. Recarregue o Decky ou reinicie o Steam Deck se o plugin não aparecer.
 
 Os nomes exatos das opções podem variar entre versões do Decky. Sempre use o
@@ -54,7 +54,7 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.8/TrainerRelay.zip
+https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.9/TrainerRelay.zip
 ```
 
 Não use URLs de outras versões. A `experimental.3` falha ao abrir a tela no
@@ -63,7 +63,13 @@ launch option é somente `epic:<id>` ou `gog:<id>`. A `.5` corrige esse bloqueio
 mas depende do seletor modal do Decky. A `.6` adicionou um campo manual que não
 atendia ao fluxo desejado. A `.7` porta o controle focável e somente leitura do
 CheatDeck para abrir diretamente o navegador nativo do Decky. A `.8` mantém esse
-controle e adiciona diagnóstico local em cada fronteira do seletor.
+controle e adiciona diagnóstico local em cada fronteira do seletor. O trace real
+da `.8` mostrou apenas `plugin-loaded`: a ativação não alcançava o botão dentro
+da página roteada. Antes da `.9`, foi auditada a estrutura completa das versões
+oficiais `v0.5.1` até `v2.0.0` do CheatDeck: elas usam `SidebarNavigation`, uma
+coluna `Focusable` por página e controles diretos; `PanelSection` e
+`PanelSectionRow` ficam restritos ao painel de acesso rápido. A `.9` replica essa
+arquitetura completa na rota do jogo, inclusive para o seletor.
 
 ## 3. Preparar o trainer
 
@@ -167,7 +173,7 @@ O log completo inclui outros plugins. Revise-o antes de compartilhar.
 
 ### Log frontend do Steam/CEF
 
-Na versão `.8`, abra o Console do DevTools CEF, escolha **Default levels** no
+Na versão `.9`, abra o Console do DevTools CEF, escolha **Default levels** no
 filtro de nível e informe este texto no campo **Filter**:
 
 ```text
@@ -241,7 +247,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.8
+Trainer Relay: v0.1.0-experimental.9
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -274,7 +280,7 @@ Só envie o log completo após revisar o conteúdo.
 
 - Plugin não aparece: recarregue o Decky ou reinicie o Steam Deck.
 - O botão de pasta não abre o navegador: confirme que a versão instalada é a
-  `.8`, filtre `[TrainerRelay:picker]` no Console e pressione o botão uma vez.
+  `.9`, filtre `[TrainerRelay:picker]` no Console e pressione o botão uma vez.
 - `Unsupported shortcut`: recrie/sincronize o atalho pelo UniFiDeck.
 - `waiting_for_game`: aguarde o processo real do jogo; não pressione Retry
   repetidamente durante o carregamento.
@@ -296,6 +302,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.8
+- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.9
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

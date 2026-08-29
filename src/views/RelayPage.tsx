@@ -1,15 +1,4 @@
-import {
-  ConfirmModal,
-  DialogButton,
-  Field,
-  Focusable,
-  Navigation,
-  PanelSection,
-  PanelSectionRow,
-  showModal,
-  TextField,
-  ToggleField,
-} from "@decky/ui";
+import { ConfirmModal, DialogButton, Field, Focusable, Navigation, showModal, TextField, ToggleField } from "@decky/ui";
 import type { FC } from "react";
 import { FaArrowsRotate, FaShieldHalved } from "react-icons/fa6";
 import { TrainerFilePicker } from "../components/TrainerFilePicker";
@@ -63,32 +52,27 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
 
   if (model.kind === "loading")
     return (
-      <PanelSection title={model.heading} spinner>
-        <PanelSectionRow>
-          <Field description={model.message} padding="standard" />
-        </PanelSectionRow>
-      </PanelSection>
+      <Focusable style={{ display: "flex", flexDirection: "column" }}>
+        <Field label={model.heading} description={model.message} padding="standard" bottomSeparator="standard" />
+      </Focusable>
     );
   if (model.kind === "error")
     return (
-      <PanelSection title={model.heading}>
-        <PanelSectionRow>
-          <Field description={model.message} padding="standard" />
-        </PanelSectionRow>
-      </PanelSection>
+      <Focusable style={{ display: "flex", flexDirection: "column" }}>
+        <Field label={model.heading} description={model.message} padding="standard" bottomSeparator="standard" />
+      </Focusable>
     );
   if (model.kind === "unsupported") {
     return (
-      <PanelSection title={model.heading}>
-        <PanelSectionRow>
-          <Field
-            icon={<FaShieldHalved />}
-            label="Unsupported shortcut"
-            description={model.message}
-            padding="standard"
-          />
-        </PanelSectionRow>
-        <PanelSectionRow>
+      <Focusable style={{ display: "flex", flexDirection: "column" }}>
+        <Field
+          icon={<FaShieldHalved />}
+          label="Unsupported shortcut"
+          description={model.message}
+          padding="standard"
+          bottomSeparator="standard"
+        />
+        <Field padding="standard" childrenLayout="below" bottomSeparator="standard">
           <DialogButton
             onClick={() => {
               Navigation.CloseSideMenus();
@@ -97,8 +81,8 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
           >
             Open GitHub
           </DialogButton>
-        </PanelSectionRow>
-      </PanelSection>
+        </Field>
+      </Focusable>
     );
   }
 
@@ -114,108 +98,87 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
 
   return (
     <Focusable style={{ display: "flex", flexDirection: "column" }}>
-      <PanelSection title="Trainer Relay">
-        <PanelSectionRow>
-          <Field label="Launch identity" description={model.identity} padding="standard" bottomSeparator="standard" />
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <Field
-            label="Status"
-            description={`${statusText}. ${statusExplanation}`}
-            padding="standard"
-            bottomSeparator="standard"
-          />
-        </PanelSectionRow>
-        {configState.status === "error" && (
-          <PanelSectionRow>
-            <Field
-              description="Relay configuration is unavailable. Nothing can be changed."
-              padding="standard"
-              bottomSeparator="standard"
-            />
-          </PanelSectionRow>
-        )}
-        {readyMigration && (
-          <PanelSectionRow>
-            <Field
-              label="Legacy migration"
-              description={migrationDescription(readyMigration)}
-              padding="standard"
-              childrenLayout="below"
-              bottomSeparator="standard"
-            >
-              <DialogButton
-                disabled={migrationBusy || configState.status !== "ready"}
-                onClick={() => confirmMigration(model.identity, readyMigration)}
-              >
-                Confirm migration
-              </DialogButton>
-            </Field>
-          </PanelSectionRow>
-        )}
-        {model.migration.status === "blocked" && (
-          <PanelSectionRow>
-            <Field
-              label="Legacy migration"
-              description={migrationDescription(model.migration)}
-              padding="standard"
-              bottomSeparator="standard"
-            />
-          </PanelSectionRow>
-        )}
-        {migrationMessage && (
-          <PanelSectionRow>
-            <Field description={migrationMessage} padding="standard" bottomSeparator="standard" />
-          </PanelSectionRow>
-        )}
-      </PanelSection>
-
-      <PanelSection title="Configuration">
-        <PanelSectionRow>
-          <TrainerFilePicker disabled={controlsDisabled} value={currentConfig.trainerPath} onBrowse={chooseTrainer} />
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <Field
-            label="Prefix override (advanced)"
-            description="Optional absolute Wine prefix directory. Leave empty to use UniFiDeck's prefix."
-            padding="standard"
-            childrenLayout="below"
-            bottomSeparator="standard"
+      <Field label="Launch identity" description={model.identity} padding="standard" bottomSeparator="standard" />
+      <Field
+        label="Status"
+        description={`${statusText}. ${statusExplanation}`}
+        padding="standard"
+        bottomSeparator="standard"
+      />
+      {configState.status === "error" && (
+        <Field
+          description="Relay configuration is unavailable. Nothing can be changed."
+          padding="standard"
+          bottomSeparator="standard"
+        />
+      )}
+      {readyMigration && (
+        <Field
+          label="Legacy migration"
+          description={migrationDescription(readyMigration)}
+          padding="standard"
+          childrenLayout="below"
+          bottomSeparator="standard"
+        >
+          <DialogButton
+            disabled={migrationBusy || configState.status !== "ready"}
+            onClick={() => confirmMigration(model.identity, readyMigration)}
           >
-            <TextField
-              disabled={controlsDisabled || !currentConfig.trainerPath}
-              value={prefixDraft}
-              onChange={(event) => setPrefixDraft(event.currentTarget.value)}
-            />
-            <DialogButton
-              disabled={
-                controlsDisabled ||
-                !currentConfig.trainerPath ||
-                prefixDraft.trim() === (currentConfig.prefixOverride ?? "")
-              }
-              onClick={() => void savePrefix()}
-            >
-              Save prefix
-            </DialogButton>
-          </Field>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ToggleField
-            label="Enabled"
-            description="Browsing saves disabled. A verified legacy migration enables the discovered trainer automatically."
-            checked={currentConfig.enabled}
-            disabled={controlsDisabled || !currentConfig.trainerPath}
-            onChange={(enabled) => void toggleRelay(enabled)}
-          />
-        </PanelSectionRow>
-        {model.controls.retry && (
-          <PanelSectionRow>
-            <DialogButton disabled={busy} onClick={() => void retry()}>
-              <FaArrowsRotate /> Retry trainer
-            </DialogButton>
-          </PanelSectionRow>
-        )}
-      </PanelSection>
+            Confirm migration
+          </DialogButton>
+        </Field>
+      )}
+      {model.migration.status === "blocked" && (
+        <Field
+          label="Legacy migration"
+          description={migrationDescription(model.migration)}
+          padding="standard"
+          bottomSeparator="standard"
+        />
+      )}
+      {migrationMessage && <Field description={migrationMessage} padding="standard" bottomSeparator="standard" />}
+
+      <TrainerFilePicker disabled={controlsDisabled} value={currentConfig.trainerPath} onBrowse={chooseTrainer} />
+
+      <Field
+        label="Prefix override (advanced)"
+        description="Optional absolute Wine prefix directory. Leave empty to use UniFiDeck's prefix."
+        padding="standard"
+        childrenLayout="below"
+        bottomSeparator="standard"
+      >
+        <TextField
+          disabled={controlsDisabled || !currentConfig.trainerPath}
+          value={prefixDraft}
+          onChange={(event) => setPrefixDraft(event.currentTarget.value)}
+        />
+        <DialogButton
+          disabled={
+            controlsDisabled ||
+            !currentConfig.trainerPath ||
+            prefixDraft.trim() === (currentConfig.prefixOverride ?? "")
+          }
+          onClick={() => void savePrefix()}
+        >
+          Save prefix
+        </DialogButton>
+      </Field>
+      <ToggleField
+        label="Enabled"
+        description="Browsing saves disabled. A verified legacy migration enables the discovered trainer automatically."
+        checked={currentConfig.enabled}
+        disabled={controlsDisabled || !currentConfig.trainerPath}
+        onChange={(enabled) => void toggleRelay(enabled)}
+        bottomSeparator="standard"
+        highlightOnFocus
+      />
+      {model.controls.retry && (
+        <Field padding="standard" childrenLayout="below" bottomSeparator="standard">
+          <DialogButton disabled={busy} onClick={() => void retry()}>
+            <FaArrowsRotate /> Retry trainer
+          </DialogButton>
+        </Field>
+      )}
     </Focusable>
   );
 };

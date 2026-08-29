@@ -486,3 +486,46 @@ GOG/Epic validation remains explicitly pending.
   An independent download matched the locally verified ZIP byte-for-byte.
 - Release notes explicitly state that `.8` is diagnostic and does not claim
   the device-only file-picker issue is fixed.
+
+## Device trace and routed-focus architecture — experimental.9
+
+- The user installed `.8` and reported the same inability to select a trainer.
+  Remote CEF inspection of the active `steamloopback.host/routes/apprunning`
+  target found exactly one scoped event: `[TrainerRelay:picker] plugin-loaded`.
+  There was no `ui-activated`, `handler-enter`, home RPC, or Decky API event.
+  This localizes the failure before the button handler rather than inside
+  `openFilePicker` or persistence.
+- After the user explicitly requested a full UI audit, the official CheatDeck
+  game-route architecture was compared across tags `v0.5.1`, `v1.0.0`,
+  `v1.1.6`, `v1.2.1`, and `v2.0.0`. Every inspected release uses
+  `SidebarNavigation`, then a page-level vertical `Focusable`, with the picker
+  and other controls directly below it. `PanelSection` and `PanelSectionRow`
+  are used by CheatDeck's Quick Access content, not its routed game pages.
+- Trainer Relay had copied the picker control but not that surrounding routing
+  contract: its game route rendered `RelayPage` directly and the page mixed
+  Quick Access panel wrappers into the routed focus tree. This structural
+  mismatch is the evidence-backed cause being addressed in `.9`.
+- TDD RED added two architecture contracts: `PageRouter` must return a
+  one-page `SidebarNavigation`, and the supported routed page must not contain
+  `PanelSection` or `PanelSectionRow`. Both failed against the prior structure.
+  GREEN refactored `PageRouter` and every `RelayPage` state to the CheatDeck
+  hierarchy while leaving picker internals, Decky API calls, validation,
+  persistence, backend/controller behavior, and diagnostic events unchanged.
+- Focused result: 5/5 route/page tests passed. Fresh full gates reached 161/161
+  Vitest tests across 20 files and 46/46 backend tests. Biome checked 50 files;
+  both TypeScript typechecks, compileall, Rollup, and package layout 1/1 passed.
+- Delivery version is `v0.1.0-experimental.9`. The 19-entry ZIP is 179,825
+  bytes with SHA-256
+  `B0D73E48543D03ED95B5C8AA192091A1E5410CB342CE1A726341E9312351F213`.
+- Physical confirmation is still required: install `.9`, filter
+  `[TrainerRelay:picker]`, press the folder button once, and confirm that
+  `ui-activated`, `handler-enter`, `home-resolved`, and `api-call` appear and
+  that the Decky browser becomes navigable. If `ui-activated` is still absent,
+  collect the new trace and stop before another speculative UI patch.
+- Final pre-publication rerun: Biome 50 files, production and test TypeScript,
+  Vitest 161/161, backend unittest 46/46, compileall, Rollup, package layout
+  1/1, and `git diff --check` all passed. The global `pnpm` launcher could not
+  verify/download its pinned runtime because registry access was unavailable;
+  the same frontend gates were therefore run through the already-installed
+  project-local binaries. Two consecutive package runs produced the identical
+  179,825-byte SHA-256 above.
