@@ -1,7 +1,8 @@
 import { sidecarProgram } from "../features";
 import { LaunchOptions } from "../options";
-import { parseLaunchOptions, type SourceSpan } from "../parser";
+import { parseLaunchOptions, parseRawWords, type SourceSpan } from "../parser";
 import { isAbsoluteExecutablePath } from "./path";
+import { parseLaunchIdentity } from "./shortcut";
 
 export type LegacyMigrationPlan =
   | { status: "none" }
@@ -29,7 +30,12 @@ const removeLegacyAssignments = (source: string, spans: readonly SourceSpan[]): 
 
 export const planLegacyMigration = (input: MigrationInput): LegacyMigrationPlan => {
   const options = toOptions(input);
-  if (!options.editable) return { status: "blocked" };
+  if (!options.editable) {
+    const words = parseRawWords(options.toString());
+    return words?.length === 1 && parseLaunchIdentity(words[0]) !== undefined
+      ? { status: "none" }
+      : { status: "blocked" };
+  }
 
   const parsed = parseLaunchOptions(options.toString());
   if (parsed.diagnostics.length > 0) return { status: "blocked" };

@@ -11,11 +11,11 @@ repository.
 - Worktree: `C:\Users\slvma\Downloads\Github\Mods\.worktrees\trainer-relay`
 - Branch: `feat/trainer-relay`
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
-- Current frontend suite: 150 Vitest tests passed using a single fork worker.
+- Current frontend suite: 151 Vitest tests passed using a single fork worker.
 - Current backend suite: 46 unittest tests passed.
-- Current package: 19 deterministic stored archive entries; 174,040 bytes;
+- Current package: 19 deterministic stored archive entries; 174,246 bytes;
   SHA-256
-  `4AFD5979757B0CFD517A0EB89D3A2B424B6A90B262CA1ACF8625BDC10570E060`.
+  `3751D68BB61E64AA16925A148E3647A09664F6E5647858A830358BCC8EE3D037`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -62,10 +62,11 @@ repository.
 
 ## Next action
 
-The Decky 3.2.6 frontend crash is fixed and experimental.4 is published. Next:
-replace experimental.3 on the physical Steam Deck with experimental.4, repeat
-the photographed GOG launch, then run the complete checklist for one GOG and
-one Epic title. Keep the release experimental until both pass.
+The plain UniFiDeck launch-option migration blocker is fixed locally in
+experimental.5. Next: publish and independently verify `.5`, replace `.4` on
+the physical Steam Deck, repeat the photographed GOG launch, then run the
+complete checklist for one GOG and one Epic title. Keep the release
+experimental until both pass.
 
 ## GitHub
 
@@ -289,3 +290,30 @@ GOG/Epic validation remains explicitly pending.
 - Pending: uninstall/replace `.3` on the physical Deck, confirm the plugin page
   renders on Decky 3.2.6, repeat BioShock 2 Remastered (`gog:482265568`), and
   complete one GOG plus one Epic validation. Do not promote to stable yet.
+
+## On-device plain UniFiDeck migration blocker — experimental.5
+
+- Physical Deck photographs showed that `.4` loaded without the earlier CEF
+  crash and classified `gog:1482265568`, but displayed `Legacy migration` as
+  incomplete or unsafe and disabled trainer browsing, prefix saving, and
+  enablement.
+- Remote CEF logs confirmed that Trainer Relay loaded and issued
+  `get_relay_config`/`get_relay_status` RPCs without a new JavaScript error.
+- A read-only Vite probe reproduced the exact contract mismatch:
+  `planLegacyMigration("gog:1482265568")` returned `blocked`, while
+  `%command% gog:1482265568` returned `none`.
+- Root cause: shortcut classification deliberately accepts the one-token
+  UniFiDeck form, but migration planning rejected every non-empty source that
+  omitted `%command%` before checking whether a legacy assignment existed.
+- TDD RED added a real view-model regression for the photographed GOG identity;
+  it failed because migration was `blocked`. The minimal fix reuses the shared
+  literal identity parser and returns `none` only for one valid plain Epic/GOG
+  identity. Malformed documents and partial legacy pairs remain blocked.
+- Focused GREEN: 31/31 tests. Full local gates: 46/46 backend, 151/151
+  frontend, 1/1 package layout, compileall, Biome, both TypeScript typechecks,
+  and Rollup all passed.
+- Delivery version is `v0.1.0-experimental.5`. The deterministic 19-entry ZIP
+  is 174,246 bytes with SHA-256
+  `3751D68BB61E64AA16925A148E3647A09664F6E5647858A830358BCC8EE3D037`.
+- Pending: commit/push, branch/main/tag Actions, release verification,
+  replacement user kit, and physical retest. Preserve all earlier tags/assets.

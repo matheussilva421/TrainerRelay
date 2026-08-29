@@ -38,6 +38,19 @@ describe("Trainer Relay view model", () => {
     expect(model.controls).toEqual({ browse: true, enable: false, retry: false });
   });
 
+  it("keeps configuration available for a plain UniFiDeck GOG identity", () => {
+    const model = buildTrainerRelayViewModel({
+      status: "ready",
+      snapshot: { command: "/usr/bin/unifideck-launcher", launchOptions: "gog:1482265568" },
+    });
+
+    expect(model.kind).toBe("supported");
+    if (model.kind !== "supported") throw new Error("expected supported model");
+    expect(model.identity).toBe("gog:1482265568");
+    expect(model.migration).toEqual({ status: "none" });
+    expect(model.controls).toEqual({ browse: true, enable: false, retry: false });
+  });
+
   it("blocks configuration when a legacy pair is present and renders the safe status code", () => {
     const model = buildTrainerRelayViewModel(
       {

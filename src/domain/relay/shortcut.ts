@@ -10,7 +10,7 @@ const supportedIdentity = /^(epic|gog):[^\s:]+$/;
 const sourceOf = (launchOptions: LaunchOptionsInput): string =>
   typeof launchOptions === "string" ? launchOptions : launchOptions.toString();
 
-const identityOf = (word: string): LaunchIdentity | undefined => {
+export const parseLaunchIdentity = (word: string): LaunchIdentity | undefined => {
   const literal = parseLiteralWord(word);
   if (literal === undefined) return undefined;
   const match = supportedIdentity.exec(literal);
@@ -41,7 +41,7 @@ const classifyMarkerSource = (source: string): LaunchIdentity | undefined => {
   if (parsed.arguments.some((word) => !isLiteral(word.raw))) return undefined;
 
   const identities = parsed.arguments
-    .map((word) => identityOf(word.raw))
+    .map((word) => parseLaunchIdentity(word.raw))
     .filter((identity): identity is LaunchIdentity => identity !== undefined);
   return identities.length === 1 ? identities[0] : undefined;
 };
@@ -49,7 +49,7 @@ const classifyMarkerSource = (source: string): LaunchIdentity | undefined => {
 const classifyPlainSource = (source: string): LaunchIdentity | undefined => {
   const words = parseRawWords(source);
   if (words?.length !== 1) return undefined;
-  return identityOf(words[0]);
+  return parseLaunchIdentity(words[0]);
 };
 
 export const classifyShortcut = (command: string, launchOptions: LaunchOptionsInput): LaunchIdentity | undefined => {
