@@ -1,3 +1,4 @@
+import os
 import stat
 import tempfile
 import unittest
@@ -55,15 +56,39 @@ class UmuResolutionTests(unittest.TestCase):
             candidate = home / "homebrew" / "plugins" / "Unifideck" / "bin" / "umu" / "umu" / "umu-run"
             candidate.parent.mkdir(parents=True)
             write_executable(candidate, "runner")
-            result = resolve_umu_run(home, which=lambda _: (_ for _ in ()).throw(AssertionError("PATH used")))
+            result = resolve_umu_run(home, path_value=str(home / "must-not-be-used"))
             self.assertEqual(result, candidate.resolve())
 
     def test_falls_back_to_path_when_no_bundled_candidate_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             path_candidate = Path(directory) / "umu-run"
             write_executable(path_candidate, "runner")
-            result = resolve_umu_run(Path(directory), which=lambda _: str(path_candidate))
+            result = resolve_umu_run(Path(directory), path_value=directory, bundled_candidates=[])
             self.assertEqual(result, path_candidate.resolve())
+
+    def test_rejects_multiple_distinct_path_candidates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first_dir = root / "one"
+            second_dir = root / "two"
+            first_dir.mkdir()
+            second_dir.mkdir()
+            write_executable(first_dir / "umu-run", "one")
+            write_executable(second_dir / "umu-run", "two")
+
+            with self.assertRaisesRegex(UmuResolutionError, "umu_ambiguous"):
+                resolve_umu_run(root, path_value=os.pathsep.join((str(first_dir), str(second_dir))), bundled_candidates=[])
+
+    def test_deduplicates_repeated_path_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "umu-run"
+            write_executable(candidate, "runner")
+            result = resolve_umu_run(
+                Path(directory),
+                path_value=os.pathsep.join((directory, directory)),
+                bundled_candidates=[],
+            )
+            self.assertEqual(result, candidate.resolve())
 
     def test_rejects_zero_and_multiple_distinct_candidates(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -75,13 +100,13 @@ class UmuResolutionTests(unittest.TestCase):
             write_executable(first, "one")
             write_executable(second, "two")
             with self.assertRaisesRegex(UmuResolutionError, "umu_not_found"):
-                resolve_umu_run(home, which=lambda _: None, bundled_candidates=[])
+                resolve_umu_run(home, path_value="", bundled_candidates=[])
             with self.assertRaisesRegex(UmuResolutionError, "umu_ambiguous"):
-                resolve_umu_run(home, which=lambda _: None, bundled_candidates=[first, second])
+                resolve_umu_run(home, path_value="", bundled_candidates=[first, second])
 
     def test_deduplicates_identical_bundled_candidates(self):
         with tempfile.TemporaryDirectory() as directory:
             candidate = Path(directory) / "umu-run"
             write_executable(candidate, "runner")
-            result = resolve_umu_run(Path(directory), which=lambda _: None, bundled_candidates=[candidate, candidate])
+            result = resolve_umu_run(Path(directory), path_value="", bundled_candidates=[candidate, candidate])
             self.assertEqual(result, candidate.resolve())

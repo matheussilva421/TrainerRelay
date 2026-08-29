@@ -10,21 +10,12 @@ import {
   TextField,
   ToggleField,
 } from "@decky/ui";
-import { type FC, useEffect, useMemo, useState } from "react";
+import type { FC } from "react";
 import { FaArrowsRotate, FaFolderOpen, FaShieldHalved } from "react-icons/fa6";
 import type { LegacyMigrationPlan } from "../domain/relay/migration";
-import type { LaunchIdentity, RelayConfigV1, RelayGameConfig } from "../domain/relay/types";
-import { buildTrainerRelayViewModel, formatRelayStatus } from "../domain/relay/viewModel";
-import { type LegacyMigrationVerificationResult, verifyLegacyMigration } from "../hooks/migrationVerification";
-import { disableTrainerRelay, enableTrainerRelay, selectTrainerPath } from "../hooks/relayActions";
-import { startRelayStatusPolling } from "../hooks/statusPolling";
-import { useRelayAppDetails } from "../hooks/useRelayAppDetails";
-import { browseFiles, getHomePath, sendNotice } from "../infra/decky";
-import { emptyRelayConfig, persistRelayGameConfig, relayRpc } from "../infra/relayRpc";
-
-const absolutePath = (value: string): boolean => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
-
-const defaultGameConfig = (): RelayGameConfig => ({ enabled: false, trainerPath: "" });
+import type { LaunchIdentity } from "../domain/relay/types";
+import { formatRelayStatus } from "../domain/relay/viewModel";
+import { useRelayPageController } from "../hooks/useRelayPageController";
 
 const migrationDescription = (plan: LegacyMigrationPlan): string => {
   if (plan.status === "ready") return `Trainer found: ${plan.trainerPath}`;
@@ -33,158 +24,23 @@ const migrationDescription = (plan: LegacyMigrationPlan): string => {
   return "";
 };
 
-const migrationResultMessage = (result: LegacyMigrationVerificationResult): string => {
-  switch (result.status) {
-    case "verified":
-      return "Launch options migrated and verified.";
-    case "cancelled":
-      return "Migration cancelled. Trainer Relay remains disabled.";
-    case "mismatch":
-      return "Steam returned different launch options. Trainer Relay remains disabled.";
-    case "identity_changed":
-      return "The shortcut identity changed during migration. Trainer Relay remains disabled.";
-    case "timeout":
-      return "Steam did not confirm the migration in time. Trainer Relay remains disabled.";
-    case "error":
-      return "The launch options could not be written. Trainer Relay remains disabled.";
-  }
-};
-
 const RelayPage: FC<{ appid: number }> = ({ appid }) => {
-  const appDetails = useRelayAppDetails(appid);
-  const [configState, setConfigState] = useState<{ status: "loading" | "ready" | "error"; value: RelayConfigV1 }>({
-    status: "loading",
-    value: emptyRelayConfig(),
-  });
-  const [relayStatus, setRelayStatus] = useState<Awaited<ReturnType<typeof relayRpc.getRelayStatus>>>();
-  const [busy, setBusy] = useState(false);
-  const [migrationBusy, setMigrationBusy] = useState(false);
-  const [migrationMessage, setMigrationMessage] = useState<string>();
-  const [prefixDraft, setPrefixDraft] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    setConfigState({ status: "loading", value: emptyRelayConfig() });
-    void relayRpc
-      .getRelayConfig()
-      .then((value) => {
-        if (active) setConfigState({ status: "ready", value });
-      })
-      .catch(() => {
-        if (active) setConfigState({ status: "error", value: emptyRelayConfig() });
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const identityModel = useMemo(
-    () => buildTrainerRelayViewModel(appDetails.details, undefined, relayStatus),
-    [appDetails.details, relayStatus],
-  );
-  const identity = identityModel.kind === "supported" ? identityModel.identity : undefined;
-  const config = identity ? configState.value.games[identity] : undefined;
-  const model = useMemo(
-    () => buildTrainerRelayViewModel(appDetails.details, config, relayStatus),
-    [appDetails.details, config, relayStatus],
-  );
-
-  useEffect(() => {
-    setPrefixDraft(config?.prefixOverride ?? "");
-  }, [identity, config?.prefixOverride]);
-
-  useEffect(() => {
-    setRelayStatus(undefined);
-    if (!identity) return;
-    return startRelayStatusPolling({
-      identity,
-      poll: () => relayRpc.getRelayStatus({ identity }),
-      onStatus: setRelayStatus,
-      setInterval: window.setInterval,
-      clearInterval: (handle) => window.clearInterval(handle as number),
-    });
-  }, [identity]);
-
-  const updateGameConfig = (next: RelayGameConfig) => {
-    if (!identity) return;
-    setConfigState((current) => ({
-      status: "ready",
-      value: { schemaVersion: 1, games: { ...current.value.games, [identity]: next } },
-    }));
-  };
-
-  const chooseTrainer = async () => {
-    if (model.kind !== "supported" || configState.status !== "ready") return;
-    setBusy(true);
-    try {
-      const home = await getHomePath();
-      const selection = await browseFiles(home, true, ["exe"]);
-      const result = await selectTrainerPath(relayRpc, model.identity, config ?? defaultGameConfig(), selection.path);
-      if (result.status === "persisted_disabled") {
-        updateGameConfig(result.config);
-        setMigrationMessage("Trainer selected. Enable it explicitly when ready.");
-      } else {
-        sendNotice("Trainer path could not be saved; relay remains disabled.");
-      }
-    } catch {
-      sendNotice("Trainer selection cancelled or unavailable.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggleRelay = async (enabled: boolean) => {
-    if (model.kind !== "supported" || configState.status !== "ready") return;
-    const current = config ?? defaultGameConfig();
-    setBusy(true);
-    try {
-      const result = enabled
-        ? await enableTrainerRelay(relayRpc, model.identity, current, model.migration)
-        : await disableTrainerRelay(relayRpc, model.identity, current);
-      if (result.status === "enabled" || result.status === "disabled") updateGameConfig(result.config);
-      else if (result.status === "blocked")
-        sendNotice("Choose a valid .exe and complete launch-option migration first.");
-      else sendNotice("Relay configuration could not be saved; it remains disabled.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const savePrefix = async () => {
-    if (model.kind !== "supported" || configState.status !== "ready") return;
-    const prefix = prefixDraft.trim();
-    if (prefix && !absolutePath(prefix)) {
-      sendNotice("Prefix override must be an absolute path.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const current = config ?? defaultGameConfig();
-      const next: RelayGameConfig = {
-        enabled: false,
-        trainerPath: current.trainerPath,
-        ...(prefix ? { prefixOverride: prefix } : {}),
-      };
-      updateGameConfig(await persistRelayGameConfig(relayRpc, model.identity, next));
-      setMigrationMessage("Prefix saved with relay disabled. Enable it explicitly afterward.");
-    } catch {
-      sendNotice("Prefix override could not be saved; relay remains disabled.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const retry = async () => {
-    if (model.kind !== "supported" || relayStatus?.state !== "failed") return;
-    setBusy(true);
-    try {
-      setRelayStatus(await relayRpc.retryRelay({ identity: model.identity }));
-    } catch {
-      sendNotice("Retry was rejected; the game was not changed.");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const controller = useRelayPageController(appid);
+  const {
+    model,
+    configState,
+    currentConfig,
+    busy,
+    migrationBusy,
+    migrationMessage,
+    prefixDraft,
+    setPrefixDraft,
+    chooseTrainer,
+    toggleRelay,
+    savePrefix,
+    retry,
+    migrate,
+  } = controller;
 
   const confirmMigration = (
     supportedIdentity: LaunchIdentity,
@@ -197,25 +53,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
         strOKButtonText="Migrate"
         strCancelButtonText="Cancel"
         onCancel={() => undefined}
-        onOK={() => {
-          void (async () => {
-            setMigrationBusy(true);
-            const result = await verifyLegacyMigration({
-              appid,
-              identity: supportedIdentity,
-              expectedSource: plan.launchOptions,
-              write: (targetAppid, source) => {
-                if (targetAppid !== appid) throw new Error("appid_changed");
-                appDetails.writeLaunchOptions(source);
-              },
-              subscribe: appDetails.subscribe,
-              setTimer: window.setTimeout,
-              clearTimer: (handle) => window.clearTimeout(handle as number),
-            });
-            setMigrationMessage(migrationResultMessage(result));
-            setMigrationBusy(false);
-          })();
-        }}
+        onOK={() => void migrate(supportedIdentity, plan)}
         bOKDisabled={migrationBusy}
       />,
       window,
@@ -263,7 +101,6 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
     );
   }
 
-  const currentConfig = config ?? defaultGameConfig();
   const controlsDisabled = busy || migrationBusy || configState.status !== "ready" || model.migration.status !== "none";
   const readyMigration = model.migration.status === "ready" ? model.migration : undefined;
   const statusText = formatRelayStatus(model.status);
@@ -374,7 +211,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
         <PanelSectionRow>
           <ToggleField
             label="Enabled"
-            description="Trainer Relay never enables itself after browsing or migration."
+            description="Browsing saves disabled. A verified legacy migration enables the discovered trainer automatically."
             checked={currentConfig.enabled}
             disabled={controlsDisabled || !currentConfig.trainerPath}
             onChange={(enabled) => void toggleRelay(enabled)}

@@ -14,11 +14,12 @@ from .config import default_prefix_for, is_launch_identity, validate_game_config
 from .environment import build_sanitized_environment
 from .games_map import load_games_map
 from .process import DiscoveryResult, ProcessDiscoverer, SessionIdentity
+from .types import DiscoveryState, RelayStatus
 
 
 @dataclass
 class _RelayState:
-    state: str = "disabled"
+    state: RelayStatus = RelayStatus.DISABLED
     diagnostic: str | None = None
     session: SessionIdentity | None = None
     handle: object | None = None
@@ -101,7 +102,7 @@ class RelayWatcher:
         if forget is not None:
             await self._maybe_await(forget(handle))
 
-    def _set_state(self, state: _RelayState, value: str, diagnostic: str | None = None) -> None:
+    def _set_state(self, state: _RelayState, value: RelayStatus, diagnostic: str | None = None) -> None:
         state.state = value
         state.diagnostic = diagnostic
 
@@ -119,35 +120,35 @@ class RelayWatcher:
                 code = "trainer_spawn_failed"
             state.handle = None
             state.launched_at = None
-            self._set_state(state, "invalid_config", code)
+            self._set_state(state, RelayStatus.INVALID_CONFIG, code)
             return
         state.launched_at = self._clock()
         state.retry_at = None
-        self._set_state(state, "launching")
+        self._set_state(state, RelayStatus.LAUNCHING)
 
     async def _poll_identity(self, identity: str, *, force_retry: bool = False) -> None:
         state = self._state_for(identity)
         game = self._games().get(identity)
         if not is_launch_identity(identity):
             await self._stop_owned(state)
-            self._set_state(state, "invalid_config", "invalid_config_identity")
+            self._set_state(state, RelayStatus.INVALID_CONFIG, "invalid_config_identity")
             return
         if game is None:
             await self._stop_owned(state)
-            self._set_state(state, "disabled")
+            self._set_state(state, RelayStatus.DISABLED)
             state.session = None
             state.retry_at = None
             return
         if not isinstance(game, Mapping) or game.get("enabled") is not True:
             await self._stop_owned(state)
-            self._set_state(state, "disabled")
+            self._set_state(state, RelayStatus.DISABLED)
             state.session = None
             state.retry_at = None
             return
         validated_game = validate_game_config(game)
         if validated_game is None:
             await self._stop_owned(state)
-            self._set_state(state, "invalid_config", "invalid_config_entry")
+            self._set_state(state, RelayStatus.INVALID_CONFIG, "invalid_config_entry")
             return
 
         try:
@@ -157,30 +158,30 @@ class RelayWatcher:
         diagnostic = getattr(map_result, "diagnostic", None)
         if diagnostic is not None:
             await self._stop_owned(state)
-            self._set_state(state, "invalid_config", getattr(diagnostic, "code", "games_map_unreadable"))
+            self._set_state(state, RelayStatus.INVALID_CONFIG, getattr(diagnostic, "code", "games_map_unreadable"))
             return
         entry = map_result.entry_for(identity) if map_result is not None else None
         if entry is None:
             await self._stop_owned(state)
-            self._set_state(state, "waiting_for_game", "games_map_identity_missing")
+            self._set_state(state, RelayStatus.WAITING_FOR_GAME, "games_map_identity_missing")
             return
 
         prefix = validated_game.get("prefixOverride") or default_prefix_for(identity, self._home)
         try:
             discovery: DiscoveryResult = self._process_discoverer.discover(identity, entry.executable, prefix)
         except Exception:
-            discovery = DiscoveryResult("waiting_for_game", diagnostic="proc_unreadable")
-        if discovery.state == "ambiguous":
+            discovery = DiscoveryResult(DiscoveryState.WAITING_FOR_GAME, diagnostic="proc_unreadable")
+        if discovery.state == DiscoveryState.AMBIGUOUS:
             await self._stop_owned(state)
-            self._set_state(state, "ambiguous", discovery.diagnostic or "multiple_game_sessions")
+            self._set_state(state, RelayStatus.AMBIGUOUS, discovery.diagnostic or "multiple_game_sessions")
             return
-        if discovery.state == "invalid_config":
+        if discovery.state == DiscoveryState.INVALID_CONFIG:
             await self._stop_owned(state)
-            self._set_state(state, "invalid_config", discovery.diagnostic or "invalid_process_environment")
+            self._set_state(state, RelayStatus.INVALID_CONFIG, discovery.diagnostic or "invalid_process_environment")
             return
-        if discovery.state != "session" or discovery.session is None:
+        if discovery.state != DiscoveryState.SESSION or discovery.session is None:
             await self._stop_owned(state)
-            self._set_state(state, "waiting_for_game", discovery.diagnostic)
+            self._set_state(state, RelayStatus.WAITING_FOR_GAME, discovery.diagnostic)
             return
 
         if state.session != discovery.session:
@@ -190,9 +191,14 @@ class RelayWatcher:
             state.retry_at = None
             state.automatic_retries = 0
             state.diagnostic = None
-            if previous_state in {"failed", "retrying", "launching", "running"}:
-                state.state = "waiting_for_game"
-        if state.handle is None and state.state == "failed" and not force_retry:
+            if previous_state in {
+                RelayStatus.FAILED,
+                RelayStatus.RETRYING,
+                RelayStatus.LAUNCHING,
+                RelayStatus.RUNNING,
+            }:
+                state.state = RelayStatus.WAITING_FOR_GAME
+        if state.handle is None and state.state == RelayStatus.FAILED and not force_retry:
             return
         now = self._clock()
         if state.handle is not None:
@@ -202,9 +208,9 @@ class RelayWatcher:
                 exit_code = 1
             if exit_code is None:
                 if state.launched_at is not None and now - state.launched_at >= 3.0:
-                    self._set_state(state, "running")
+                    self._set_state(state, RelayStatus.RUNNING)
                 else:
-                    self._set_state(state, "launching")
+                    self._set_state(state, RelayStatus.LAUNCHING)
                 return
             handle = state.handle
             launched_at = state.launched_at
@@ -215,11 +221,11 @@ class RelayWatcher:
             if elapsed < 3.0 and state.automatic_retries < 1:
                 state.automatic_retries += 1
                 state.retry_at = now + 2.0
-                self._set_state(state, "retrying", "trainer_exited")
+                self._set_state(state, RelayStatus.RETRYING, "trainer_exited")
                 return
-            self._set_state(state, "failed", "trainer_exited")
+            self._set_state(state, RelayStatus.FAILED, "trainer_exited")
             return
-        if state.state == "retrying" and not force_retry:
+        if state.state == RelayStatus.RETRYING and not force_retry:
             if state.retry_at is None or now < state.retry_at:
                 return
         if force_retry:

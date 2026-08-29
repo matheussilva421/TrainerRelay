@@ -1,4 +1,5 @@
 import type { LegacyMigrationPlan } from "../domain/relay/migration";
+import { isAbsoluteExecutablePath } from "../domain/relay/path";
 import type { LaunchIdentity, RelayGameConfig } from "../domain/relay/types";
 import { persistRelayGameConfig, type RelayRpcClient } from "../infra/relayRpc";
 
@@ -8,9 +9,6 @@ export type RelayActionResult =
   | { status: "disabled"; config: RelayGameConfig }
   | { status: "blocked"; diagnostic: "trainer_required" | "migration_required" }
   | { status: "failed"; config: RelayGameConfig; diagnostic: "persistence_failed" };
-
-const isTrainerPath = (path: string): boolean =>
-  (path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path)) && path.toLocaleLowerCase().endsWith(".exe");
 
 const disabledConfig = (config: RelayGameConfig, trainerPath = config.trainerPath): RelayGameConfig => ({
   enabled: false,
@@ -38,7 +36,7 @@ export const enableTrainerRelay = async (
   config: RelayGameConfig,
   migration: LegacyMigrationPlan,
 ): Promise<RelayActionResult> => {
-  if (!isTrainerPath(config.trainerPath)) return { status: "blocked", diagnostic: "trainer_required" };
+  if (!isAbsoluteExecutablePath(config.trainerPath)) return { status: "blocked", diagnostic: "trainer_required" };
   if (migration.status !== "none") return { status: "blocked", diagnostic: "migration_required" };
   const enabled = { ...config, enabled: true };
   try {

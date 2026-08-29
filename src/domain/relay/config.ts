@@ -1,18 +1,17 @@
+import { isAbsoluteExecutablePath, isAbsolutePath } from "./path";
 import type { LaunchIdentity, RelayConfigV1, RelayGameConfig } from "./types";
 
 const emptyConfig = (): RelayConfigV1 => ({ schemaVersion: 1, games: {} });
 const identityPattern = /^(epic|gog):[^\s:]+$/;
 
-const isAbsoluteLooking = (value: string): boolean => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
-
 const isGameConfig = (value: unknown): value is RelayGameConfig => {
   if (!value || typeof value !== "object") return false;
   const game = value as Record<string, unknown>;
   if (typeof game.enabled !== "boolean" || typeof game.trainerPath !== "string") return false;
-  if (!isAbsoluteLooking(game.trainerPath) || !game.trainerPath.toLocaleLowerCase().endsWith(".exe")) return false;
+  if (!isAbsoluteExecutablePath(game.trainerPath)) return false;
   if (
     game.prefixOverride !== undefined &&
-    (typeof game.prefixOverride !== "string" || !isAbsoluteLooking(game.prefixOverride))
+    (typeof game.prefixOverride !== "string" || !isAbsolutePath(game.prefixOverride))
   ) {
     return false;
   }

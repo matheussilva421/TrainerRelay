@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Iterable
 
 
 class UmuResolutionError(RuntimeError):
@@ -19,7 +18,7 @@ def _is_executable_file(path: Path) -> bool:
 def resolve_umu_run(
     home: str | os.PathLike[str] | None = None,
     *,
-    which: Callable[[str], str | None] = shutil.which,
+    path_value: str | None = None,
     bundled_candidates: Iterable[str | os.PathLike[str]] | None = None,
 ) -> Path:
     home_path = Path(home) if home is not None else Path.home()
@@ -44,14 +43,19 @@ def resolve_umu_run(
     if len(resolved) > 1:
         raise UmuResolutionError("umu_ambiguous")
 
-    path_value = which("umu-run")
-    if path_value is None:
+    path_candidates: dict[str, Path] = {}
+    search_path = os.environ.get("PATH", "") if path_value is None else path_value
+    for directory in search_path.split(os.pathsep):
+        if not directory:
+            continue
+        try:
+            candidate = (Path(directory).expanduser() / "umu-run").resolve()
+        except OSError:
+            continue
+        if _is_executable_file(candidate):
+            path_candidates[os.path.normcase(str(candidate))] = candidate
+    if len(path_candidates) == 0:
         raise UmuResolutionError("umu_not_found")
-    path = Path(path_value).expanduser()
-    try:
-        path = path.resolve()
-    except OSError as error:
-        raise UmuResolutionError("umu_not_found") from error
-    if not _is_executable_file(path):
-        raise UmuResolutionError("umu_not_found")
-    return path
+    if len(path_candidates) > 1:
+        raise UmuResolutionError("umu_ambiguous")
+    return next(iter(path_candidates.values()))

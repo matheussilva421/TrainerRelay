@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from trainer_relay.process import (
+    DiscoveryResult,
     ProcessDiscoverer,
     SessionIdentity,
     normalize_wine_path,
@@ -72,7 +73,7 @@ class ProcessDiscoveryTests(unittest.TestCase):
             self.assertEqual(result.state, "waiting_for_game")
             self.assertIsNone(result.session)
 
-    def test_returns_one_stable_session_and_accepts_comm_basename_fallback(self):
+    def test_rejects_same_comm_basename_when_cmdline_lacks_the_exact_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_candidate(
@@ -92,9 +93,12 @@ class ProcessDiscoveryTests(unittest.TestCase):
                 "/games/expected.exe",
                 "/home/deck/.local/share/unifideck/prefixes/game",
             )
-            self.assertEqual(result.state, "session")
-            self.assertEqual(result.session, SessionIdentity(123, 10))
-            self.assertEqual(result.environment["STORE"], "none")
+            self.assertEqual(result.state, "waiting_for_game")
+            self.assertIsNone(result.session)
+
+    def test_rejects_unknown_discovery_states(self):
+        with self.assertRaises(ValueError):
+            DiscoveryResult("guessed")
 
     def test_requires_matching_game_store_and_prefix_anchor(self):
         with tempfile.TemporaryDirectory() as directory:

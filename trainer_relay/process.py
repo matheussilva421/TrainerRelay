@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import ntpath
 import os
 import posixpath
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping
+
+from .types import DiscoveryState
 
 
 @dataclass(frozen=True)
@@ -18,11 +19,14 @@ class SessionIdentity:
 
 @dataclass(frozen=True)
 class DiscoveryResult:
-    state: str
+    state: DiscoveryState
     session: SessionIdentity | None = None
     environment: Mapping[str, str] | None = None
     candidates: tuple[SessionIdentity, ...] = ()
     diagnostic: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "state", DiscoveryState(self.state))
 
 
 def normalize_wine_path(value: str) -> str:
@@ -70,11 +74,6 @@ def _parse_nul_mapping(raw: bytes) -> dict[str, str]:
     return values
 
 
-def _basename(value: str) -> str:
-    normalized = normalize_wine_path(value)
-    return posixpath.basename(normalized) or ntpath.basename(normalized)
-
-
 class ProcessDiscoverer:
     REQUIRED_ENVIRONMENT = ("WINEPREFIX", "PROTONPATH", "GAMEID", "STORE")
     LEGACY_ENVIRONMENT = ("PROTON_REMOTE_DEBUG_CMD", "PRESSURE_VESSEL_FILESYSTEMS_RW")
@@ -96,7 +95,6 @@ class ProcessDiscoverer:
     ) -> tuple[SessionIdentity, dict[str, str]] | str | None:
         try:
             first_stat = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
-            comm = self._read(process_dir / "comm").decode("utf-8").strip()
             command_line = self._read(process_dir / "cmdline")
             environment = _parse_nul_mapping(self._read(process_dir / "environ"))
             second_stat = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
@@ -128,8 +126,7 @@ class ProcessDiscoverer:
             for argument in command_line.split(b"\0")
             if argument
         )
-        comm_matches = _basename(comm).casefold() == _basename(expected_executable).casefold()
-        if not command_matches and not comm_matches:
+        if not command_matches:
             return None
         if any(key in environment for key in self.LEGACY_ENVIRONMENT):
             return "legacy"
@@ -144,7 +141,7 @@ class ProcessDiscoverer:
                 key=lambda entry: int(entry.name),
             )
         except OSError:
-            return DiscoveryResult("waiting_for_game", diagnostic="proc_unreadable")
+            return DiscoveryResult(DiscoveryState.WAITING_FOR_GAME, diagnostic="proc_unreadable")
         for process_dir in process_dirs:
             candidate = self._candidate(process_dir, identity, expected_executable, expected_prefix)
             if candidate == "legacy":
@@ -154,9 +151,22 @@ class ProcessDiscoverer:
                 candidates.append(candidate)
         sessions = tuple(candidate[0] for candidate in candidates)
         if legacy_settings_present:
-            return DiscoveryResult("invalid_config", candidates=sessions, diagnostic="legacy_settings_present")
+            return DiscoveryResult(
+                DiscoveryState.INVALID_CONFIG,
+                candidates=sessions,
+                diagnostic="legacy_settings_present",
+            )
         if len(candidates) == 0:
-            return DiscoveryResult("waiting_for_game")
+            return DiscoveryResult(DiscoveryState.WAITING_FOR_GAME)
         if len(candidates) > 1:
-            return DiscoveryResult("ambiguous", candidates=sessions, diagnostic="multiple_game_sessions")
-        return DiscoveryResult("session", session=sessions[0], environment=candidates[0][1], candidates=sessions)
+            return DiscoveryResult(
+                DiscoveryState.AMBIGUOUS,
+                candidates=sessions,
+                diagnostic="multiple_game_sessions",
+            )
+        return DiscoveryResult(
+            DiscoveryState.SESSION,
+            session=sessions[0],
+            environment=candidates[0][1],
+            candidates=sessions,
+        )

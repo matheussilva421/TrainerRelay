@@ -1,6 +1,7 @@
 import { sidecarProgram } from "../features";
 import { LaunchOptions } from "../options";
 import { parseLaunchOptions, type SourceSpan } from "../parser";
+import { isAbsoluteExecutablePath } from "./path";
 
 export type LegacyMigrationPlan =
   | { status: "none" }
@@ -15,10 +16,8 @@ const legacyTrainerName = "PROTON_REMOTE_DEBUG_CMD";
 const toOptions = (input: MigrationInput): LaunchOptions =>
   typeof input === "string" ? LaunchOptions.parse(input) : input;
 
-const isAbsoluteLooking = (path: string): boolean => path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
-
 const isTrainerPath = (path: string | undefined): path is string =>
-  path !== undefined && path.length > 0 && isAbsoluteLooking(path) && path.toLocaleLowerCase().endsWith(".exe");
+  path !== undefined && path.length > 0 && isAbsoluteExecutablePath(path);
 
 const removeLegacyAssignments = (source: string, spans: readonly SourceSpan[]): string =>
   [...spans]

@@ -11,10 +11,10 @@ repository.
 - Worktree: `C:\Users\slvma\Downloads\Github\Mods\.worktrees\trainer-relay`
 - Branch: `feat/trainer-relay`
 - Base: `2921aaff9c46cc287e5d46210eaaee7dd906d932`
-- Current frontend suite: 136 Vitest tests passed using a single fork worker.
-- Current backend suite: 41 unittest tests passed.
-- Current package: 18 deterministic archive entries; SHA-256
-  `FFE03A31AB849982C3FFD5EC4AC13773E6B6452888C1CEE8C3644319D1251683`.
+- Current frontend suite: 148 Vitest tests passed using a single fork worker.
+- Current backend suite: 46 unittest tests passed.
+- Current package: 19 deterministic archive entries; 53,227 bytes; SHA-256
+  `3E3A83C282D935BFE9EF8FA0D76267EBEC2A20864190C15CA908920A2AF301FD`.
 - GitHub CLI authentication is valid outside the sandbox.
 - Fork: `https://github.com/matheussilva421/TrainerRelay`.
 
@@ -166,3 +166,36 @@ and `33267536034` passed. Steam Deck validation remains explicitly pending.
 - Commit scope: the Task 3 implementation, report, and this final checkpoint
   are committed in this worktree. No push, PR, release, or real Steam Deck
   validation is part of this checkpoint.
+
+## Code-review correction checkpoint — experimental.2
+
+- Corrected all six findings from the post-release review using observed
+  RED/GREEN cycles.
+- Process discovery no longer accepts `/proc/<pid>/comm` as a basename
+  fallback. The exact normalized expected executable must appear in `cmdline`.
+- PATH fallback now enumerates every executable `umu-run`, deduplicates the
+  same resolved file, and fails with `umu_ambiguous` when distinct candidates
+  exist.
+- Python discovery and relay lifecycle states now use shared closed string
+  enums. Invalid runtime state construction raises instead of admitting an
+  arbitrary string.
+- Frontend absolute-path and trainer-executable validation now live in one
+  domain module used by config decoding, migration, actions, and prefix UI.
+- Verified legacy migration now persists a disabled configuration before
+  changing launch options, re-reads AppDetails, and only then persists the
+  enabled configuration. Any verification or persistence failure leaves the
+  relay disabled.
+- `RelayPage` is now a presentation component; React effects, polling,
+  persistence, migration orchestration, and actions moved to
+  `useRelayPageController`.
+- Added backend regression tests for exact executable matching, unique PATH
+  resolution, and closed states. Added frontend tests for shared path
+  validation and the complete migration activation order/failure behavior.
+- Fresh pre-package gates: 46/46 backend tests and 148/148 frontend tests
+  passed; compileall, Biome, both TypeScript typechecks, and Rollup passed.
+- Delivery version advanced to `v0.1.0-experimental.2`; the existing `.1` tag
+  and release remain immutable. The deterministic ZIP has 19 entries, is
+  53,227 bytes, and has SHA-256
+  `3E3A83C282D935BFE9EF8FA0D76267EBEC2A20864190C15CA908920A2AF301FD`.
+  Commit, Actions, and release details will be recorded after publication.
+- Physical Steam Deck validation remains pending; do not promote to stable.
