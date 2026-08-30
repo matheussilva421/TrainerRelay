@@ -656,3 +656,27 @@ GOG/Epic validation remains explicitly pending.
   `ui-activated -> handler-enter -> api-call` and navigate Decky's browser.
   Then finish the trainer launch/lifecycle checklist and repeat with one Epic
   shortcut. Do not promote to stable before both physical tests pass.
+
+## Experimental.11 physical activation failure
+
+- Physical photos on 2026-08-30 confirm that `.11` is installed for
+  `gog:1482265568`: the new single `ButtonItem` row is visible with the text
+  `Press A to browse the Deck...`.
+- The row receives visual focus and SteamUI shows `A SELECT`, but pressing `A`
+  still performs no action. This falsifies both the nested-picker hypothesis
+  from `.10` and the claim that replacing it with `ButtonItem` alone repairs
+  activation.
+- `Save prefix` and `Enabled` are expected to remain disabled before a trainer
+  path exists. The exact unresolved symptom is limited to the enabled
+  `Trainer executable` action.
+- The previous structural Vitest seam cannot reproduce or prove SteamUI's
+  physical gamepad event. No `.12` production change should be made from that
+  seam alone.
+- The remote CEF endpoint `http://192.168.1.247:8081/json/list` was probed
+  immediately after the report and refused the connection. The next required
+  feedback loop is the live SharedJSContext with the Trainer Relay route left
+  open, so the actual element props and A-button event path can be captured.
+- Next action: enable Decky's remote CEF debugging until next boot, keep the
+  same Trainer Relay screen open on the focused trainer row, and reconnect to
+  port 8081. Do not publish another release before this trace identifies the
+  boundary that suppresses activation.
