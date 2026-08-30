@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal
 
 
 class UmuResolutionError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class UmuResolution:
+    path: Path
+    source: Literal["bundled", "path"]
 
 
 def _is_executable_file(path: Path) -> bool:
@@ -21,6 +28,19 @@ def resolve_umu_run(
     path_value: str | None = None,
     bundled_candidates: Iterable[str | os.PathLike[str]] | None = None,
 ) -> Path:
+    return resolve_umu_run_details(
+        home,
+        path_value=path_value,
+        bundled_candidates=bundled_candidates,
+    ).path
+
+
+def resolve_umu_run_details(
+    home: str | os.PathLike[str] | None = None,
+    *,
+    path_value: str | None = None,
+    bundled_candidates: Iterable[str | os.PathLike[str]] | None = None,
+) -> UmuResolution:
     home_path = Path(home) if home is not None else Path.home()
     candidates = (
         [
@@ -39,7 +59,7 @@ def resolve_umu_run(
         if _is_executable_file(absolute):
             resolved[str(absolute)] = absolute
     if len(resolved) == 1:
-        return next(iter(resolved.values()))
+        return UmuResolution(next(iter(resolved.values())), "bundled")
     if len(resolved) > 1:
         raise UmuResolutionError("umu_ambiguous")
 
@@ -58,4 +78,4 @@ def resolve_umu_run(
         raise UmuResolutionError("umu_not_found")
     if len(path_candidates) > 1:
         raise UmuResolutionError("umu_ambiguous")
-    return next(iter(path_candidates.values()))
+    return UmuResolution(next(iter(path_candidates.values())), "path")

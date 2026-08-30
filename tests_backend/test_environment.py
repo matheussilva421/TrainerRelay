@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from trainer_relay.environment import build_sanitized_environment
-from trainer_relay.umu import UmuResolutionError, resolve_umu_run
+from trainer_relay.umu import UmuResolution, UmuResolutionError, resolve_umu_run, resolve_umu_run_details
 
 
 def write_executable(path: Path, content: str) -> None:
@@ -58,6 +58,10 @@ class UmuResolutionTests(unittest.TestCase):
             write_executable(candidate, "runner")
             result = resolve_umu_run(home, path_value=str(home / "must-not-be-used"))
             self.assertEqual(result, candidate.resolve())
+            self.assertEqual(
+                resolve_umu_run_details(home, path_value=str(home / "must-not-be-used")),
+                UmuResolution(candidate.resolve(), "bundled"),
+            )
 
     def test_falls_back_to_path_when_no_bundled_candidate_exists(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -65,6 +69,10 @@ class UmuResolutionTests(unittest.TestCase):
             write_executable(path_candidate, "runner")
             result = resolve_umu_run(Path(directory), path_value=directory, bundled_candidates=[])
             self.assertEqual(result, path_candidate.resolve())
+            self.assertEqual(
+                resolve_umu_run_details(Path(directory), path_value=directory, bundled_candidates=[]),
+                UmuResolution(path_candidate.resolve(), "path"),
+            )
 
     def test_rejects_multiple_distinct_path_candidates(self):
         with tempfile.TemporaryDirectory() as directory:

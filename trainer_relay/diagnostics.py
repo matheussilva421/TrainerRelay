@@ -541,7 +541,7 @@ class DiagnosticRecorder:
                 f"Diagnostic mode: {'enabled' if self.enabled else 'disabled'}\n"
                 f"Journal bytes: {current_stats['bytesUsed']} / {current_stats['byteLimit']}\n"
                 "Privacy: sanitized allowlisted events only; no complete environment, command line, credentials, "
-                "PROTON_REMOTE_DEBUG_CMD content, trainer stdout, or trainer stderr.\n"
+                "legacy debug-command content, trainer stdout, or trainer stderr.\n"
                 "\n"
             )
             with tempfile.NamedTemporaryFile(

@@ -25,6 +25,11 @@ class RunnerHandle:
     environment: Mapping[str, str]
 
 
+@dataclass(frozen=True)
+class StopResult:
+    forced: bool
+
+
 def _signal_process_group(group_id: int, signum: int) -> None:
     kill_group = getattr(os, "killpg", None)
     if kill_group is not None:
@@ -77,13 +82,15 @@ class OwnedTrainerRunner:
         if handle in self._owned:
             self._owned.remove(handle)
 
-    def stop(self, handle: RunnerHandle) -> None:
+    def stop(self, handle: RunnerHandle) -> StopResult:
         if not any(candidate is handle for candidate in self._owned):
             raise ValueError("unowned_process")
         self._signal_group(handle.process_group_id, _SIGTERM)
         deadline = self._monotonic() + 5.0
         while self.poll(handle) is None and self._monotonic() < deadline:
             self._sleep(0.1)
-        if self.poll(handle) is None:
+        forced = self.poll(handle) is None
+        if forced:
             self._signal_group(handle.process_group_id, _SIGKILL)
         self._owned.remove(handle)
+        return StopResult(forced=forced)

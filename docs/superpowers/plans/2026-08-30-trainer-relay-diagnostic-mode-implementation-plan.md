@@ -345,7 +345,7 @@ git commit -m "feat: explain process candidate rejection"
 - Produces `UmuResolution(path: Path, source: Literal["bundled", "path"])` from `resolve_umu_run_details(...)`; existing `resolve_umu_run(...)` delegates and returns only `.path` for compatibility.
 - Watcher records only allowlisted event names and passes `DiagnosticSession(pid, start_time)`.
 
-- [ ] **Step 1: Write watcher event tests RED**
+- [x] **Step 1: Write watcher event tests RED**
 
 Use a fake recorder collecting calls. Assert exact event order for:
 
@@ -362,22 +362,22 @@ and TXT contain `prefix_mismatch`, identity, PID/start time, and
 expected/observed prefix, but not forbidden keys/values, unrelated process
 paths, or the full argv.
 
-- [ ] **Step 2: Run focused tests RED**
+- [x] **Step 2: Run focused tests RED**
 
 Run: `python -m unittest tests_backend.test_watcher tests_backend.test_runner tests_backend.test_environment tests_backend.test_diagnostic_integration -v`
 
-- [ ] **Step 3: Implement minimal event hooks**
+- [x] **Step 3: Implement minimal event hooks**
 
 Centralize watcher recording in `_record(...)` that catches `DiagnosticValidationError`, `OSError`, and `ValueError`. Do not wrap or change discovery/runner control flow. Never pass `discovery.environment` to the recorder; construct details from named allowed fields only.
 
-- [ ] **Step 4: Run focused and full backend suites GREEN**
+- [x] **Step 4: Run focused and full backend suites GREEN**
 
 ```bash
 python -m unittest tests_backend.test_watcher tests_backend.test_runner tests_backend.test_environment tests_backend.test_diagnostic_integration -v
 python -m unittest discover -s tests_backend -p "test_*.py"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -- trainer_relay/watcher.py trainer_relay/runner.py trainer_relay/umu.py tests_backend/test_watcher.py tests_backend/test_runner.py tests_backend/test_environment.py tests_backend/test_diagnostic_integration.py
