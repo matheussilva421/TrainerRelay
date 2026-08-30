@@ -24,7 +24,12 @@ vi.mock("../src/views/RelayPage", () => ({
   default: "RelayPage",
 }));
 
+vi.mock("../src/views/DiagnosticsPage", () => ({
+  default: "DiagnosticsPage",
+}));
+
 vi.mock("react-icons/fa6", () => ({
+  FaStethoscope: "FaStethoscope",
   FaWrench: "FaWrench",
 }));
 
@@ -36,15 +41,21 @@ interface ElementNode {
 }
 
 describe("Trainer Relay routed UI", () => {
-  it("uses CheatDeck's SidebarNavigation focus host with one explicit page", () => {
+  it("uses CheatDeck's SidebarNavigation focus host with relay and global diagnostics pages", () => {
     const view = PageRouter({}) as ElementNode;
     const pages = view?.props?.pages;
 
     expect(view?.type).toBe("SidebarNavigation");
     expect(view?.props?.title).toBe("Trainer Relay");
     expect(view?.props?.showTitle).toBe(true);
-    expect(pages).toHaveLength(1);
+    expect(pages).toHaveLength(2);
     expect(pages?.[0]).toMatchObject({ title: "Trainer Relay", hideTitle: false });
     expect(pages?.[0]?.content).toMatchObject({ type: "RelayPage", props: { appid: 482_265_568 } });
+    expect(pages?.[1]).toMatchObject({
+      title: "Diagnostics",
+      hideTitle: false,
+      icon: { type: "FaStethoscope" },
+      content: { type: "DiagnosticsPage", props: {} },
+    });
   });
 });

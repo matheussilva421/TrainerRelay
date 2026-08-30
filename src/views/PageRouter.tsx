@@ -1,7 +1,8 @@
 import { SidebarNavigation, useParams } from "@decky/ui";
 import type { FC } from "react";
-import { FaWrench } from "react-icons/fa6";
+import { FaStethoscope, FaWrench } from "react-icons/fa6";
 
+import DiagnosticsPage from "./DiagnosticsPage";
 import RelayPage from "./RelayPage";
 
 const PageRouter: FC = () => {
@@ -16,6 +17,12 @@ const PageRouter: FC = () => {
           title: "Trainer Relay",
           content: <RelayPage appid={appid} />,
           icon: <FaWrench />,
+          hideTitle: false,
+        },
+        {
+          title: "Diagnostics",
+          content: <DiagnosticsPage />,
+          icon: <FaStethoscope />,
           hideTitle: false,
         },
       ]}

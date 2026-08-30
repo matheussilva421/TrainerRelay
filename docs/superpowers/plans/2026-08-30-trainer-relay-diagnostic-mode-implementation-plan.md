@@ -520,19 +520,19 @@ git commit -m "feat: stream diagnostics to DevTools"
 - Page uses Decky `Field`, `ToggleField`, `DialogButton`, `ConfirmModal`, and `showModal` with direct focusable controls.
 - Router has exactly two pages: `Trainer Relay` and `Diagnostics`.
 
-- [ ] **Step 1: Extend router test RED**
+- [x] **Step 1: Extend router test RED**
 
 Assert second page title `Diagnostics`, diagnostics icon, and `DiagnosticsPage` content receives no trainer identity or private config props.
 
-- [ ] **Step 2: Write page/controller tests RED**
+- [x] **Step 2: Write page/controller tests RED**
 
 Test active indicator, `bytesUsed / 52428800`, last 20 events oldest-to-newest, empty state, storage error, toggle persistence, export success path, export failure notice, clear confirmation, clear refresh/cursor reset, disabled history retention, global availability when the current shortcut is unsupported, and controls disabled during RPC failure.
 
-- [ ] **Step 3: Implement controller and page GREEN**
+- [x] **Step 3: Implement controller and page GREEN**
 
 Use independent cursor polling; never couple page open/close to backend recording. Format detail values deterministically and truncate only visual display, not backend export. Do not render raw HTML.
 
-- [ ] **Step 4: Run frontend suite, lint, typecheck, and build**
+- [x] **Step 4: Run frontend suite, lint, typecheck, and build**
 
 ```bash
 .\node_modules\.bin\biome.cmd check src tests vitest.config.ts
@@ -542,7 +542,7 @@ Use independent cursor polling; never couple page open/close to backend recordin
 .\node_modules\.bin\rollup.cmd -c
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -- src/hooks/useDiagnosticsController.tsx src/views/DiagnosticsPage.tsx src/views/PageRouter.tsx tests/diagnostics-page.test.ts tests/page-router.test.ts
