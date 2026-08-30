@@ -107,7 +107,7 @@ python -m unittest discover -s tests_backend -p "test_*.py"
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -- trainer_relay/diagnostic_settings.py tests_backend/test_diagnostic_settings.py
@@ -170,7 +170,7 @@ EVENT_DETAIL_KEYS = {
 }
 ```
 
-- [ ] **Step 1: Write failing event privacy and rotation tests**
+- [x] **Step 1: Write failing event privacy and rotation tests**
 
 ```python
 def test_rejects_forbidden_and_unknown_details_without_writing(self):
@@ -191,21 +191,21 @@ def test_rotates_exactly_five_files_under_the_hard_limit(self):
 
 Include tests for allowed full technical paths, prohibited normalized key names, type/length bounds, ISO timestamp, monotonic sequence, malformed startup lines, a partial rotation state with missing middle files, and disabled no-write behavior.
 
-- [ ] **Step 2: Run focused test and verify RED**
+- [x] **Step 2: Run focused test and verify RED**
 
 Run: `python -m unittest tests_backend.test_diagnostics -v`
 
 Expected: import failure for missing diagnostics module.
 
-- [ ] **Step 3: Implement the minimal recorder**
+- [x] **Step 3: Implement the minimal recorder**
 
 Implement JSON serialization with deterministic separators and sorted keys. Rotation must execute `.4` delete, `.3 -> .4`, `.2 -> .3`, `.1 -> .2`, `.0 -> .1`, then create `.0`. Reject a single serialized event larger than `max_file_bytes` with a bounded storage diagnostic; never truncate JSON.
 
-- [ ] **Step 4: Add repeat-consolidation tests RED, then implement GREEN**
+- [x] **Step 4: Add repeat-consolidation tests RED, then implement GREEN**
 
 Test first that identical consecutive fingerprints write one initial event and one `event_repeated` summary on fingerprint change, 30-second flush, disable, and unload flush. Ensure state changes and differing rejection reasons never consolidate together.
 
-- [ ] **Step 5: Run focused and backend suites GREEN**
+- [x] **Step 5: Run focused and backend suites GREEN**
 
 Run:
 
@@ -214,7 +214,7 @@ python -m unittest tests_backend.test_diagnostics -v
 python -m unittest discover -s tests_backend -p "test_*.py"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -- trainer_relay/diagnostics.py tests_backend/test_diagnostics.py
