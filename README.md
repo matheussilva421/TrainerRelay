@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-This repository publishes `v0.1.0-experimental.13`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
+This repository publishes `v0.1.0-experimental.14`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.13).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.14).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -82,7 +82,7 @@ To roll back, disable the per-game Trainer Relay configuration or uninstall the 
 - **Unsupported shortcut:** confirm the launch options contain exactly one literal `epic:<game_id>` or `gog:<game_id>` token supplied by UniFiDeck.
 - **Legacy migration blocks a plain Epic/GOG token:** install `v0.1.0-experimental.5` or newer; `.4` incorrectly required `%command%` while planning migration.
 - **Controls receive focus but pressing A does nothing:** install `v0.1.0-experimental.12`. In `.11`, the Python package was outside Decky's required `py_modules` directory, so the backend failed to import and the UI remained in a disabled loading state. `.12` repairs the installed layout and reports an unavailable backend after five seconds instead of loading forever. Relay enablement remains fail-closed until legacy launch options are repaired.
-- **The game opens but the trainer remains at `waiting_for_game`:** install `.13`, enable the persistent mode on the **Diagnostics** page, reproduce once, then export the TXT. Look for `candidate_rejected` and its bounded reason such as `prefix_mismatch`, `game_id_mismatch`, `store_mismatch`, or `executable_mismatch`.
+- **The game opens but the trainer remains at `waiting_for_game`:** install `.14`, enable the persistent mode on the **Diagnostics** page, reproduce once, then export the TXT. Look for `candidate_rejected` and its bounded reason such as `prefix_mismatch`, `process_name_mismatch`, `store_mismatch`, or `executable_mismatch`. `.14` accepts UniFiDeck's valid `GAMEID=umu-0` while still rejecting UMU wrappers and Wine helper processes.
 - **`waiting_for_game`:** launch the shortcut from UniFiDeck and allow the launcher to reach the game process before pressing Retry.
 - **`ambiguous`:** close duplicate launcher/game instances and try again. Trainer Relay will not guess.
 - **`invalid_config`:** remove the legacy variables, or complete the migration prompt and verify the resulting launch options.

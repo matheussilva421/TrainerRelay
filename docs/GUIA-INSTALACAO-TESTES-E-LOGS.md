@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.13`
+Versão deste guia: `v0.1.0-experimental.14`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay-v0.1.0-experimental.13.zip`.
+- O arquivo `TrainerRelay-v0.1.0-experimental.14.zip`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -31,7 +31,7 @@ comparado byte a byte com este ZIP determinístico.
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 
 ```bash
-sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.13.zip"
+sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.14.zip"
 ```
 
 O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
@@ -47,7 +47,7 @@ O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
 4. Abra o Decky Loader e suas configurações.
 5. Ative as opções de desenvolvedor, se a instalação local não estiver visível.
 6. Escolha **Install Plugin from ZIP** ou o nome equivalente da sua versão.
-7. Selecione `TrainerRelay-v0.1.0-experimental.13.zip` em Downloads.
+7. Selecione `TrainerRelay-v0.1.0-experimental.14.zip` em Downloads.
 8. Recarregue o Decky ou reinicie o Steam Deck se o plugin não aparecer.
 
 Os nomes exatos das opções podem variar entre versões do Decky. Sempre use o
@@ -58,7 +58,7 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.13/TrainerRelay.zip
+https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.14/TrainerRelay.zip
 ```
 
 Não use URLs de outras versões. A `experimental.3` falha ao abrir a tela no
@@ -303,7 +303,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.13
+Trainer Relay: v0.1.0-experimental.14
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -361,6 +361,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.13
+- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.14
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

@@ -939,3 +939,50 @@ GOG/Epic validation remains explicitly pending.
   diagnostics enabled, reproduce one GOG and one Epic session, export the TXT,
   and confirm trainer launch, one-instance behavior, retry safety, and
   selective shutdown. Keep the release experimental until both titles pass.
+
+### Experimental.14 UniFiDeck `umu-0` process-discovery fix
+
+- The physical GOG diagnostic export contained 5,322 events. No candidate was
+  accepted; 3,920 rejections were `game_id_mismatch`. Stable Wine children had
+  the correct GOG store and per-game prefix but UniFiDeck intentionally set
+  `GAMEID=umu-0` because the title has no per-game UMU database identifier.
+- A shallow read-only UniFiDeck `staging` clone at commit `cb2eeaa` confirmed
+  `_build_umu_env()` uses `env["GAMEID"] = umu_id or "umu-0"` while pinning
+  the real game identity through the per-game `WINEPREFIX`. The previous relay
+  incorrectly treated the UMU database ID as the GOG/Epic shortcut ID.
+- TDD regression fixtures reproduce the observed wrappers, Wine helpers, and
+  real `X:\\Games\\...\\Bioshock2HD.exe` process. RED rejected all candidates;
+  GREEN accepts only the real PID after resolving the Wine drive through the
+  prefix `dosdevices` symlink and requiring the Linux process name, full
+  resolved executable, store, prefix, and stable PID/start time to agree.
+- Linux `/proc/<pid>/comm` truncation is accepted only for an ASCII expected
+  basename whose first 15 characters match, and only together with a complete
+  executable-path match. Multiple real matches remain `ambiguous`; helpers and
+  wrappers become `process_name_mismatch` and never launch a trainer.
+- `GAMEID` remains required and is preserved for the trainer's UMU environment,
+  but it is no longer compared with the shortcut identity. Diagnostics now
+  include the bounded `process_name` field and
+  `process_name_mismatch_count`; complete command lines and environments remain
+  prohibited.
+- Upstream CheatDeck `main` was inspected before release. It performs no PID or
+  executable discovery: it writes `PROTON_REMOTE_DEBUG_CMD` and
+  `PRESSURE_VESSEL_FILESYSTEMS_RW` into Steam launch options and relies on
+  Proton's direct sidecar hook. That design cannot identify a process behind
+  UniFiDeck's nested native launcher, so no CheatDeck process-matching code was
+  available to reuse.
+- Fresh local gates: backend 88/88; compileall passed; Biome checked 63 files;
+  both TypeScript typechecks passed; frontend 185/185 in 25 files; Rollup
+  passed; package layout/import 2/2. The global PowerShell `pnpm` wrapper again
+  waited indefinitely, so project-local binaries were used successfully.
+- Deterministic `.14` candidate: 21 stored entries, 255,508 bytes, SHA-256
+  `5A3EFB2E7C81DF5A4F166AC21B14193C81A50665BF72AB24325176FC831FE337`.
+  Two independent local package generations matched byte-for-byte.
+- Current files changed: `trainer_relay/process.py`, diagnostics/watcher RPC
+  allowlists, backend regression/integration tests, package version, README,
+  Portuguese guide, validation checklist, package test, and this handoff.
+- Pending: review the complete diff, commit and push `feat/trainer-relay`, merge
+  or fast-forward `main` following the established release flow, tag/publish
+  `v0.1.0-experimental.14`, verify CI and published asset hash, create the
+  versioned user kit, then physically verify trainer launch and selective
+  shutdown on the same BioShock 2 GOG shortcut. Epic remains a separate gate;
+  do not promote stable.
