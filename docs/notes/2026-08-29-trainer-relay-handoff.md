@@ -1206,3 +1206,29 @@ GOG/Epic validation remains explicitly pending.
 - No runtime source was changed in this diagnostic turn. Physical GOG status is
   FAIL for trainer startup but PASS for leaving the game intact. Epic remains
   untested and stable promotion remains blocked.
+
+### Systematic-debugging checkpoint — install-path A/B required
+
+- A deterministic local contract probe reproduced the suspect boundary: for a
+  trainer under `/home/deck/Games/Trainers`, the current environment builder
+  preserves `STEAM_COMPAT_INSTALL_PATH=/home/deck/Games/BioShock 2
+  Remastered/Build/Final` from the game. The probe reports `CONTRACT_RED=True`.
+  Existing environment tests remain green because none relates the selected
+  trainer parent to the effective install path; this is a coverage gap, not yet
+  proof that the mismatch caused UMU exit code `1` on the Deck.
+- Ranked hypotheses after the `.16` trace and current UMU source inspection:
+  (1) the inherited game install path gives the fresh pressure-vessel launch
+  the wrong executable-side path context; (2) another copied Proton/UMU value
+  differs from the running game's configuration; (3) this FLiNG executable
+  exits under the selected GE-Proton regardless of the mount; (4) a generic
+  second UMU invocation cannot join this live prefix/runtime combination.
+- Before changing production code, run a reversible one-variable physical A/B:
+  copy (do not move) the same trainer beside `Bioshock2HD.exe` under the game's
+  `Build/Final` directory, select that copy in Trainer Relay, launch the same
+  shortcut, and export diagnostics. If the same binary remains active or emits
+  `trainer_running`, hypothesis 1 is strongly supported. If it still exits code
+  `1`, do not implement the install-path rewrite as a claimed fix; instrument
+  bounded UMU stderr and compare the effective environment next.
+- No `.17` build or runtime edit is authorized by this checkpoint. The invoked
+  diagnosis skills require the physical A/B or equivalent captured evidence
+  before proceeding to a TDD fix.
