@@ -176,7 +176,7 @@ class RelayWatcher:
             "proc_entry_unreadable_count": counts.get("proc_entry_unreadable", 0),
             "pid_reused_during_scan_count": counts.get("pid_reused_during_scan", 0),
             "missing_required_environment_count": counts.get("missing_required_environment", 0),
-            "game_id_mismatch_count": counts.get("game_id_mismatch", 0),
+            "process_name_mismatch_count": counts.get("process_name_mismatch", 0),
             "store_mismatch_count": counts.get("store_mismatch", 0),
             "prefix_mismatch_count": counts.get("prefix_mismatch", 0),
             "executable_mismatch_count": counts.get("executable_mismatch", 0),

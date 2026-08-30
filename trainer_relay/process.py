@@ -113,12 +113,50 @@ class ProcessDiscoverer:
         return scheme == "epic" and normalized in {"epic", "egs", "none"}
 
     @staticmethod
-    def _observed_executable(arguments: list[str], expected_normalized: str) -> str:
+    def _process_name_matches(process_name: str, expected_basename: str) -> bool:
+        observed = process_name.casefold()
+        expected = expected_basename.casefold()
+        if observed == expected:
+            return True
+        return len(observed) == 15 and expected.isascii() and observed == expected[:15]
+
+    @staticmethod
+    def _wine_prefix_candidates(wineprefix: str) -> tuple[str, ...]:
+        normalized = normalize_wine_path(wineprefix).rstrip("/")
+        if normalized.endswith("/pfx"):
+            return (normalized,)
+        return (normalized, normalized + "/pfx")
+
+    def _resolve_executable_argument(self, argument: str, wineprefix: str) -> str:
+        normalized = argument.replace("\\", "/")
+        if len(normalized) < 3 or normalized[1] != ":" or normalized[0].casefold() == "z":
+            return normalize_wine_path(argument)
+
+        drive = normalized[0].casefold()
+        remainder = normalized[2:].lstrip("/")
+        for prefix in self._wine_prefix_candidates(wineprefix):
+            drive_link = Path(prefix) / "dosdevices" / f"{drive}:"
+            try:
+                target = str(os.readlink(drive_link))
+            except OSError:
+                continue
+            if not posixpath.isabs(target.replace("\\", "/")):
+                target = posixpath.join(normalize_wine_path(str(drive_link.parent)), target)
+            return normalize_wine_path(posixpath.join(normalize_wine_path(target), remainder))
+        return normalize_wine_path(argument)
+
+    def _observed_executable(
+        self,
+        arguments: list[str],
+        expected_normalized: str,
+        wineprefix: str,
+    ) -> str:
         for argument in arguments:
-            if normalize_wine_path(argument).casefold() == expected_normalized:
-                return normalize_wine_path(argument)
+            resolved = self._resolve_executable_argument(argument, wineprefix)
+            if resolved.casefold() == expected_normalized:
+                return resolved
         for argument in arguments:
-            normalized = normalize_wine_path(argument)
+            normalized = self._resolve_executable_argument(argument, wineprefix)
             if normalized.casefold().endswith(".exe"):
                 return normalized
         return ""
@@ -129,6 +167,7 @@ class ProcessDiscoverer:
         expected_executable: str,
         observed_executable: str,
         expected_prefix: str,
+        process_name: str,
     ) -> dict[str, str]:
         wineprefix = environment.get("WINEPREFIX", "")
         values = {
@@ -137,6 +176,7 @@ class ProcessDiscoverer:
             "expected_prefix": normalize_wine_path(expected_prefix).rstrip("/"),
             "observed_prefix": normalize_wine_path(wineprefix) if wineprefix else "",
             "game_id": environment.get("GAMEID", ""),
+            "process_name": process_name,
             "store": environment.get("STORE", ""),
             "wineprefix": wineprefix,
             "protonpath": environment.get("PROTONPATH", ""),
@@ -150,31 +190,30 @@ class ProcessDiscoverer:
         try:
             first_stat = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
             command_line = self._read(process_dir / "cmdline")
+            process_name = self._read(process_dir / "comm").decode("utf-8").strip()
             environment = _parse_nul_mapping(self._read(process_dir / "environ"))
         except (OSError, UnicodeError, ValueError):
             return CandidateDecision(pid, 0, False, False, "proc_entry_unreadable", {})
 
         arguments = [argument.decode("utf-8", errors="ignore") for argument in command_line.split(b"\0") if argument]
         expected_normalized = normalize_wine_path(expected_executable).casefold()
-        observed_executable = self._observed_executable(arguments, expected_normalized)
+        wineprefix = environment.get("WINEPREFIX", "")
+        observed_executable = self._observed_executable(arguments, expected_normalized, wineprefix)
         expected_basename = posixpath.basename(expected_normalized)
         executable_basename_matches = any(
             posixpath.basename(normalize_wine_path(argument).casefold()) == expected_basename for argument in arguments
         )
-        game_id = identity.split(":", 1)[1]
         scheme = identity.split(":", 1)[0]
         expected = normalize_wine_path(expected_prefix).rstrip("/")
-        wineprefix = environment.get("WINEPREFIX", "")
         actual_prefix = normalize_wine_path(wineprefix) if wineprefix else ""
         prefix_matches = actual_prefix in {expected, expected + "/pfx"}
         store_matches = self._store_matches(scheme, environment.get("STORE", ""))
         relevant = (
             executable_basename_matches
-            or environment.get("GAMEID") == game_id
             or (store_matches and prefix_matches)
             or identity in arguments
         )
-        details = self._details(environment, expected_executable, observed_executable, expected_prefix)
+        details = self._details(environment, expected_executable, observed_executable, expected_prefix, process_name)
 
         try:
             second_stat = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
@@ -185,14 +224,15 @@ class ProcessDiscoverer:
         if any(not environment.get(key) for key in self.REQUIRED_ENVIRONMENT):
             return CandidateDecision(pid, first_stat, relevant, False, "missing_required_environment", details)
 
-        if environment["GAMEID"] != game_id:
-            return CandidateDecision(pid, first_stat, relevant, False, "game_id_mismatch", details)
         if not store_matches:
             return CandidateDecision(pid, first_stat, relevant, False, "store_mismatch", details)
         if not prefix_matches:
             return CandidateDecision(pid, first_stat, relevant, False, "prefix_mismatch", details)
+        if not self._process_name_matches(process_name, expected_basename):
+            return CandidateDecision(pid, first_stat, relevant, False, "process_name_mismatch", details)
         command_matches = any(
-            normalize_wine_path(argument.decode("utf-8", errors="ignore")).casefold() == expected_normalized
+            self._resolve_executable_argument(argument.decode("utf-8", errors="ignore"), wineprefix).casefold()
+            == expected_normalized
             for argument in command_line.split(b"\0")
             if argument
         )
@@ -229,9 +269,9 @@ class ProcessDiscoverer:
             precedence = (
                 "pid_reused_during_scan",
                 "missing_required_environment",
-                "game_id_mismatch",
                 "store_mismatch",
                 "prefix_mismatch",
+                "process_name_mismatch",
                 "executable_mismatch",
             )
             relevant_reasons = {decision.reason for decision in decisions if decision.relevant}

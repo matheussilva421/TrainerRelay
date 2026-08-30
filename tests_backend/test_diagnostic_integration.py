@@ -23,14 +23,14 @@ class NeverRunner:
 
 
 class DiagnosticIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_rejection_reaches_cursor_and_txt_without_private_process_data(self):
+    async def test_process_name_rejection_reaches_cursor_and_txt_without_private_process_data(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             trainer = root / "trainer.exe"
             trainer.write_text("trainer", encoding="utf-8")
             identity = "gog:game"
             expected_prefix = "/home/deck/.local/share/unifideck/prefixes/game"
-            observed_prefix = "/home/deck/.local/share/unifideck/prefixes/wrong"
+            observed_prefix = expected_prefix
             forbidden_value = "DO-NOT-EXPORT-PRIVATE-TOKEN"
             full_argv = "wine /games/game.exe --private-argument"
             decisions = (
@@ -39,13 +39,14 @@ class DiagnosticIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     654,
                     True,
                     False,
-                    "prefix_mismatch",
+                    "process_name_mismatch",
                     {
                         "expected_executable": "/games/game.exe",
                         "observed_executable": "/games/game.exe",
                         "expected_prefix": expected_prefix,
                         "observed_prefix": observed_prefix,
                         "game_id": "game",
+                        "process_name": "umu-run",
                         "store": "gog",
                         "wineprefix": observed_prefix,
                         "protonpath": "/home/deck/proton",
@@ -66,9 +67,9 @@ class DiagnosticIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     "API_TOKEN": forbidden_value,
                     "PROTON_REMOTE_DEBUG_CMD": full_argv,
                 },
-                diagnostic="prefix_mismatch",
+                diagnostic="process_name_mismatch",
                 decisions=decisions,
-                rejection_counts={"prefix_mismatch": 1, "executable_mismatch": 1},
+                rejection_counts={"process_name_mismatch": 1, "executable_mismatch": 1},
             )
             recorder = DiagnosticRecorder(
                 root / "diagnostics",
@@ -94,7 +95,9 @@ class DiagnosticIntegrationTests(unittest.IsolatedAsyncioTestCase):
             export = recorder.export_text(root / "Downloads", "test")
             combined = repr(events) + Path(export["path"]).read_text(encoding="utf-8")
 
-            self.assertIn("prefix_mismatch", combined)
+            self.assertIn("process_name_mismatch", combined)
+            self.assertIn("process_name_mismatch_count=1", combined)
+            self.assertIn("process_name=umu-run", combined)
             self.assertIn(identity, combined)
             self.assertIn("321", combined)
             self.assertIn("654", combined)

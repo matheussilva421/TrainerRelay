@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from trainer_relay.process import (
     CandidateDecision,
@@ -26,7 +27,7 @@ def write_candidate(
     prefix: str,
     game_id: str,
     store: str,
-    comm: str = "game.exe",
+    comm: str = "expected.exe",
     legacy: bool = False,
 ) -> None:
     process = root / str(pid)
@@ -252,7 +253,7 @@ class ProcessDiscoveryTests(unittest.TestCase):
             self.assertTrue(result.decisions[0].relevant)
             self.assertEqual(result.decisions[0].details["observed_prefix"], "/home/deck/.local/share/unifideck/prefixes/wrong")
 
-    def test_reports_game_id_mismatch_for_relevant_executable(self):
+    def test_accepts_umu_database_id_distinct_from_gog_launch_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_candidate(
@@ -261,10 +262,87 @@ class ProcessDiscoveryTests(unittest.TestCase):
                 start_time=10,
                 executable="/games/expected.exe",
                 prefix="/home/deck/.local/share/unifideck/prefixes/game",
-                game_id="other",
+                game_id="umu-0",
                 store="gog",
             )
-            self.assertEqual(self.discover_one(root).diagnostic, "game_id_mismatch")
+            result = self.discover_one(root)
+
+            self.assertEqual(result.state, "session")
+            self.assertEqual(result.session, SessionIdentity(123, 10))
+            self.assertEqual(result.environment["GAMEID"], "umu-0")
+
+    def test_selects_real_wine_process_from_umu_wrappers_and_helpers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = "/home/deck/Games/BioShock 2 Remastered/Build/Final/Bioshock2HD.exe"
+            prefix = "/home/deck/.local/share/unifideck/prefixes/1482265668"
+            write_candidate(
+                root,
+                55481,
+                start_time=100,
+                executable=expected,
+                prefix=prefix,
+                game_id="umu-0",
+                store="gog",
+                comm="umu-run",
+            )
+            write_candidate(
+                root,
+                55639,
+                start_time=200,
+                executable="C:\\windows\\system32\\explorer.exe",
+                prefix=prefix + "/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="explorer.exe",
+            )
+            write_candidate(
+                root,
+                55675,
+                start_time=300,
+                executable="X:\\Games\\BioShock 2 Remastered\\Build\\Final\\Bioshock2HD.exe",
+                prefix=prefix + "/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="Bioshock2HD.exe",
+            )
+
+            with patch("trainer_relay.process.os.readlink", return_value="/home/deck"):
+                result = ProcessDiscoverer(root).discover("gog:1482265668", expected, prefix)
+
+            self.assertEqual(result.state, "session")
+            self.assertEqual(result.session, SessionIdentity(55675, 300))
+            self.assertEqual(result.decisions[0].reason, "process_name_mismatch")
+            self.assertEqual(result.decisions[1].reason, "process_name_mismatch")
+            self.assertEqual(result.decisions[2].reason, "candidate_accepted")
+            self.assertEqual(
+                result.decisions[2].details["observed_executable"],
+                "/home/deck/Games/BioShock 2 Remastered/Build/Final/Bioshock2HD.exe",
+            )
+
+    def test_accepts_linux_truncated_comm_only_with_matching_full_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = "/games/VeryLongGameExecutable.exe"
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable=expected,
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="VeryLongGameExe",
+            )
+
+            result = ProcessDiscoverer(root).discover(
+                "gog:game",
+                expected,
+                "/home/deck/.local/share/unifideck/prefixes/game",
+            )
+
+            self.assertEqual(result.state, "session")
+            self.assertEqual(result.session, SessionIdentity(123, 10))
 
     def test_reports_store_mismatch_for_relevant_executable(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -336,6 +414,7 @@ class ProcessDiscoveryTests(unittest.TestCase):
                     "expected_prefix",
                     "observed_prefix",
                     "game_id",
+                    "process_name",
                     "store",
                     "wineprefix",
                     "protonpath",
