@@ -86,7 +86,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
     );
   }
 
-  const controlsDisabled = busy || migrationBusy || configState.status !== "ready" || model.migration.status !== "none";
+  const configurationDisabled = busy || migrationBusy || configState.status !== "ready";
   const readyMigration = model.migration.status === "ready" ? model.migration : undefined;
   const statusText = formatRelayStatus(model.status);
   const statusExplanation =
@@ -138,7 +138,11 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
       )}
       {migrationMessage && <Field description={migrationMessage} padding="standard" bottomSeparator="standard" />}
 
-      <TrainerFilePicker disabled={controlsDisabled} value={currentConfig.trainerPath} onBrowse={chooseTrainer} />
+      <TrainerFilePicker
+        disabled={configurationDisabled || !model.controls.browse}
+        value={currentConfig.trainerPath}
+        onBrowse={chooseTrainer}
+      />
 
       <Field
         label="Prefix override (advanced)"
@@ -148,13 +152,13 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
         bottomSeparator="standard"
       >
         <TextField
-          disabled={controlsDisabled || !currentConfig.trainerPath}
+          disabled={configurationDisabled || !currentConfig.trainerPath}
           value={prefixDraft}
           onChange={(event) => setPrefixDraft(event.currentTarget.value)}
         />
         <DialogButton
           disabled={
-            controlsDisabled ||
+            configurationDisabled ||
             !currentConfig.trainerPath ||
             prefixDraft.trim() === (currentConfig.prefixOverride ?? "")
           }
@@ -167,7 +171,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
         label="Enabled"
         description="Browsing saves disabled. A verified legacy migration enables the discovered trainer automatically."
         checked={currentConfig.enabled}
-        disabled={controlsDisabled || !currentConfig.trainerPath}
+        disabled={configurationDisabled || !model.controls.enable}
         onChange={(enabled) => void toggleRelay(enabled)}
         bottomSeparator="standard"
         highlightOnFocus

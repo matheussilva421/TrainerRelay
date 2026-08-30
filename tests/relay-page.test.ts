@@ -29,7 +29,7 @@ const controller = vi.hoisted(() => ({
     identity: "gog:1482265568" as const,
     migration: { status: "none" as const },
     status: { state: "disabled" as const, diagnostic: null },
-    controls: { retry: false },
+    controls: { browse: true, enable: false, retry: false },
   },
   configState: { status: "ready" as const, value: { schemaVersion: 1 as const, games: {} } },
   currentConfig: { enabled: false, trainerPath: "" },
@@ -156,5 +156,33 @@ describe("Trainer Relay page", () => {
 
     expect(page?.type).toBe("Focusable");
     expect(nodes.some((node) => node.type === "PanelSection" || node.type === "PanelSectionRow")).toBe(false);
+  });
+
+  it("allows safe manual configuration while blocked legacy options keep enablement disabled", () => {
+    const previousMigration = controller.model.migration;
+    const previousControls = controller.model.controls;
+    const previousTrainerPath = controller.currentConfig.trainerPath;
+    (controller.model as { migration: { status: string } }).migration = { status: "blocked" };
+    (controller.model as { controls: { browse: boolean; enable: boolean; retry: boolean } }).controls = {
+      browse: true,
+      enable: false,
+      retry: false,
+    };
+    controller.currentConfig.trainerPath = "/home/deck/trainer.exe";
+
+    try {
+      const nodes = descendants(RelayPage({ appid: 48_226_5568 }));
+      const picker = nodes.find((node) => node.type === TrainerFilePicker);
+      const prefixInput = nodes.find((node) => node.type === "TextField");
+      const enableToggle = nodes.find((node) => node.type === "ToggleField");
+
+      expect(picker?.props?.disabled).toBe(false);
+      expect(prefixInput?.props?.disabled).toBe(false);
+      expect(enableToggle?.props?.disabled).toBe(true);
+    } finally {
+      controller.model.migration = previousMigration;
+      controller.model.controls = previousControls;
+      controller.currentConfig.trainerPath = previousTrainerPath;
+    }
   });
 });

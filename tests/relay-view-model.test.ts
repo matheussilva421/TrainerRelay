@@ -68,8 +68,23 @@ describe("Trainer Relay view model", () => {
     expect(model.kind).toBe("supported");
     if (model.kind !== "supported") throw new Error("expected supported model");
     expect(model.migration.status).toBe("ready");
-    expect(model.controls).toEqual({ browse: false, enable: false, retry: false });
+    expect(model.controls).toEqual({ browse: true, enable: false, retry: false });
     expect(model.status).toEqual({ state: "ambiguous", diagnosticCode: "status_unavailable" });
+  });
+
+  it("keeps manual browsing available while incomplete legacy options block enablement", () => {
+    const model = buildTrainerRelayViewModel({
+      status: "ready",
+      snapshot: {
+        command: "/usr/bin/unifideck-launcher",
+        launchOptions: "PROTON_REMOTE_DEBUG_CMD=/home/deck/trainer.exe %command% gog:game-1",
+      },
+    });
+
+    expect(model.kind).toBe("supported");
+    if (model.kind !== "supported") throw new Error("expected supported model");
+    expect(model.migration).toEqual({ status: "blocked" });
+    expect(model.controls).toEqual({ browse: true, enable: false, retry: false });
   });
 
   it("does not carry a previous game's status into a newly classified identity", () => {

@@ -544,3 +544,34 @@ GOG/Epic validation remains explicitly pending.
   official asset renamed to `TrainerRelay-v0.1.0-experimental.9.zip` and the
   Portuguese installation/testing/log guide. Physical Steam Deck validation
   remains the only unresolved gate.
+
+## Disabled-control root cause — experimental.10
+
+- The user installed `.9` and reported a narrower result: every control could
+  receive visual focus, but pressing `A` activated nothing. This proves the
+  routed focus tree is working and invalidates focus architecture as the
+  remaining cause.
+- The earlier device screenshot already showed `Legacy migration` as
+  incomplete or unsafe. Code tracing found that `RelayPage` combined
+  `model.migration.status !== "none"` into one `controlsDisabled` flag and
+  passed it to the trainer picker, prefix editor, and enable toggle. SteamUI
+  may visually focus a disabled `DialogButton`, but it does not invoke
+  `onClick`; this exactly explains the absent `ui-activated` event.
+- The fail-closed boundary was too broad. Selecting an absolute `.exe` is safe
+  because `selectTrainerPath` always persists it with `enabled: false`, while
+  `enableTrainerRelay` independently rejects every migration state other than
+  `none`. Manual browsing and prefix editing therefore do not need to be
+  disabled by legacy launch options; only enablement must remain blocked.
+- TDD RED changed the view-model contract for both `ready` and `blocked`
+  migration states and added a rendered-page test. Three assertions failed for
+  the expected reason (`browse: false` and picker `disabled: true`). GREEN made
+  supported browsing available, split configuration availability from
+  enablement, and kept the toggle tied to `model.controls.enable`.
+- Focused GREEN: 17/17 action/view/page tests. Fresh full results: Biome checked
+  50 files, both TypeScript typechecks passed, Vitest passed 163/163 across 20
+  files, backend unittest passed 46/46, and compileall plus Rollup passed.
+- Delivery target is `v0.1.0-experimental.10`. The deterministic 19-entry ZIP
+  is 179,747 bytes with SHA-256
+  `1A29293153C6A5BDA47ADCC1877CFDF654DAA57685446B3B18CD31861992F864`.
+  Physical validation is still required; no claim of a hardware fix should be
+  made until the user presses `A` on `Choose trainer` in `.10`.
