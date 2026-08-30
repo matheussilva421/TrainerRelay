@@ -70,7 +70,7 @@
 - Produces: `decode_diagnostic_settings(value: Any) -> dict[str, Any]`, accepting mappings or JSON strings and failing closed.
 - Produces: `validate_diagnostic_settings(value: Any) -> dict[str, Any]`, raising `ValueError("invalid_diagnostic_settings")` for malformed writes.
 
-- [ ] **Step 1: Write failing settings tests**
+- [x] **Step 1: Write failing settings tests**
 
 ```python
 class DiagnosticSettingsTests(unittest.TestCase):
@@ -86,17 +86,17 @@ class DiagnosticSettingsTests(unittest.TestCase):
             validate_diagnostic_settings({"schemaVersion": 1, "enabled": 1})
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run: `python -m unittest tests_backend.test_diagnostic_settings -v`
 
 Expected: import failure for missing `trainer_relay.diagnostic_settings`.
 
-- [ ] **Step 3: Implement the minimal decoder/validator**
+- [x] **Step 3: Implement the minimal decoder/validator**
 
 Use exact-type checks (`type(enabled) is bool`), schema version 1, JSON-string parsing consistent with `trainer_relay/config.py`, and no settings I/O in this module.
 
-- [ ] **Step 4: Run focused and backend suites GREEN**
+- [x] **Step 4: Run focused and backend suites GREEN**
 
 Run:
 
