@@ -184,6 +184,7 @@ class DiagnosticRecorder:
         self._repeat_count = 0
         self._repeat_started = 0.0
         self._repeat_context: tuple[str, str | None, DiagnosticSession | None] | None = None
+        self._event_count = 0
         self._malformed_line_count = 0
         self._generation = 1
         self._writes_blocked = False
@@ -191,6 +192,8 @@ class DiagnosticRecorder:
         self.last_export_path: str | None = None
         if self.enabled:
             self._load_existing()
+        elif self.root.exists():
+            self._load_existing(persist_metadata=False)
 
     @property
     def _metadata_path(self) -> Path:
@@ -203,8 +206,9 @@ class DiagnosticRecorder:
     def _paths_oldest_first(self) -> list[Path]:
         return [self.root / f"diagnostics.{index}.ndjson" for index in range(self.max_files - 1, -1, -1)]
 
-    def _load_existing(self) -> None:
+    def _load_existing(self, *, persist_metadata: bool = True) -> None:
         self._sequence = 0
+        self._event_count = 0
         self._malformed_line_count = 0
         self._generation = self._read_generation()
         for path in self._paths_oldest_first():
@@ -224,13 +228,15 @@ class DiagnosticRecorder:
                 except (TypeError, ValueError, KeyError, json.JSONDecodeError):
                     self._malformed_line_count += 1
                     continue
+                self._event_count += 1
                 self._sequence = max(self._sequence, sequence)
         self._reset_repeat_state()
-        self._retry_storage()
-        try:
-            self._persist_metadata()
-        except OSError:
-            self._mark_storage_failure()
+        if persist_metadata:
+            self._retry_storage()
+            try:
+                self._persist_metadata()
+            except OSError:
+                self._mark_storage_failure()
 
     def _read_generation(self) -> int:
         if not self._metadata_path.is_file():
@@ -317,11 +323,33 @@ class DiagnosticRecorder:
         self.root.mkdir(parents=True, exist_ok=True)
         oldest = self.root / f"diagnostics.{self.max_files - 1}.ndjson"
         if oldest.exists():
+            removed_events, removed_malformed = self._count_file(oldest)
             oldest.unlink()
+            self._event_count = max(0, self._event_count - removed_events)
+            self._malformed_line_count = max(0, self._malformed_line_count - removed_malformed)
         for index in range(self.max_files - 2, -1, -1):
             source = self.root / f"diagnostics.{index}.ndjson"
             if source.exists():
                 source.replace(self.root / f"diagnostics.{index + 1}.ndjson")
+
+    @staticmethod
+    def _count_file(path: Path) -> tuple[int, int]:
+        valid = 0
+        malformed = 0
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            return 0, 1
+        for line in lines:
+            try:
+                value = json.loads(line)
+                if not isinstance(value, dict) or type(value.get("sequence")) is not int:
+                    raise ValueError
+            except (TypeError, ValueError, json.JSONDecodeError):
+                malformed += 1
+            else:
+                valid += 1
+        return valid, malformed
 
     def _append_event(self, event: DiagnosticEvent) -> None:
         content = (json.dumps(event.to_wire(), ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode(
@@ -336,6 +364,7 @@ class DiagnosticRecorder:
             self._rotate()
         with active.open("ab") as stream:
             stream.write(content)
+        self._event_count += 1
         self._persist_metadata()
 
     @staticmethod
@@ -583,6 +612,8 @@ class DiagnosticRecorder:
             raise DiagnosticStorageError("diagnostic_clear_failed") from None
         self._generation += 1
         self._sequence = 0
+        self._event_count = 0
+        self._malformed_line_count = 0
         try:
             self._persist_metadata()
         except OSError:
@@ -591,33 +622,21 @@ class DiagnosticRecorder:
         return self.stats()
 
     def stats(self) -> dict[str, Any]:
-        event_count = 0
-        malformed = 0
         bytes_used = 0
+        unreadable_files = 0
         for path in self._paths_oldest_first():
             if not path.is_file():
                 continue
             try:
                 bytes_used += path.stat().st_size
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except (OSError, UnicodeError):
-                malformed += 1
-                continue
-            for line in lines:
-                try:
-                    value = json.loads(line)
-                    if type(value.get("sequence")) is not int:
-                        raise ValueError
-                except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
-                    malformed += 1
-                    continue
-                event_count += 1
+            except OSError:
+                unreadable_files += 1
         return {
             "enabled": self.enabled,
             "bytesUsed": bytes_used,
             "byteLimit": self.max_file_bytes * self.max_files,
-            "eventCount": event_count,
-            "malformedLineCount": malformed,
+            "eventCount": self._event_count,
+            "malformedLineCount": self._malformed_line_count + unreadable_files,
             "storageDiagnostic": self.storage_diagnostic,
             "lastExportPath": self.last_export_path,
         }

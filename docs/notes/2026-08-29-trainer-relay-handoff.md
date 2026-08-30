@@ -876,3 +876,36 @@ GOG/Epic validation remains explicitly pending.
 - Commits: `a2dbfc4`, `95f9ea8`, `b6ff587`, `d52199a`, and `62f8f3c`.
 - Next action: Task 6, expose the recorder through strict Decky RPCs and make
   `main.py` own one shared recorder for watcher/RPC lifecycle.
+
+### Experimental.13 persistent diagnostics local release candidate
+
+- Completed Tasks 6-9: one recorder is shared by Decky lifecycle, watcher, and
+  five strict RPCs; TypeScript decoders reject malformed/unsafe responses;
+  SharedJSContext streams sanitized events under
+  `[TrainerRelay:diagnostic]` with bound browser timers and bounded backoff;
+  and a global **Diagnostics** page provides the persistent toggle, latest 20
+  events, 50 MiB usage, TXT export, and confirmed journal-only clearing.
+- Final review found and fixed two pre-release issues with new red/green tests:
+  arbitrary `trainer_...` exception text can no longer become a logged/status
+  code, and one-second statistics polling no longer rereads up to 50 MiB of
+  journal contents. Stats now use incremental counts and only `stat()` the five
+  journal files.
+- Privacy integration still passes: allowed identity/session/prefix anchors
+  reach cursor and TXT while seeded token, legacy debug command, full argv,
+  and unrelated process path remain absent.
+- Fresh local gates: backend 86/86; compileall passed; Biome checked 63 files;
+  both TypeScript typechecks passed; frontend 185/185 in 25 files; Rollup
+  passed; package layout/import 2/2.
+- Deterministic `TrainerRelay.zip`: 21 entries, 253,404 bytes, SHA-256
+  `BFA2EEF6EC96A0F4A97EBC995C142617D08C83DF488F5EB8E88F5B2F2619D481`.
+  It contains both `py_modules/trainer_relay/diagnostics.py` and
+  `diagnostic_settings.py` and excludes tests, maps, caches, logs, and
+  `node_modules`.
+- Version is `0.1.0-experimental.13` in package metadata and the fixed Python
+  runtime constant. README, Portuguese installation/log guide, and physical
+  validation checklist document persistence, 50 MiB rotation, allowed and
+  prohibited data, DevTools filter, TXT export, and clear scope.
+- Pending before delivery: commit this release candidate, push branch/main,
+  tag and publish `.13`, verify CI and asset bytes, create the Downloads kit,
+  then install on the physical Deck. GOG and Epic trainer behavior remain
+  physical gates; do not promote to stable.

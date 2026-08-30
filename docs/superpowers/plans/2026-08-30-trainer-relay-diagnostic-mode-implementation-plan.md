@@ -565,24 +565,24 @@ git commit -m "feat: add in-plugin diagnostics page"
 - Export must contain the expected safe reason and allowed anchors, and must not contain seeded forbidden secret values or raw full command line.
 - Version becomes exactly `0.1.0-experimental.13`.
 
-- [ ] **Step 1: Re-run the end-to-end privacy gate**
+- [x] **Step 1: Re-run the end-to-end privacy gate**
 
 Run: `python -m unittest tests_backend.test_diagnostic_integration -v`
 
 Expected: PASS with the real process-decision, watcher, recorder, cursor, and export chain.
 
-- [ ] **Step 2: Assert the install ZIP contains both diagnostic backend modules**
+- [x] **Step 2: Assert the install ZIP contains both diagnostic backend modules**
 
 Add exact assertions for
 `TrainerRelay/py_modules/trainer_relay/diagnostics.py` and
 `TrainerRelay/py_modules/trainer_relay/diagnostic_settings.py`, generate the
 archive, and run `python -m unittest discover -s tests_packaging -p "test_*.py"`.
 
-- [ ] **Step 3: Update version and user documentation**
+- [x] **Step 3: Update version and user documentation**
 
 Document persistent 50 MB behavior, allowed/prohibited data, Diagnostics page workflow, export/clear, DevTools filter `[TrainerRelay:diagnostic]`, and physical test steps. Preserve `.12` as the known picker/backend fix and mark `.13` experimental.
 
-- [ ] **Step 4: Run every local gate fresh**
+- [x] **Step 4: Run every local gate fresh**
 
 ```bash
 python -m unittest discover -s tests_backend -p "test_*.py"
@@ -598,7 +598,7 @@ python -m unittest discover -s tests_packaging -p "test_*.py"
 
 Expected: zero failures; report exact backend/frontend/package counts, ZIP entry count, bytes, and SHA-256.
 
-- [ ] **Step 5: Review and privacy-audit the final diff**
+- [x] **Step 5: Review and privacy-audit the final diff**
 
 Run:
 
@@ -610,7 +610,7 @@ git status --short --branch
 
 Every production occurrence must be a rejection/redaction rule or controlled read; no logging call may receive complete `cmdline` or `environ` content.
 
-- [ ] **Step 6: Update handoff and commit release candidate**
+- [x] **Step 6: Update handoff and commit release candidate**
 
 ```bash
 git add -- package.json README.md docs/GUIA-INSTALACAO-TESTES-E-LOGS.md docs/STEAM-DECK-VALIDATION.md docs/notes/2026-08-29-trainer-relay-handoff.md tests_backend/test_diagnostic_integration.py tests_packaging/test_package_layout.py

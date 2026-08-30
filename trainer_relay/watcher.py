@@ -224,9 +224,8 @@ class RelayWatcher:
             safe_environment = build_sanitized_environment(environment)
             state.handle = await self._maybe_await(self._runner.spawn(session, trainer_path, safe_environment))
         except Exception as error:
-            code = str(error) if str(error).replace("_", "").isalnum() else "trainer_spawn_failed"
-            if not code.startswith(("umu_", "trainer_")):
-                code = "trainer_spawn_failed"
+            candidate_code = str(error)
+            code = candidate_code if candidate_code in {"umu_not_found", "umu_ambiguous"} else "trainer_spawn_failed"
             event = "umu_rejected" if code.startswith("umu_") else "trainer_spawn_failed"
             self._record(
                 "umu" if event == "umu_rejected" else "trainer",

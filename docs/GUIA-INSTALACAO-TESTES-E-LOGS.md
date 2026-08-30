@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.12`
+Versão deste guia: `v0.1.0-experimental.13`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay-v0.1.0-experimental.12.zip`.
+- O arquivo `TrainerRelay-v0.1.0-experimental.13.zip`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -18,16 +18,20 @@ mais de uma sessão do mesmo jogo. Esses casos não fazem parte desta versão.
 
 ## 1. Conferir o ZIP
 
-O arquivo correto tem:
+O ZIP local verificado desta versão tem:
 
-- tamanho: `177892` bytes;
+- tamanho: `253404` bytes;
 - SHA-256:
-  `695B53D47A2269CB29816F8CC8A77F22D1E7C04FD4C000FB21D87A8C5AB1B260`.
+  `BFA2EEF6EC96A0F4A97EBC995C142617D08C83DF488F5EB8E88F5B2F2619D481`.
+
+O mesmo valor também está no `SHA256SUMS.txt` do kit. A release do GitHub só
+deve ser considerada verificada depois de o asset publicado ser baixado e
+comparado byte a byte com este ZIP determinístico.
 
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 
 ```bash
-sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.12.zip"
+sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.13.zip"
 ```
 
 O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
@@ -43,7 +47,7 @@ O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
 4. Abra o Decky Loader e suas configurações.
 5. Ative as opções de desenvolvedor, se a instalação local não estiver visível.
 6. Escolha **Install Plugin from ZIP** ou o nome equivalente da sua versão.
-7. Selecione `TrainerRelay-v0.1.0-experimental.12.zip` em Downloads.
+7. Selecione `TrainerRelay-v0.1.0-experimental.13.zip` em Downloads.
 8. Recarregue o Decky ou reinicie o Steam Deck se o plugin não aparecer.
 
 Os nomes exatos das opções podem variar entre versões do Decky. Sempre use o
@@ -54,7 +58,7 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.12/TrainerRelay.zip
+https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.13/TrainerRelay.zip
 ```
 
 Não use URLs de outras versões. A `experimental.3` falha ao abrir a tela no
@@ -81,6 +85,10 @@ causa real da falsa inatividade: na `.11`, o backend Python não iniciava porque
 `trainer_relay` estava fora do diretório `py_modules` reconhecido pelo sandbox
 do Decky. A `.12` corrige o layout do ZIP e faz a interface informar falha do
 backend após cinco segundos, sem deixar os controles indefinidamente em loading.
+A `.13` mantém essas correções e adiciona o modo diagnóstico persistente, a
+página **Diagnostics**, journal circular de 50 MiB, eventos ao vivo no DevTools
+e exportação TXT para Downloads. Ela continua experimental até os testes físicos
+Epic e GOG terminarem.
 
 ## 3. Preparar o trainer
 
@@ -162,8 +170,34 @@ passarem por essa lista.
 
 ## 7. Coletar logs com segurança
 
-Faça o problema acontecer e, sem reiniciar o Deck, entre no modo Desktop e
-abra o Konsole.
+### Método recomendado na `.13`: gerar o TXT no próprio plugin
+
+1. Abra qualquer atalho que tenha a rota do Trainer Relay e entre na página
+   **Diagnostics**. Ela é global e continua disponível mesmo se o atalho atual
+   não for Epic/GOG reconhecido.
+2. Ative **Persistent diagnostic mode**. A preferência permanece ativada após
+   reiniciar o Steam/Decky até você desligá-la manualmente.
+3. Abra o jogo e reproduza o problema. O journal mantém no máximo cinco arquivos
+   de 10 MiB, totalizando 50 MiB.
+4. Volte à página **Diagnostics** e confira os 20 eventos mais recentes.
+5. Pressione **Export TXT to Downloads**. O caminho final aparece em **Last TXT
+   export** e normalmente é
+   `/home/deck/Downloads/TrainerRelay-diagnostics-AAAAMMDD-HHMMSS.txt`.
+6. Envie esse TXT primeiro. Ele já contém identidade, PID/start time, decisões
+   do watcher, prefixos/caminhos permitidos, UMU, spawn, retry e encerramento em
+   ordem cronológica.
+
+**Clear logs** pede confirmação e remove somente o journal rotativo e seus
+metadados. Ele não apaga TXT já exportado, configuração de jogo, trainer,
+prefixo, UniFiDeck ou logs de outros plugins.
+
+O TXT/journal aceita apenas campos técnicos predefinidos. Não registra ambiente
+completo, linha de comando completa, conteúdo de comando de debug legado,
+credenciais, cookies, tokens, autorização, stdout ou stderr do trainer.
+
+Os comandos abaixo ficam como alternativas avançadas caso o próprio backend do
+plugin não consiga iniciar. Faça o problema acontecer e, sem reiniciar o Deck,
+entre no modo Desktop e abra o Konsole.
 
 ### Log filtrado do Decky — envie primeiro este
 
@@ -184,8 +218,19 @@ O log completo inclui outros plugins. Revise-o antes de compartilhar.
 
 ### Log frontend do Steam/CEF
 
-Na versão `.12`, abra o Console do DevTools CEF, escolha **Default levels** no
-filtro de nível e informe este texto no campo **Filter**:
+Na versão `.13`, abra o Console do DevTools CEF, escolha **Default levels** no
+filtro de nível. Para o fluxo do watcher, informe este texto em **Filter**:
+
+```text
+[TrainerRelay:diagnostic]
+```
+
+Cada linha é um evento sanitizado igual ao journal. A ponte funciona enquanto
+o modo diagnóstico estiver ativado, mesmo com a página Diagnostics fechada. Um
+erro de polling gera apenas `polling_unavailable` com backoff, sem expor a
+exceção interna.
+
+Para investigar especificamente o navegador de trainer, use:
 
 ```text
 [TrainerRelay:picker]
@@ -201,8 +246,8 @@ normal começa com `plugin-loaded`, `ui-activated`, `handler-enter`,
 - `handler-failed` contém apenas uma razão limitada da falha;
 - se `api-call` for a última mensagem, a promessa do modal ficou pendente.
 
-O diagnóstico não registra o caminho completo escolhido nem o ambiente do jogo.
-Fotografe ou copie toda a sequência filtrada.
+O diagnóstico do seletor não registra o caminho completo escolhido nem o
+ambiente do jogo. Fotografe ou copie toda a sequência filtrada.
 
 Como alternativa, extraia o arquivo CEF:
 
@@ -258,7 +303,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.12
+Trainer Relay: v0.1.0-experimental.13
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -279,6 +324,7 @@ Resultado observado:
 
 Anexe preferencialmente:
 
+- o TXT criado por **Diagnostics > Export TXT to Downloads**;
 - `trainer-relay-decky-filtrado.log`;
 - `trainer-relay-frontend.log`;
 - `trainer-relay-plugin.log`, se existir;
@@ -291,10 +337,12 @@ Só envie o log completo após revisar o conteúdo.
 
 - Plugin não aparece: recarregue o Decky ou reinicie o Steam Deck.
 - O botão de pasta não abre o navegador: confirme que a versão instalada é a
-  `.12`, filtre `[TrainerRelay:picker]` no Console e pressione o botão uma vez.
+  `.12` ou posterior, filtre `[TrainerRelay:picker]` no Console e pressione o
+  botão uma vez.
 - `Unsupported shortcut`: recrie/sincronize o atalho pelo UniFiDeck.
-- `waiting_for_game`: aguarde o processo real do jogo; não pressione Retry
-  repetidamente durante o carregamento.
+- `waiting_for_game`: na `.13`, ative Diagnostics e procure
+  `candidate_rejected`/`process_scan_summary`; não pressione Retry repetidamente
+  durante o carregamento.
 - `ambiguous`: feche o jogo, launcher e instâncias duplicadas; abra novamente.
 - `invalid_config`: conclua a migração e remova variáveis legadas reintroduzidas
   pelo CheatDeck naquele atalho UniFiDeck.
@@ -313,6 +361,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.12
+- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.13
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

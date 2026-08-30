@@ -266,6 +266,17 @@ class DiagnosticRecorderTests(unittest.TestCase):
         self.assertTrue(unrelated.is_file())
         self.assertEqual(list(self.root.glob("diagnostics.*.ndjson")), [])
 
+    def test_stats_does_not_reread_journal_contents_during_one_second_polling(self):
+        recorder = self.recorder()
+        recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "test"})
+
+        with mock.patch.object(Path, "read_text", side_effect=AssertionError("journal reread")):
+            first = recorder.stats()
+            second = recorder.stats()
+
+        self.assertEqual(first["eventCount"], 1)
+        self.assertEqual(second["eventCount"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

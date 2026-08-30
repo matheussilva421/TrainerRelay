@@ -250,6 +250,17 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(failures[0]["details"]["reason"], "trainer_spawn_failed")
         self.assertNotIn("private filesystem message", str(failures))
 
+    async def test_spawn_failure_never_treats_trainer_prefixed_exception_text_as_a_code(self):
+        private_marker = "trainer_privatecredentialvalue"
+        self.runner.spawn = lambda *_: (_ for _ in ()).throw(RuntimeError(private_marker))
+
+        await self.watcher.poll_once()
+
+        failures = [call for call in self.recorder.calls if call["event"] == "trainer_spawn_failed"]
+        self.assertEqual(failures[0]["details"]["reason"], "trainer_spawn_failed")
+        self.assertEqual(self.watcher.status(self.identity)["diagnostic"], {"code": "trainer_spawn_failed"})
+        self.assertNotIn(private_marker, str(failures))
+
     async def test_malformed_map_and_ambiguous_umu_record_safe_reasons(self):
         self.watcher._map_loader = lambda _: GamesMapResult({}, GamesMapDiagnostic("games_map_malformed", 7))
         await self.watcher.poll_once()

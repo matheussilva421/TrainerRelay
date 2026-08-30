@@ -36,6 +36,8 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
                 ]
                 for name in text_entries:
                     self.assertNotIn(b"\r\n", bundle.read(name), name)
+                package_document = bundle.read("TrainerRelay/package.json")
+                main_document = bundle.read("TrainerRelay/main.py")
 
         self.assertTrue(names)
         self.assertTrue(all(name.startswith("TrainerRelay/") for name in names))
@@ -44,6 +46,8 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertIn("TrainerRelay/plugin.json", names)
         self.assertIn("TrainerRelay/package.json", names)
         self.assertIn("TrainerRelay/py_modules/trainer_relay/watcher.py", names)
+        self.assertIn("TrainerRelay/py_modules/trainer_relay/diagnostics.py", names)
+        self.assertIn("TrainerRelay/py_modules/trainer_relay/diagnostic_settings.py", names)
         self.assertNotIn("TrainerRelay/trainer_relay/watcher.py", names)
         self.assertIn("TrainerRelay/docs/adr/0001-session-watcher.md", names)
         self.assertIn("TrainerRelay/docs/STEAM-DECK-VALIDATION.md", names)
@@ -52,6 +56,9 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertFalse(any("__pycache__" in name.lower() for name in names))
         self.assertFalse(any(name.endswith((".env", ".log", ".pyc", ".map")) for name in names))
         self.assertFalse(any("node_modules" in name or "pnpm-lock" in name for name in names))
+
+        self.assertIn(b'"version": "0.1.0-experimental.13"', package_document)
+        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.13"', main_document)
 
     def test_packaged_runtime_imports_from_decky_py_modules_path(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.12
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.13
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -66,6 +66,32 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Confirm stopping Trainer Relay does not stop the game, `wineserver`, global UMU, or another trainer.
 - [ ] Review the plugin log for status/diagnostic codes only; confirm no environment dump, credential, cookie, or token is present.
 
+## Persistent diagnostic mode
+
+- [ ] Open the separate **Diagnostics** page from a supported shortcut and from
+  an unsupported shortcut; confirm both can reach the same global journal.
+- [ ] Enable persistent diagnostics, restart Steam or Decky, and confirm the
+  toggle remains enabled. Disable it manually and confirm that state also
+  survives restart.
+- [ ] With diagnostic mode enabled, reproduce one `waiting_for_game` scan and
+  confirm the latest events show `process_scan_summary` plus a bounded
+  `candidate_accepted` or `candidate_rejected` reason.
+- [ ] In CEF DevTools, filter `[TrainerRelay:diagnostic]` and confirm live events
+  continue while the Diagnostics page itself is closed.
+- [ ] Export TXT and confirm it appears under `/home/deck/Downloads`, is UTF-8,
+  ordered oldest-to-newest, and contains the same identity and PID/start-time
+  anchors shown in the page.
+- [ ] Confirm allowed technical paths and `GAMEID`, `STORE`, `WINEPREFIX`, and
+  `PROTONPATH` may appear when relevant, but no complete environment/command
+  line, debug-command content, credential, token, cookie, authorization value,
+  trainer stdout, or trainer stderr appears.
+- [ ] Confirm storage reports a 52,428,800-byte limit and only the latest 20
+  events are rendered on the page.
+- [ ] Export once, choose **Clear logs**, confirm the journal becomes empty, and
+  confirm the exported TXT and unrelated plugin files remain untouched.
+- [ ] Cause or simulate an RPC/storage error and confirm game discovery and game
+  execution remain unaffected; controls fail closed with a bounded message.
+
 ## Results
 
 | Check | Epic | GOG | Notes |
@@ -77,6 +103,7 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 | Failure leaves game intact | PENDING | PENDING | |
 | Force Sync preserves config | PENDING | PENDING | |
 | Logs contain no sensitive dump | PENDING | PENDING | |
+| Diagnostics persist/export/clear safely | PENDING | PENDING | |
 
 ## Promotion gate
 
