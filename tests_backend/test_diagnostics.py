@@ -3,10 +3,12 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 from trainer_relay.diagnostics import (
     DiagnosticRecorder,
     DiagnosticSession,
+    DiagnosticStorageError,
     DiagnosticValidationError,
 )
 
@@ -155,6 +157,114 @@ class DiagnosticRecorderTests(unittest.TestCase):
         recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "test"})
         recorder.set_enabled(False)
         self.assertEqual([event["event"] for event in self.read_events()], ["plugin_loaded", "event_repeated"])
+
+    def test_cursor_paginates_and_clear_resets_generation(self):
+        recorder = self.recorder()
+        for count in range(3):
+            recorder.record("lifecycle", "plugin_loaded", "info", details={"version": str(count)})
+
+        first = recorder.events_after(None, 2)
+        second = recorder.events_after(first["nextCursor"], 2)
+        self.assertEqual(
+            [event["details"]["version"] for event in first["events"] + second["events"]],
+            ["0", "1", "2"],
+        )
+
+        recorder.clear()
+        stale = recorder.events_after(second["nextCursor"], 20)
+        self.assertTrue(stale["cursorReset"])
+        self.assertGreater(stale["generation"], first["generation"])
+        self.assertEqual(stale["events"], [])
+
+    def test_cursor_metadata_and_sequence_survive_restart(self):
+        recorder = self.recorder()
+        recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "one"})
+        first = recorder.events_after(None, 20)
+
+        restarted = self.recorder()
+        restarted.record("lifecycle", "plugin_loaded", "info", details={"version": "two"})
+        second = restarted.events_after(first["nextCursor"], 20)
+
+        self.assertFalse(second["cursorReset"])
+        self.assertEqual(second["generation"], first["generation"])
+        self.assertEqual([event["sequence"] for event in second["events"]], [2])
+
+    def test_cursor_limit_is_clamped_to_supported_range(self):
+        recorder = self.recorder()
+        for count in range(3):
+            recorder.record("lifecycle", "plugin_loaded", "info", details={"version": str(count)})
+        self.assertEqual(len(recorder.events_after(None, 0)["events"]), 1)
+        self.assertEqual(len(recorder.events_after(None, 999)["events"]), 3)
+
+    def test_export_writes_oldest_first_private_deterministic_text_and_uses_collision_suffix(self):
+        recorder = self.recorder()
+        recorder.record(
+            "process",
+            "candidate_rejected",
+            "rejected",
+            identity="gog:game",
+            session=DiagnosticSession(123, 456),
+            details={"reason": "prefix_mismatch", "expected_prefix": "/a", "observed_prefix": "/b"},
+        )
+        recorder.record("lifecycle", "plugin_unloaded", "info", details={"version": "0.1.0"})
+        downloads = Path(self.directory.name) / "Downloads"
+
+        first = recorder.export_text(downloads, "0.1.0-experimental.13")
+        second = recorder.export_text(downloads, "0.1.0-experimental.13")
+
+        self.assertNotEqual(first["path"], second["path"])
+        self.assertGreater(first["bytesWritten"], 0)
+        text = Path(first["path"]).read_text(encoding="utf-8")
+        self.assertIn("Trainer Relay diagnostic export", text)
+        self.assertIn("Privacy: sanitized allowlisted events only", text)
+        self.assertLess(text.index("#1 process rejected candidate_rejected"), text.index("#2 lifecycle info plugin_unloaded"))
+        self.assertIn("identity=gog:game pid=123 startTime=456", text)
+        self.assertIn("expected_prefix=/a observed_prefix=/b reason=prefix_mismatch", text)
+
+    def test_export_failure_preserves_journal_and_prior_export(self):
+        recorder = self.recorder()
+        recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "test"})
+        downloads = Path(self.directory.name) / "Downloads"
+        prior = recorder.export_text(downloads, "test")
+        prior_contents = Path(prior["path"]).read_bytes()
+
+        with mock.patch("trainer_relay.diagnostics.os.replace", side_effect=OSError("denied")):
+            with self.assertRaisesRegex(DiagnosticStorageError, "diagnostic_export_failed"):
+                recorder.export_text(downloads, "test")
+
+        self.assertEqual(Path(prior["path"]).read_bytes(), prior_contents)
+        self.assertEqual(recorder.stats()["eventCount"], 1)
+        self.assertEqual(list(downloads.glob("*.tmp")), [])
+
+    def test_append_failure_is_isolated_until_explicit_retry(self):
+        recorder = self.recorder()
+        original = recorder._append_event
+        failing = mock.Mock(side_effect=OSError("read-only filesystem"))
+        recorder._append_event = failing
+
+        recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "one"})
+        recorder.record("lifecycle", "plugin_unloaded", "info", details={"version": "two"})
+
+        self.assertEqual(failing.call_count, 1)
+        self.assertEqual(recorder.stats()["storageDiagnostic"], "diagnostic_storage_unavailable")
+
+        recorder._append_event = original
+        recorder.set_enabled(True)
+        recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "recovered"})
+        self.assertEqual(recorder.stats()["eventCount"], 1)
+        self.assertIsNone(recorder.stats()["storageDiagnostic"])
+
+    def test_clear_removes_only_owned_journal_and_metadata(self):
+        recorder = self.recorder()
+        recorder.record("lifecycle", "plugin_loaded", "info", details={"version": "test"})
+        unrelated = self.root / "keep-me.txt"
+        unrelated.write_text("keep", encoding="utf-8")
+
+        result = recorder.clear()
+
+        self.assertEqual(result["eventCount"], 0)
+        self.assertTrue(unrelated.is_file())
+        self.assertEqual(list(self.root.glob("diagnostics.*.ndjson")), [])
 
 
 if __name__ == "__main__":

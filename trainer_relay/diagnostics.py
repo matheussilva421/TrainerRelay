@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -87,6 +89,10 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
 
 class DiagnosticValidationError(ValueError):
     pass
+
+
+class DiagnosticStorageError(OSError):
+    """A bounded storage error safe to surface through an RPC adapter."""
 
 
 @dataclass(frozen=True)
@@ -179,10 +185,20 @@ class DiagnosticRecorder:
         self._repeat_started = 0.0
         self._repeat_context: tuple[str, str | None, DiagnosticSession | None] | None = None
         self._malformed_line_count = 0
+        self._generation = 1
+        self._writes_blocked = False
         self.storage_diagnostic: str | None = None
         self.last_export_path: str | None = None
         if self.enabled:
             self._load_existing()
+
+    @property
+    def _metadata_path(self) -> Path:
+        return self.root / "diagnostics.metadata.json"
+
+    @property
+    def _metadata_temporary_path(self) -> Path:
+        return self.root / ".diagnostics.metadata.tmp"
 
     def _paths_oldest_first(self) -> list[Path]:
         return [self.root / f"diagnostics.{index}.ndjson" for index in range(self.max_files - 1, -1, -1)]
@@ -190,6 +206,7 @@ class DiagnosticRecorder:
     def _load_existing(self) -> None:
         self._sequence = 0
         self._malformed_line_count = 0
+        self._generation = self._read_generation()
         for path in self._paths_oldest_first():
             if not path.is_file():
                 continue
@@ -208,6 +225,49 @@ class DiagnosticRecorder:
                     self._malformed_line_count += 1
                     continue
                 self._sequence = max(self._sequence, sequence)
+        self._reset_repeat_state()
+        self._retry_storage()
+        try:
+            self._persist_metadata()
+        except OSError:
+            self._mark_storage_failure()
+
+    def _read_generation(self) -> int:
+        if not self._metadata_path.is_file():
+            return 1
+        try:
+            value = json.loads(self._metadata_path.read_text(encoding="utf-8"))
+            generation = value["generation"]
+            if type(generation) is not int or generation < 1:
+                raise ValueError
+            return generation
+        except (OSError, UnicodeError, TypeError, ValueError, KeyError, json.JSONDecodeError):
+            self._malformed_line_count += 1
+            return 1
+
+    def _persist_metadata(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        content = json.dumps(
+            {"generation": self._generation, "lastSequence": self._sequence},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        self._metadata_temporary_path.write_text(content + "\n", encoding="utf-8")
+        os.replace(self._metadata_temporary_path, self._metadata_path)
+
+    def _retry_storage(self) -> None:
+        self._writes_blocked = False
+        self.storage_diagnostic = None
+
+    def _mark_storage_failure(self) -> None:
+        self._writes_blocked = True
+        self.storage_diagnostic = "diagnostic_storage_unavailable"
+
+    def _reset_repeat_state(self) -> None:
+        self._fingerprint = None
+        self._repeat_count = 0
+        self._repeat_started = self._clock()
+        self._repeat_context = None
 
     def _validate(
         self,
@@ -276,6 +336,7 @@ class DiagnosticRecorder:
             self._rotate()
         with active.open("ab") as stream:
             stream.write(content)
+        self._persist_metadata()
 
     @staticmethod
     def _event_fingerprint(
@@ -297,7 +358,7 @@ class DiagnosticRecorder:
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
     def _flush_repeat(self) -> None:
-        if self._repeat_count <= 0 or self._repeat_context is None:
+        if self._repeat_count <= 0 or self._repeat_context is None or self._writes_blocked:
             return
         repeated_event, identity, session = self._repeat_context
         elapsed_ms = max(0, int((self._clock() - self._repeat_started) * 1000))
@@ -309,7 +370,11 @@ class DiagnosticRecorder:
             identity,
             session,
         )
-        self._append_event(summary)
+        try:
+            self._append_event(summary)
+        except OSError:
+            self._mark_storage_failure()
+            return
         self._repeat_count = 0
         self._repeat_started = self._clock()
 
@@ -326,6 +391,8 @@ class DiagnosticRecorder:
         if not self.enabled:
             return
         safe_details = self._validate(category, event, outcome, identity, session, details)
+        if self._writes_blocked:
+            return
         fingerprint = self._event_fingerprint(category, event, outcome, identity, session, safe_details)
         now = self._clock()
         if fingerprint == self._fingerprint:
@@ -334,8 +401,15 @@ class DiagnosticRecorder:
                 self._flush_repeat()
             return
         self._flush_repeat()
+        if self._writes_blocked:
+            return
         value = self._new_event(category, event, outcome, safe_details, identity, session)
-        self._append_event(value)
+        try:
+            self._append_event(value)
+        except OSError:
+            self._mark_storage_failure()
+            self._reset_repeat_state()
+            return
         self._fingerprint = fingerprint
         self._repeat_count = 0
         self._repeat_started = now
@@ -353,6 +427,168 @@ class DiagnosticRecorder:
         self.enabled = enabled
         if enabled:
             self._load_existing()
+        else:
+            self._reset_repeat_state()
+
+    def _read_events(self) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        for path in self._paths_oldest_first():
+            if not path.is_file():
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeError):
+                continue
+            for line in lines:
+                try:
+                    value = json.loads(line)
+                    sequence = value["sequence"]
+                    if not isinstance(value, dict) or type(sequence) is not int or sequence < 1:
+                        raise ValueError
+                except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                    continue
+                events.append(value)
+        events.sort(key=lambda value: value["sequence"])
+        return events
+
+    def _cursor(self, sequence: int) -> str:
+        return f"v1:{self._generation}:{sequence}"
+
+    @staticmethod
+    def _decode_cursor(cursor: str | None) -> tuple[int, int] | None:
+        if cursor is None:
+            return None
+        if not isinstance(cursor, str):
+            return None
+        match = re.fullmatch(r"v1:([1-9][0-9]*):(0|[1-9][0-9]*)", cursor)
+        if match is None:
+            return None
+        return int(match.group(1)), int(match.group(2))
+
+    def events_after(self, cursor: str | None, limit: int) -> dict[str, Any]:
+        if not self.enabled and self.root.exists():
+            self._generation = self._read_generation()
+        requested = 20 if type(limit) is not int else limit
+        bounded_limit = max(1, min(200, requested))
+        decoded = self._decode_cursor(cursor)
+        cursor_reset = cursor is not None and (decoded is None or decoded[0] != self._generation)
+        after_sequence = 0 if decoded is None or cursor_reset else decoded[1]
+        available = [event for event in self._read_events() if event["sequence"] > after_sequence]
+        selected = available[:bounded_limit]
+        next_sequence = selected[-1]["sequence"] if selected else after_sequence
+        return {
+            "generation": self._generation,
+            "nextCursor": self._cursor(next_sequence),
+            "cursorReset": cursor_reset,
+            "events": selected,
+        }
+
+    @staticmethod
+    def _text_value(value: Any) -> str:
+        if isinstance(value, str) and re.fullmatch(r"[^\s=]+", value):
+            return value
+        if value is True:
+            return "true"
+        if value is False:
+            return "false"
+        if value is None:
+            return "null"
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+    def _event_text(self, event: Mapping[str, Any]) -> str:
+        fields = [
+            str(event["timestamp"]),
+            f"#{event['sequence']}",
+            str(event["category"]),
+            str(event["outcome"]),
+            str(event["event"]),
+        ]
+        identity = event.get("identity")
+        if identity is not None:
+            fields.append(f"identity={self._text_value(identity)}")
+        session = event.get("session")
+        if isinstance(session, Mapping):
+            fields.append(f"pid={self._text_value(session.get('pid'))}")
+            fields.append(f"startTime={self._text_value(session.get('startTime'))}")
+        details = event.get("details")
+        if isinstance(details, Mapping):
+            fields.extend(f"{key}={self._text_value(details[key])}" for key in sorted(details))
+        return " ".join(fields)
+
+    def _next_export_path(self, downloads_dir: Path) -> Path:
+        timestamp = self._wall_clock().astimezone(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        stem = f"TrainerRelay-diagnostics-{timestamp}"
+        candidate = downloads_dir / f"{stem}.txt"
+        suffix = 1
+        while candidate.exists():
+            candidate = downloads_dir / f"{stem}-{suffix}.txt"
+            suffix += 1
+        return candidate
+
+    def export_text(self, downloads_dir: Path, plugin_version: str) -> dict[str, Any]:
+        self._retry_storage()
+        self.flush()
+        downloads_dir = Path(downloads_dir)
+        temporary_path: Path | None = None
+        try:
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+            destination = self._next_export_path(downloads_dir)
+            current_stats = self.stats()
+            header = (
+                "Trainer Relay diagnostic export\n"
+                f"Plugin version: {plugin_version}\n"
+                f"Exported UTC: {_utc_timestamp(self._wall_clock())}\n"
+                f"Diagnostic mode: {'enabled' if self.enabled else 'disabled'}\n"
+                f"Journal bytes: {current_stats['bytesUsed']} / {current_stats['byteLimit']}\n"
+                "Privacy: sanitized allowlisted events only; no complete environment, command line, credentials, "
+                "PROTON_REMOTE_DEBUG_CMD content, trainer stdout, or trainer stderr.\n"
+                "\n"
+            )
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="\n",
+                prefix=".trainer-relay-diagnostics-",
+                suffix=".tmp",
+                dir=downloads_dir,
+                delete=False,
+            ) as stream:
+                temporary_path = Path(stream.name)
+                stream.write(header)
+                for event in self._read_events():
+                    stream.write(self._event_text(event) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, destination)
+            temporary_path = None
+            self.last_export_path = str(destination.resolve())
+            return {"path": self.last_export_path, "bytesWritten": destination.stat().st_size}
+        except (OSError, UnicodeError):
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise DiagnosticStorageError("diagnostic_export_failed") from None
+
+    def clear(self) -> dict[str, Any]:
+        self._retry_storage()
+        self._reset_repeat_state()
+        owned_paths = self._paths_oldest_first() + [self._metadata_path, self._metadata_temporary_path]
+        try:
+            for path in owned_paths:
+                path.unlink(missing_ok=True)
+        except OSError:
+            self._mark_storage_failure()
+            raise DiagnosticStorageError("diagnostic_clear_failed") from None
+        self._generation += 1
+        self._sequence = 0
+        try:
+            self._persist_metadata()
+        except OSError:
+            self._mark_storage_failure()
+            raise DiagnosticStorageError("diagnostic_clear_failed") from None
+        return self.stats()
 
     def stats(self) -> dict[str, Any]:
         event_count = 0

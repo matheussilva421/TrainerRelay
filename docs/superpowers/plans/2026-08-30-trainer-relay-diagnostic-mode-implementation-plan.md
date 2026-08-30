@@ -233,7 +233,7 @@ git commit -m "feat: add bounded diagnostic journal"
 - Produces `clear() -> dict[str, Any]`, advancing generation only after journal paths are removed successfully.
 - Produces `storage_diagnostic: str | None` and `last_export_path: str | None` through `stats()`.
 
-- [ ] **Step 1: Write cursor and clear tests RED**
+- [x] **Step 1: Write cursor and clear tests RED**
 
 ```python
 def test_cursor_paginates_and_clear_resets_generation(self):
@@ -250,23 +250,23 @@ def test_cursor_paginates_and_clear_resets_generation(self):
 
 Also test limit clamping 1..200 and restart recovery of generation/sequence metadata.
 
-- [ ] **Step 2: Run focused test RED, implement cursor metadata, run GREEN**
+- [x] **Step 2: Run focused test RED, implement cursor metadata, run GREEN**
 
 Run: `python -m unittest tests_backend.test_diagnostics -v`
 
-- [ ] **Step 3: Write export tests RED**
+- [x] **Step 3: Write export tests RED**
 
 Test oldest-to-newest order, deterministic line format, UTF-8, timestamped collision suffix, header privacy notice, atomic temporary rename, and that a forced write/rename failure preserves journal and prior export.
 
-- [ ] **Step 4: Implement streaming TXT export GREEN**
+- [x] **Step 4: Implement streaming TXT export GREEN**
 
 Use `tempfile.NamedTemporaryFile` in the downloads directory, close/fsync, then `os.replace`. Do not shell out. Flush repeat summaries before reading journal files. Return only safe codes such as `diagnostic_export_failed` from callers.
 
-- [ ] **Step 5: Write storage-failure isolation and clear-scope tests RED, then implement GREEN**
+- [x] **Step 5: Write storage-failure isolation and clear-scope tests RED, then implement GREEN**
 
 Inject filesystem operations so tests prove append/rotation failure sets `diagnostic_storage_unavailable`, future ordinary record calls do not retry or raise, and explicit `set_enabled`, `clear`, `export_text`, or restart retries storage. Clear must target only `diagnostics.[0-4].ndjson` and recorder metadata under its exact root.
 
-- [ ] **Step 6: Run backend suite and commit**
+- [x] **Step 6: Run backend suite and commit**
 
 ```bash
 python -m unittest tests_backend.test_diagnostics -v
