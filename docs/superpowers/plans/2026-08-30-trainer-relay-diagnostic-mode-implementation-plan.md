@@ -480,23 +480,23 @@ git commit -m "feat: add typed diagnostic RPC client"
 - `startDiagnosticConsoleBridge(rpc, timers) -> () => void` emits `console.info("[TrainerRelay:diagnostic]", event)` and one bounded warning per failure episode.
 - `index.tsx` starts one bridge in `definePlugin` and stops it in `onDismount`.
 
-- [ ] **Step 1: Write timer/backoff tests RED**
+- [x] **Step 1: Write timer/backoff tests RED**
 
 Use fake timers to prove immediate settings check, enabled polling, cursor advancement, `cursorReset`, no duplicate events, capped backoff, recovery to one second, disabled pause, and cleanup cancelling every timer/late promise.
 
-- [ ] **Step 2: Run polling test RED, implement polling GREEN**
+- [x] **Step 2: Run polling test RED, implement polling GREEN**
 
 Run: `.\node_modules\.bin\vitest.cmd run tests/diagnostic-polling.test.ts --reporter verbose`
 
-- [ ] **Step 3: Write console bridge and plugin lifecycle tests RED**
+- [x] **Step 3: Write console bridge and plugin lifecycle tests RED**
 
 Assert exact prefix, sanitized object passthrough, one warning per failure episode, and `onDismount` cleanup. Do not log configuration responses or export paths through this bridge.
 
-- [ ] **Step 4: Implement console bridge and index wiring GREEN**
+- [x] **Step 4: Implement console bridge and index wiring GREEN**
 
 Bind browser timers with `bindBrowserTimers(window)` so CEF does not throw `Illegal invocation`.
 
-- [ ] **Step 5: Run frontend tests/typechecks and commit**
+- [x] **Step 5: Run frontend tests/typechecks and commit**
 
 ```bash
 .\node_modules\.bin\vitest.cmd run tests/diagnostic-polling.test.ts tests/diagnostic-console-bridge.test.ts --reporter verbose
