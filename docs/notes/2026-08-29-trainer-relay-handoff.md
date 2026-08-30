@@ -696,3 +696,36 @@ GOG/Epic validation remains explicitly pending.
   reconnect to `http://192.168.1.247:8081`, and capture the live
   SharedJSContext event path. Keep this diagnostic bridge temporary and do not
   publish `.12` before the trace identifies the failing boundary.
+
+### Live CEF root-cause trace
+
+- Decky's normal remote port remained unavailable, so the user started a
+  temporary user service forwarding local CEF `127.0.0.1:8080` to LAN port
+  `18081` with `socat`. The host then connected successfully and enumerated
+  the live Game Mode targets.
+- The visible Trainer Relay UI is rendered in the main `Steam -- Big Picture`
+  target, not in the empty `SharedJSContext` or `QuickAccess_uid2` documents.
+  The current plugin execution target was
+  `https://steamloopback.host/routes/trainer-relay/3535090580`.
+- Live DOM and React-fiber inspection proved that the focused folder control is
+  a real button, but its internal click value is removed because
+  `TrainerFilePicker` receives `disabled=true`. The resulting button has the
+  SteamUI `Disabled` class and no effective DOM `onClick`, which exactly
+  explains focus plus `A SELECT` with no activation.
+- The disabling input is not gamepad handling or legacy migration. Live
+  `RelayPage` hooks showed `busy=false`, `migrationBusy=false`, and
+  `configState.status="loading"`. The configuration load never transitions to
+  `ready` or `error`, so every configuration control remains disabled without
+  an explanatory message.
+- Calling Decky's API-v2 transport directly from the plugin's
+  `SharedJSContext` reproduced the backend fault: `get_relay_config` remained
+  pending and the diagnostic `Promise.race` expired after five seconds. The
+  API connection itself was present and reported version 2, so the unresolved
+  boundary is the Trainer Relay Python process/socket response.
+- Next action: capture the `plugin_loader.service` journal around Trainer Relay
+  startup to obtain the Python traceback. Add a red backend/package regression
+  for that exact failure, repair the process startup/RPC response, and add a
+  frontend timeout/error-state regression so a future backend failure cannot
+  leave a permanently disabled but apparently selectable UI. Do not publish
+  `.12` before the real backend fix passes local gates and the same live RPC
+  resolves on the Deck.
