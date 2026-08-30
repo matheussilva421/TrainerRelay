@@ -287,7 +287,7 @@ git commit -m "feat: export and page diagnostic history"
 - Relevant anchor is true when expected executable basename, expected `GAMEID`, expected store plus expected prefix, or literal identity token matches.
 - Strongest safe no-candidate diagnostic precedence: `legacy_settings_present`, `pid_reused_during_scan`, `missing_required_environment`, `game_id_mismatch`, `store_mismatch`, `prefix_mismatch`, `executable_mismatch`, then `None` for no relevant process.
 
-- [ ] **Step 1: Extend fake `/proc` test helpers and write reason tests RED**
+- [x] **Step 1: Extend fake `/proc` test helpers and write reason tests RED**
 
 Add one focused test per reason. Example:
 
@@ -303,24 +303,24 @@ def test_reports_prefix_mismatch_for_relevant_game_process(self):
 
 Test irrelevant processes are aggregated without path/details, relevant acceptance still requires exact existing rules, PID reuse is reported, ambiguity remains fail-closed, and no full environment appears in decision serialization.
 
-- [ ] **Step 2: Run process tests and verify RED**
+- [x] **Step 2: Run process tests and verify RED**
 
 Run: `python -m unittest tests_backend.test_process -v`
 
 Expected: missing `decisions`/reason diagnostics.
 
-- [ ] **Step 3: Refactor `_candidate` into evaluation without changing eligibility**
+- [x] **Step 3: Refactor `_candidate` into evaluation without changing eligibility**
 
 Create `_evaluate_candidate(...) -> CandidateDecision`; keep environment only on accepted internal decisions. Build sanitized details from explicit allowed fields. `discover()` derives the same accepted candidates plus rejection counts and strongest reason.
 
-- [ ] **Step 4: Run focused, watcher, and full backend tests GREEN**
+- [x] **Step 4: Run focused, watcher, and full backend tests GREEN**
 
 ```bash
 python -m unittest tests_backend.test_process tests_backend.test_watcher -v
 python -m unittest discover -s tests_backend -p "test_*.py"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -- trainer_relay/process.py tests_backend/test_process.py tests_backend/test_watcher.py

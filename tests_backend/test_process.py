@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from trainer_relay.process import (
+    CandidateDecision,
     DiscoveryResult,
     ProcessDiscoverer,
     SessionIdentity,
@@ -46,6 +47,13 @@ def write_candidate(
 
 
 class ProcessDiscoveryTests(unittest.TestCase):
+    def discover_one(self, root: Path):
+        return ProcessDiscoverer(root).discover(
+            "gog:game",
+            "/games/expected.exe",
+            "/home/deck/.local/share/unifideck/prefixes/game",
+        )
+
     def test_normalizes_posix_and_wine_z_paths(self):
         self.assertEqual(normalize_wine_path("Z:\\home\\deck\\Games\\game.exe"), "/home/deck/Games/game.exe")
         self.assertEqual(normalize_wine_path("/home/deck/Games/./game.exe"), "/home/deck/Games/game.exe")
@@ -221,6 +229,120 @@ class ProcessDiscoveryTests(unittest.TestCase):
                 "/home/deck/.local/share/unifideck/prefixes/game",
             )
             self.assertEqual(result.state, "waiting_for_game")
+            self.assertEqual(result.diagnostic, "pid_reused_during_scan")
+            self.assertEqual(result.decisions[0].reason, "pid_reused_during_scan")
+
+    def test_reports_prefix_mismatch_for_relevant_game_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/wrong",
+                game_id="game",
+                store="gog",
+            )
+
+            result = self.discover_one(root)
+
+            self.assertEqual(result.diagnostic, "prefix_mismatch")
+            self.assertEqual(result.rejection_counts["prefix_mismatch"], 1)
+            self.assertTrue(result.decisions[0].relevant)
+            self.assertEqual(result.decisions[0].details["observed_prefix"], "/home/deck/.local/share/unifideck/prefixes/wrong")
+
+    def test_reports_game_id_mismatch_for_relevant_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game",
+                game_id="other",
+                store="gog",
+            )
+            self.assertEqual(self.discover_one(root).diagnostic, "game_id_mismatch")
+
+    def test_reports_store_mismatch_for_relevant_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game",
+                game_id="game",
+                store="steam",
+            )
+            self.assertEqual(self.discover_one(root).diagnostic, "store_mismatch")
+
+    def test_reports_executable_mismatch_for_relevant_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/actual.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game",
+                game_id="game",
+                store="gog",
+            )
+            result = self.discover_one(root)
+            self.assertEqual(result.diagnostic, "executable_mismatch")
+            self.assertEqual(result.decisions[0].details["observed_executable"], "/games/actual.exe")
+
+    def test_reports_missing_environment_for_relevant_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game",
+                game_id="game",
+                store="gog",
+            )
+            (root / "123" / "environ").write_bytes(b"GAMEID=game\0STORE=gog\0")
+            self.assertEqual(self.discover_one(root).diagnostic, "missing_required_environment")
+
+    def test_accepted_decision_contains_only_allowlisted_process_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="game",
+                store="gog",
+            )
+            result = self.discover_one(root)
+            decision = result.decisions[0]
+            self.assertIsInstance(decision, CandidateDecision)
+            self.assertTrue(decision.accepted)
+            self.assertEqual(decision.reason, "candidate_accepted")
+            self.assertEqual(
+                set(decision.details),
+                {
+                    "expected_executable",
+                    "observed_executable",
+                    "expected_prefix",
+                    "observed_prefix",
+                    "game_id",
+                    "store",
+                    "wineprefix",
+                    "protonpath",
+                },
+            )
+            self.assertNotIn("cmdline", decision.details)
+            self.assertNotIn("environment", decision.details)
 
 
 if __name__ == "__main__":
