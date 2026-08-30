@@ -43,7 +43,8 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertIn("TrainerRelay/main.py", names)
         self.assertIn("TrainerRelay/plugin.json", names)
         self.assertIn("TrainerRelay/package.json", names)
-        self.assertIn("TrainerRelay/trainer_relay/watcher.py", names)
+        self.assertIn("TrainerRelay/py_modules/trainer_relay/watcher.py", names)
+        self.assertNotIn("TrainerRelay/trainer_relay/watcher.py", names)
         self.assertIn("TrainerRelay/docs/adr/0001-session-watcher.md", names)
         self.assertIn("TrainerRelay/docs/STEAM-DECK-VALIDATION.md", names)
         self.assertNotIn("TrainerRelay/dist/index.js.map", names)
@@ -51,6 +52,43 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertFalse(any("__pycache__" in name.lower() for name in names))
         self.assertFalse(any(name.endswith((".env", ".log", ".pyc", ".map")) for name in names))
         self.assertFalse(any("node_modules" in name or "pnpm-lock" in name for name in names))
+
+    def test_packaged_runtime_imports_from_decky_py_modules_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            archive = temporary_root / "TrainerRelay.zip"
+            completed = subprocess.run(
+                [sys.executable, str(PACKAGE_SCRIPT), str(archive)],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+            extract_root = temporary_root / "installed"
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(extract_root)
+
+            plugin_root = extract_root / "TrainerRelay"
+            import_check = subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-c",
+                    (
+                        "import sys; "
+                        f"sys.path.append({str(plugin_root / 'py_modules')!r}); "
+                        "import trainer_relay.config; "
+                        "print(trainer_relay.config.DEFAULT_CONFIG_KEY)"
+                    ),
+                ],
+                cwd=temporary_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(import_check.returncode, 0, import_check.stderr or import_check.stdout)
 
 
 if __name__ == "__main__":

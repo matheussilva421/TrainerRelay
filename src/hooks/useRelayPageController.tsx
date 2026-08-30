@@ -8,6 +8,7 @@ import { emptyRelayConfig, persistRelayGameConfig, relayRpc } from "../infra/rel
 import { logger } from "../utils/logger";
 import { bindBrowserTimers } from "./browserTimers";
 import { activateVerifiedLegacyMigration } from "./legacyMigrationActivation";
+import { loadRelayConfigWithTimeout } from "./loadRelayConfig";
 import type { LegacyMigrationVerificationResult } from "./migrationVerification";
 import { disableTrainerRelay, enableTrainerRelay, selectTrainerPath } from "./relayActions";
 import { startRelayStatusPolling } from "./statusPolling";
@@ -49,19 +50,15 @@ export const useRelayPageController = (appid: number) => {
   const [prefixDraft, setPrefixDraft] = useState("");
 
   useEffect(() => {
-    let active = true;
     setConfigState({ status: "loading", value: emptyRelayConfig() });
-    void relayRpc
-      .getRelayConfig()
-      .then((value) => {
-        if (active) setConfigState({ status: "ready", value });
-      })
-      .catch(() => {
-        if (active) setConfigState({ status: "error", value: emptyRelayConfig() });
-      });
-    return () => {
-      active = false;
-    };
+    return loadRelayConfigWithTimeout({
+      load: () => relayRpc.getRelayConfig(),
+      onReady: (value) => setConfigState({ status: "ready", value }),
+      onError: () => setConfigState({ status: "error", value: emptyRelayConfig() }),
+      setTimer: browserTimers.setTimeout,
+      clearTimer: browserTimers.clearTimeout,
+      timeoutMs: 5_000,
+    });
   }, []);
 
   const identityModel = useMemo(

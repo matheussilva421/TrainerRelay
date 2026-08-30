@@ -51,7 +51,11 @@ def write_archive(output: Path, files: list[Path]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(output, "w", compression=ZIP_STORED) as archive:
         for source in sorted(files, key=lambda path: path.relative_to(ROOT).as_posix()):
-            relative_path = Path("TrainerRelay") / source.relative_to(ROOT)
+            source_relative = source.relative_to(ROOT)
+            if source_relative.parts[0] == "trainer_relay":
+                relative_path = Path("TrainerRelay") / "py_modules" / source_relative
+            else:
+                relative_path = Path("TrainerRelay") / source_relative
             archive_name = relative_path.as_posix()
             info = ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
             info.create_system = 3

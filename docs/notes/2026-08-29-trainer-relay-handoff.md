@@ -729,3 +729,38 @@ GOG/Epic validation remains explicitly pending.
   leave a permanently disabled but apparently selectable UI. Do not publish
   `.12` before the real backend fix passes local gates and the same live RPC
   resolves on the Deck.
+
+## Decky sandbox backend fix — experimental.12
+
+- The physical Deck journal supplied the definitive startup traceback:
+  `/home/deck/homebrew/plugins/TrainerRelay/main.py` failed at
+  `from trainer_relay.config ...` with
+  `ModuleNotFoundError: No module named 'trainer_relay'`.
+- Root cause: the `.11` ZIP installed the Python package at
+  `TrainerRelay/trainer_relay`, while Decky's sandbox adds only the plugin's
+  `py_modules` directory to `sys.path`. The frontend loaded, but every RPC to
+  the absent backend stayed pending, keeping `configState.status="loading"`
+  and all configuration controls disabled.
+- TDD packaging regression: the new test first failed against the old ZIP,
+  both on the expected archive path and on an isolated import using only
+  `TrainerRelay/py_modules`. The packager now writes the runtime package to
+  `TrainerRelay/py_modules/trainer_relay`; both packaging tests pass.
+- TDD frontend containment: an unresolved `get_relay_config` now transitions
+  to the existing fail-closed error UI after five seconds. A late RPC response
+  is ignored, and cleanup clears the timer. This does not hide backend failure
+  or enable controls without configuration.
+- Delivery version advanced to `v0.1.0-experimental.12`. The deterministic
+  19-entry local ZIP is 177,892 bytes with SHA-256
+  `695B53D47A2269CB29816F8CC8A77F22D1E7C04FD4C000FB21D87A8C5AB1B260`.
+- Fresh local gates: backend unittest 47/47, compileall passed, Biome checked
+  52 files, both TypeScript typechecks passed, Vitest 166/166 across 21 files,
+  Rollup built, and package tests 2/2 passed. The environment's global `pnpm`
+  shim hung, and the bundled fallback attempted an unnecessary noninteractive
+  `node_modules` purge; the project-local binaries backing the same scripts
+  were run directly and all passed.
+- Pending: commit and push `.12`, publish and independently verify the release
+  asset, create the user installation kit, then install it on the physical
+  Deck. Acceptance requires a clean backend startup, a resolving
+  `get_relay_config`, an enabled trainer action, and Decky's file browser
+  opening with `A`. Trainer launch/lifecycle and one Epic title remain after
+  the GOG selector check. Do not promote to stable yet.
