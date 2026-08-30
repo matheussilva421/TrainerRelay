@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-This repository publishes `v0.1.0-experimental.15`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
+This repository publishes `v0.1.0-experimental.16`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.15).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.16).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -62,8 +62,12 @@ The watcher is deliberately fail-closed:
   main thread while executable, prefix, store, and required environment stay
   unchanged;
 - the game, prefix, environment allowlist, and launch identity must agree;
+- the `umu-run` sidecar receives the selected UniFiDeck compatdata root, not the
+  child process's Proton-expanded `<root>/pfx` value;
 - a trainer is considered running only after it remains alive for three seconds;
-- one automatic retry is allowed after a two-second delay while the same game session remains active;
+- one automatic retry is allowed after a two-second delay when the trainer exits
+  before the watcher has observed it in `running`, while the same game session
+  remains active;
 - later retries require the manual **Retry** action;
 - shutdown signals only the process group created by Trainer Relay, waits five seconds, then force-terminates that same group if necessary.
 
@@ -75,7 +79,7 @@ Experimental `.13` adds a separate **Diagnostics** page. Diagnostic mode is off 
 
 **Export TXT** writes a timestamped report atomically to `/home/deck/Downloads`. **Clear logs** removes only Trainer Relay's rotating journal and metadata after confirmation; it does not remove exported TXT files. While diagnostic mode is enabled, the same sanitized events appear in CEF DevTools under the filter `[TrainerRelay:diagnostic]`.
 
-Allowed technical values are limited to identity/session anchors, expected and observed executable/prefix paths, trainer and `umu-run` paths, `GAMEID`, `STORE`, `WINEPREFIX`, `PROTONPATH`, bounded counts, exit codes, and timing. The journal rejects complete environments, complete command lines, credentials, cookies, tokens, authorization data, legacy debug-command content, and trainer stdout/stderr. The environment copied to the trainer is a separate explicit allowlist; `PROTON_REMOTE_DEBUG_CMD` is never copied and `PROTON_VERB=runinprefix` is set last.
+Allowed technical values are limited to identity/session anchors, expected and observed executable/prefix paths, trainer and `umu-run` paths, `GAMEID`, `STORE`, `WINEPREFIX`, `PROTONPATH`, bounded counts, exit codes, and timing. The journal rejects complete environments, complete command lines, credentials, cookies, tokens, authorization data, legacy debug-command content, and trainer stdout/stderr. The environment copied to the trainer is a separate explicit allowlist; `PROTON_REMOTE_DEBUG_CMD` is never copied, the UMU-derived `STEAM_COMPAT_CLIENT_INSTALL_PATH` is not replayed, and `PROTON_VERB=runinprefix` is set last.
 
 For the physical-device checklist, see [`docs/STEAM-DECK-VALIDATION.md`](docs/STEAM-DECK-VALIDATION.md). For the architectural decision, see [`docs/adr/0001-session-watcher.md`](docs/adr/0001-session-watcher.md).
 

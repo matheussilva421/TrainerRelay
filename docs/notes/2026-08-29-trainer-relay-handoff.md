@@ -1084,3 +1084,65 @@ GOG/Epic validation remains explicitly pending.
   sequence is `candidate_revalidated` followed by `trainer_running`, without
   premature `session_ended`/`owned_group_signal`. Confirm selective shutdown
   when the game closes. Epic remains a separate gate; do not promote stable.
+
+### Experimental.16 UMU launch-boundary correction
+
+- The physical `.15` exports
+  `TrainerRelay-diagnostics-20260830-175619.txt` and
+  `TrainerRelay-diagnostics-20260830-175636.txt` describe the same run. They
+  confirm that `.15` fixed session retention: game PID `59645`, start time
+  `2879747`, executable path, GOG identity, and prefix were retained through
+  121 `candidate_revalidated` events until the real `session_ended` more than
+  two minutes later.
+- The trainer's owned UMU group `59674` exited with code `1` after 3,248 ms and
+  never reached `trainer_running`. The game stayed alive, so this is a
+  sidecar-launch failure, not game discovery or game termination.
+- The captured Proton descendant exposed
+  `WINEPREFIX=/home/deck/.local/share/unifideck/prefixes/1482265668/pfx/`.
+  UniFiDeck instead launches UMU with both `WINEPREFIX` and
+  `STEAM_COMPAT_DATA_PATH` set to the parent compatdata root. Replaying the
+  descendant value can make a new UMU invocation treat `pfx` as its root.
+- UniFiDeck also explicitly removes `STEAM_COMPAT_CLIENT_INSTALL_PATH` before
+  invoking UMU because UMU derives it; replaying the child value can pin a
+  symlinked Steam root and fail inside pressure-vessel. Trainer Relay now omits
+  it as well.
+- TDD regressions cover the transformed child prefix, an explicit override
+  ending in `pfx`, a default game ID literally named `pfx`, the effective
+  sanitized spawn diagnostic, and exclusion of the UMU-derived client path.
+  The sidecar now launches with equal root `WINEPREFIX` and
+  `STEAM_COMPAT_DATA_PATH`, with `PROTON_VERB=runinprefix` assigned last.
+- Retry is now based on the state observed by the watcher. A first process that
+  exits before `trainer_running` receives the one automatic retry even if the
+  next one-second poll observes the exit just after three seconds. A process
+  previously observed running still fails without an automatic relaunch.
+- Version advanced to `0.1.0-experimental.16`. Current gates: backend 103/103;
+  targeted compileall passed; Biome checked 63 files; both TypeScript
+  typechecks passed; frontend 187/187 in 25 files. The global `pnpm` shim hung
+  without output even for `pnpm --version`; the same project-local Biome, tsc,
+  and Vitest binaries completed successfully. Rollup built, package layout and
+  isolated installed import passed 2/2. Two independent package generations
+  produced identical 21-entry, ZIP_STORED archives: 261,236 bytes, SHA-256
+  `DB88075B7D3A00B9077775A349B3D0632C5CE3FBAE39E0900FADB6FCA491CBCE`.
+  Final review, commit, push, tag/release verification, user kit, and physical
+  GOG validation are still pending.
+- The next physical diagnostic must show `trainer_spawned` with equal
+  `wineprefix` and `steam_compat_data_path` values ending in
+  `/prefixes/1482265668` (not `/pfx`) plus `proton_verb=runinprefix`. Success is
+  still `trainer_running`. If the first attempt exits before that state, the
+  journal must show one `trainer_retry_scheduled` and a second
+  `trainer_spawned`. Do not promote stable until GOG and Epic pass physically.
+- Two-axis read-only review against `v0.1.0-experimental.15` found no hard
+  standards violation and no scope creep. Standards reported one judgement-call
+  duplication between prefix normalization at the watcher boundary and the
+  environment builder; it remains intentionally local so the environment
+  builder is safe when called independently.
+- Spec review correctly found that the ignored root `TrainerRelay.zip` still
+  contained `.15`. It was rebuilt and now matches the deterministic `.16`
+  candidate: 261,236 bytes and SHA-256
+  `DB88075B7D3A00B9077775A349B3D0632C5CE3FBAE39E0900FADB6FCA491CBCE`.
+  Its broader allowlist concern does not contradict the written requirement,
+  which explicitly permits necessary variables *and categories*; the named
+  categories remain bounded by secret filtering and explicit removals. Existing
+  `test_runner.py`, watcher, fake-`/proc`, and diagnostic integration tests cover
+  structured argv, environment handoff, new-session ownership, selective group
+  shutdown, and privacy. No production change was made for those two findings.

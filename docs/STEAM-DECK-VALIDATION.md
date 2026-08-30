@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.15
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.16
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -39,6 +39,10 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Confirm the Trainer Relay status progresses through `waiting_for_game` and `launching` to `running`.
 - [ ] Confirm exactly one trainer instance is present.
 - [ ] Confirm the trainer and game use the same prefix anchor.
+- [ ] In Diagnostics, confirm `trainer_spawned` reports equal `wineprefix` and
+  `steam_compat_data_path` at
+  `/home/deck/.local/share/unifideck/prefixes/<game_id>`, without a trailing
+  `/pfx`, and `proton_verb=runinprefix`.
 - [ ] Confirm gameplay remains intact if the trainer is missing or exits early.
 - [ ] Exit the game and confirm the Trainer Relay trainer exits within the configured shutdown window.
 - [ ] Force Sync the shortcut and confirm the Trainer Relay configuration remains available.
@@ -60,7 +64,7 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 
 ## Failure, retry, and ownership
 
-- [ ] Make the trainer exit immediately and confirm one automatic retry occurs only while the same game session is active.
+- [ ] Make the trainer exit before `trainer_running` is observed and confirm one automatic retry occurs only while the same game session is active, including an exit detected just after the three-second boundary.
 - [ ] Confirm a later retry requires the manual Retry action.
 - [ ] Start a duplicate candidate and confirm the state becomes `ambiguous` without starting a trainer.
 - [ ] Confirm stopping Trainer Relay does not stop the game, `wineserver`, global UMU, or another trainer.
