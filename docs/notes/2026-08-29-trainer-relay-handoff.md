@@ -806,3 +806,28 @@ GOG/Epic validation remains explicitly pending.
   `launching` to `running`, one trainer instance, same-prefix behavior,
   selective shutdown, and failure/retry safety. One Epic title remains
   required afterward.
+
+## Persistent diagnostic mode design approved
+
+- With the GOG game physically open, four live API-v2 status samples remained
+  `waiting_for_game` with no diagnostic. The game itself later opened, proving
+  the current process discovery rejected every candidate without exposing
+  which condition failed. The user cannot operate Konsole while the game is
+  open, so an in-plugin diagnostic path is required.
+- The user approved a persistent diagnostic mode that stays enabled until
+  manually disabled, stores a circular maximum of 50 MB, exports a timestamped
+  TXT automatically to `/home/deck/Downloads`, and offers confirmed clearing.
+- Approved technical values include expected/observed executable, trainer,
+  prefix, `umu-run`, `GAMEID`, `STORE`, `WINEPREFIX`, and `PROTONPATH`.
+  Complete environments, command lines, credentials, tokens, cookies,
+  authorization data, and trainer stdout/stderr remain prohibited.
+- The approved UI uses a separate **Diagnostics** page with the latest 20
+  events, persistent toggle, byte use, live updates, export, clear, and last
+  export path. SharedJSContext forwards sanitized events to DevTools with the
+  `[TrainerRelay:diagnostic]` prefix.
+- Full architecture, RPC contracts, rotation, redaction, candidate-decision
+  model, failure isolation, TDD strategy, and physical gates are recorded in
+  `docs/superpowers/specs/2026-08-30-trainer-relay-diagnostic-mode-design.md`.
+- Delivery target is `v0.1.0-experimental.13`. Next action: obtain approval of
+  the written specification, then create the detailed TDD implementation plan.
+  No production implementation has started.
