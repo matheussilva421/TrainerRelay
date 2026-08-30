@@ -783,3 +783,26 @@ GOG/Epic validation remains explicitly pending.
 - Remaining acceptance gate: install `.12` on the physical Deck and confirm
   that the journal no longer contains the `trainer_relay` import error, the
   configuration RPC reaches `ready`, and pressing `A` opens the file browser.
+
+### Experimental.12 physical picker and persistence PASS
+
+- The user installed `.12` on the physical Steam Deck and successfully opened
+  Decky's native file browser with `A`, navigated to a trainer, and selected it.
+- Live CEF reconnected after the Steam reload to the new SharedJSContext target
+  for `https://steamloopback.host/routes/trainer-relay/3535090580`. Filtering
+  for Trainer Relay showed `selection-received` followed by
+  `persistence-result`, with no filtered Trainer Relay error.
+- A direct read-only Decky API-v2 verification completed without timeout:
+  `get_relay_config` returned schema version 1 with one identity,
+  `gog:1482265668`. Its trainer path is present and ends in
+  `BioShock 2 Remastered v1.0-Update 2 Plus 15 Trainer.exe`; no prefix override
+  is configured.
+- `get_relay_status` returned `disabled` with `diagnostic: null`. This proves
+  the `.11` backend-import/loading failure is repaired on the physical Deck and
+  that picker persistence works. It does not yet prove trainer launch or
+  in-game behavior.
+- Next physical gate: turn **Enabled** on, launch the GOG shortcut, confirm the
+  game starts before the trainer, then validate `waiting_for_game` to
+  `launching` to `running`, one trainer instance, same-prefix behavior,
+  selective shutdown, and failure/retry safety. One Epic title remains
+  required afterward.
