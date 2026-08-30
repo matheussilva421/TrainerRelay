@@ -21,7 +21,6 @@ from trainer_relay.watcher import RelayWatcher
 
 
 settings_dir = decky.DECKY_PLUGIN_SETTINGS_DIR
-logging_dir = decky.DECKY_PLUGIN_LOG_DIR
 logger = decky.logger
 logger.setLevel(logging.DEBUG)
 settings = SettingsManager(name="settings", settings_directory=settings_dir)
@@ -39,9 +38,8 @@ def _current_config() -> dict[str, Any]:
 
 def _build_watcher() -> RelayWatcher:
     home = getattr(decky, "HOME", os.environ.get("HOME", "/home/deck"))
-    plugin_log = getattr(decky, "DECKY_PLUGIN_LOG", os.path.join(logging_dir, "trainer-relay.log"))
     umu_run = lambda: resolve_umu_run(home)
-    runner = OwnedTrainerRunner(umu_run, log_path=plugin_log)
+    runner = OwnedTrainerRunner(umu_run)
     return RelayWatcher(
         _current_config(),
         games_map_path=os.path.join(home, ".local", "share", "unifideck", "games.map"),

@@ -87,6 +87,23 @@ describe("Trainer Relay view model", () => {
     expect(model.controls).toEqual({ browse: true, enable: false, retry: false });
   });
 
+  it("allows an already-enabled relay to be disabled when legacy options reappear", () => {
+    const model = buildTrainerRelayViewModel(
+      {
+        status: "ready",
+        snapshot: {
+          command: "/usr/bin/unifideck-launcher",
+          launchOptions: "PROTON_REMOTE_DEBUG_CMD=/home/deck/trainer.exe %command% gog:game-1",
+        },
+      },
+      { enabled: true, trainerPath: "/home/deck/trainer.exe" },
+    );
+
+    expect(model.kind).toBe("supported");
+    if (model.kind !== "supported") throw new Error("expected supported model");
+    expect(model.controls.enable).toBe(true);
+  });
+
   it("does not carry a previous game's status into a newly classified identity", () => {
     const model = buildTrainerRelayViewModel(
       {

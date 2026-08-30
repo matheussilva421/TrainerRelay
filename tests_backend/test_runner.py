@@ -37,6 +37,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(handle.process_group_id, process.pid)
         self.assertIn(handle, runner.owned)
 
+    def test_rejects_a_log_path_that_could_capture_arbitrary_trainer_output(self):
+        with self.assertRaisesRegex(TypeError, "log_path"):
+            OwnedTrainerRunner("/home/deck/umu-run", log_path="/tmp/trainer-relay.log")
+
     def test_stop_signals_only_recorded_owned_group_then_kills_after_five_seconds(self):
         process = FakeProcess(pid=99)
         signals = []

@@ -1,4 +1,4 @@
-import { ConfirmModal, DialogButton, Field, Focusable, Navigation, showModal, TextField, ToggleField } from "@decky/ui";
+import { ConfirmModal, DialogButton, Field, Focusable, showModal, TextField, ToggleField } from "@decky/ui";
 import type { FC } from "react";
 import { FaArrowsRotate, FaShieldHalved } from "react-icons/fa6";
 import { TrainerFilePicker } from "../components/TrainerFilePicker";
@@ -72,16 +72,6 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
           padding="standard"
           bottomSeparator="standard"
         />
-        <Field padding="standard" childrenLayout="below" bottomSeparator="standard">
-          <DialogButton
-            onClick={() => {
-              Navigation.CloseSideMenus();
-              Navigation.NavigateToExternalWeb(model.repositoryUrl);
-            }}
-          >
-            Open GitHub
-          </DialogButton>
-        </Field>
       </Focusable>
     );
   }

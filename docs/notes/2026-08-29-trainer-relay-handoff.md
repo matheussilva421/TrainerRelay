@@ -589,3 +589,45 @@ GOG/Epic validation remains explicitly pending.
   `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.10-kit` with the
   versioned official ZIP and updated Portuguese guide. Next action: install
   `.10`, open the same GOG shortcut, and press `A` on `Choose trainer`.
+
+## Native action-row activation — experimental.11
+
+- Physical validation of `.10` still reproduced the exact symptom: controls
+  received visual focus, but pressing `A` did not reach
+  `[TrainerRelay:picker] ui-activated` and no file browser opened.
+- The previous tests mocked every `@decky/ui` component as a string and invoked
+  `onClick` directly. They therefore bypassed SteamUI's activation contract and
+  could stay green while Game Mode suppressed the action.
+- The focused structural regression now requires one enabled native action
+  row. Before the production change it failed 2/5: the picker still contained
+  a disabled `TextField` and exposed no `ButtonItem` action. It intentionally
+  does not claim to emulate SteamUI's physical gamepad event; the real-Deck
+  check remains the acceptance gate.
+- The minimal fix replaces the nested
+  `Focusable -> Field -> Focusable -> disabled TextField + DialogButton`
+  composition with one `ButtonItem`. The selected absolute path remains visible
+  as its description; validation, Decky `openFilePicker`, persistence, backend,
+  and fail-closed enablement are unchanged.
+- Review fixes removed the unsupported-page GitHub control, preserved the
+  ability to disable an already-enabled relay if legacy options reappear, and
+  removed the trainer-output log sink. Trainer stdout/stderr now always use
+  `DEVNULL` and `OwnedTrainerRunner` rejects the former `log_path` argument.
+- Primary-source research is saved in
+  `docs/research/2026-08-29-decky-game-mode-activation.md`. It confirms that
+  focus and activation are separate in Decky UI and that `ButtonItem` is the
+  official native action-row pattern; it also states that only the device can
+  prove the final A-button behavior.
+- Fresh local gates: Biome checked 50 files, both TypeScript typechecks passed,
+  Vitest passed 165/165 across 20 files, backend unittest passed 47/47,
+  compileall passed, Rollup built successfully, and the
+  package-layout test passed 1/1.
+- Delivery version is `v0.1.0-experimental.11`. The current deterministic
+  19-entry ZIP is 176,965 bytes with SHA-256
+  `5573EDB2E9AF27F51C320637ACCEC5A95C4F99519228FB8AE7EA678C67F99E0E`.
+- Remote CEF verification could not be completed in this block: the existing
+  DevTools target had no selected JavaScript context and
+  `192.168.1.247:8081` stopped accepting connections. Do not claim a physical
+  fix until `.11` is installed and pressing `A` emits `ui-activated` followed
+  by `handler-enter` and opens Decky's browser.
+- Pending: commit/push/tag/publish `.11`, independently verify the release asset, create
+  the `.11` user kit, then run the physical GOG test followed by one Epic test.

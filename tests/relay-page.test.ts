@@ -25,10 +25,10 @@ vi.mock("react", () => ({
 const controller = vi.hoisted(() => ({
   model: {
     kind: "supported" as const,
-    heading: "Trainer Relay",
+    heading: "Trainer Relay" as const,
     identity: "gog:1482265568" as const,
     migration: { status: "none" as const },
-    status: { state: "disabled" as const, diagnostic: null },
+    status: { state: "disabled" as const, diagnosticCode: null },
     controls: { browse: true, enable: false, retry: false },
   },
   configState: { status: "ready" as const, value: { schemaVersion: 1 as const, games: {} } },
@@ -55,6 +55,7 @@ vi.mock("../src/hooks/useRelayPageController", () => ({
 vi.mock("@decky/ui", () => {
   const component = (name: string) => name;
   return {
+    ButtonItem: component("ButtonItem"),
     ConfirmModal: component("ConfirmModal"),
     DialogButton: component("DialogButton"),
     Field: component("Field"),
@@ -75,6 +76,7 @@ vi.mock("react-icons/fa6", () => ({
 }));
 
 import { TrainerFilePicker } from "../src/components/TrainerFilePicker";
+import type { TrainerRelayViewModel } from "../src/domain/relay/viewModel";
 import RelayPage from "../src/views/RelayPage";
 
 interface ElementNode {
@@ -101,35 +103,25 @@ describe("Trainer Relay page", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses the CheatDeck-style focused folder picker without a manual path action", () => {
+  it("uses one native action row for the trainer picker without a manual path action", () => {
     const onBrowse = vi.fn();
     const nodes = descendants(TrainerFilePicker({ disabled: false, value: "", onBrowse }));
 
-    expect(
-      nodes.some((node) => node.type === "TextField" && node.props?.value === "" && node.props?.disabled === true),
-    ).toBe(true);
-    expect(
-      nodes.some(
-        (node) =>
-          node.type === "DialogButton" &&
-          descendants(node.props?.children).some((child) => child.type === "FaFolderOpen") &&
-          node.props?.onClick instanceof Function,
-      ),
-    ).toBe(true);
+    expect(nodes.some((node) => node.type === "TextField")).toBe(false);
+    expect(nodes.filter((node) => node.type === "ButtonItem")).toHaveLength(1);
     expect(textContent(RelayPage({ appid: 48_226_5568 }))).not.toContain("Save trainer path");
   });
 
-  it("logs activation before delegating to the Decky browser handler", () => {
+  it("keeps the native action enabled and delegates its activation to Decky", () => {
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const onBrowse = vi.fn();
     const nodes = descendants(TrainerFilePicker({ disabled: false, value: "", onBrowse }));
-    const browseButton = nodes.find(
-      (node) =>
-        node.type === "DialogButton" &&
-        descendants(node.props?.children).some((child) => child.type === "FaFolderOpen"),
-    );
+    const browseButton = nodes.find((node) => node.type === "ButtonItem");
 
-    (browseButton?.props?.onClick as (() => void) | undefined)?.();
+    expect(browseButton?.props?.disabled).toBe(false);
+    if (browseButton?.props?.disabled !== true) {
+      (browseButton?.props?.onClick as (() => void) | undefined)?.();
+    }
 
     expect(consoleInfo).toHaveBeenCalledWith(
       expect.stringContaining("Trainer Relay"),
@@ -156,6 +148,24 @@ describe("Trainer Relay page", () => {
 
     expect(page?.type).toBe("Focusable");
     expect(nodes.some((node) => node.type === "PanelSection" || node.type === "PanelSectionRow")).toBe(false);
+  });
+
+  it("renders no actionable controls for an unsupported shortcut", () => {
+    const previousModel: TrainerRelayViewModel = controller.model;
+    const unsupportedModel: TrainerRelayViewModel = {
+      kind: "unsupported",
+      heading: "Trainer Relay",
+      message: "This shortcut is not a recognised UniFiDeck Epic/GOG launch.",
+      repositoryUrl: "https://github.com/matheussilva421/TrainerRelay",
+    };
+    Object.assign(controller, { model: unsupportedModel });
+
+    try {
+      const nodes = descendants(RelayPage({ appid: 123 }));
+      expect(nodes.some((node) => node.type === "DialogButton" || node.type === "ButtonItem")).toBe(false);
+    } finally {
+      Object.assign(controller, { model: previousModel });
+    }
   });
 
   it("allows safe manual configuration while blocked legacy options keep enablement disabled", () => {

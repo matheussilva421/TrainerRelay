@@ -39,14 +39,12 @@ class OwnedTrainerRunner:
         umu_run: str | os.PathLike[str] | Callable[[], str | os.PathLike[str]],
         *,
         popen_factory: Callable[..., object] = subprocess.Popen,
-        log_path: str | os.PathLike[str] | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         signal_group: Callable[[int, int], None] = _signal_process_group,
     ) -> None:
         self.umu_run = umu_run
         self._popen = popen_factory
-        self._log_path = Path(log_path) if log_path is not None else None
         self._monotonic = monotonic
         self._sleep = sleep
         self._signal_group = signal_group
@@ -57,30 +55,17 @@ class OwnedTrainerRunner:
         return tuple(self._owned)
 
     def spawn(self, session: SessionIdentity, trainer_executable: str, environment: Mapping[str, str]) -> RunnerHandle:
-        stream = subprocess.DEVNULL
-        file_handle = None
         spawn_environment = dict(environment)
         umu_run = self.umu_run() if callable(self.umu_run) else self.umu_run
-        if self._log_path is not None:
-            self._log_path.parent.mkdir(parents=True, exist_ok=True)
-            file_handle = self._log_path.open("ab")
-            stream = file_handle
-        try:
-            process = self._popen(
-                [str(umu_run), trainer_executable],
-                cwd=str(Path(trainer_executable).parent),
-                env=spawn_environment,
-                shell=False,
-                start_new_session=True,
-                stdout=stream,
-                stderr=stream,
-            )
-        except Exception:
-            if file_handle is not None:
-                file_handle.close()
-            raise
-        if file_handle is not None:
-            file_handle.close()
+        process = self._popen(
+            [str(umu_run), trainer_executable],
+            cwd=str(Path(trainer_executable).parent),
+            env=spawn_environment,
+            shell=False,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         handle = RunnerHandle(session, process, int(process.pid), spawn_environment)
         self._owned.append(handle)
         return handle

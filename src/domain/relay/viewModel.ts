@@ -81,7 +81,7 @@ export const buildTrainerRelayViewModel = (
     migration,
     controls: {
       browse: true,
-      enable: migrationClear && Boolean(config?.trainerPath),
+      enable: Boolean(config?.enabled) || (migrationClear && Boolean(config?.trainerPath)),
       retry: relayStatus?.state === "failed",
     },
     status: statusViewModel(identity, relayStatus),
