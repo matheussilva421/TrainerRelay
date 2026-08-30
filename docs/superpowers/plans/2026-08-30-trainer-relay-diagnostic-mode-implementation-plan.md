@@ -443,19 +443,19 @@ git commit -m "feat: expose diagnostic backend RPCs"
 - Produces conservative `decodeDiagnosticSettingsResponse`, `decodeDiagnosticEventsResponse`, and `decodeDiagnosticExportResponse`.
 - Produces `diagnosticRpc` with five methods matching backend RPC names.
 
-- [ ] **Step 1: Write decoder and client tests RED**
+- [x] **Step 1: Write decoder and client tests RED**
 
 Test valid response, unknown category/outcome, malformed sequence/session/details, unsafe details keys, limit/cursor serialization, and safe failure behavior. A malformed event must reject the response rather than partially trust it.
 
-- [ ] **Step 2: Run focused test RED**
+- [x] **Step 2: Run focused test RED**
 
 Run: `.\node_modules\.bin\vitest.cmd run tests/diagnostic-rpc.test.ts --reporter verbose`
 
-- [ ] **Step 3: Implement exact decoders and callable wrappers GREEN**
+- [x] **Step 3: Implement exact decoders and callable wrappers GREEN**
 
 Reuse no backend implementation details. Clamp request limits before the callable boundary and return immutable copied values.
 
-- [ ] **Step 4: Run focused TypeScript gates and commit**
+- [x] **Step 4: Run focused TypeScript gates and commit**
 
 ```bash
 .\node_modules\.bin\vitest.cmd run tests/diagnostic-rpc.test.ts --reporter verbose
