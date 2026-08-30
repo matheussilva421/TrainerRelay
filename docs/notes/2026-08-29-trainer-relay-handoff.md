@@ -986,3 +986,31 @@ GOG/Epic validation remains explicitly pending.
   versioned user kit, then physically verify trainer launch and selective
   shutdown on the same BioShock 2 GOG shortcut. Epic remains a separate gate;
   do not promote stable.
+
+### Experimental.14 publication and user kit checkpoint
+
+- Runtime fix commit `a3de376` and release preparation commit `1cf1773` were
+  pushed to both `feat/trainer-relay` and `main`. Annotated tag
+  `v0.1.0-experimental.14` points to `1cf1773`.
+- GitHub Actions passed for the feature branch (`33322747421`), main
+  (`33322749027`), and tag/release (`33322777087`). The tag run completed all
+  backend, frontend, package, and publish jobs. Its only annotation is the
+  upstream Node 20 deprecation notice for `actions/setup-python@v5`; it did not
+  affect the successful result.
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.14`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.14/TrainerRelay.zip`.
+- The published 255,508-byte asset has SHA-256
+  `5A3EFB2E7C81DF5A4F166AC21B14193C81A50665BF72AB24325176FC831FE337`
+  and matches the fresh local deterministic package byte-for-byte.
+- Created `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.14-kit`
+  with the versioned published ZIP, Portuguese guide, validation checklist,
+  concise `LEIA-ME.txt`, and `SHA256SUMS.txt`.
+- Two independent review subagents failed to return a report and were stopped
+  without write access. A manual fail-closed review plus fresh committed-tree
+  gates found no release blocker. No claim of physical trainer success is made.
+- Next action: install `.14` over the existing plugin, keep diagnostics enabled,
+  start the same BioShock 2 GOG shortcut, wait for the trainer, and export a new
+  TXT whether it succeeds or fails. Confirm the trainer exits with the game and
+  that retry/failure never terminates the game. Epic validation remains pending.
