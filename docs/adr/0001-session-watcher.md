@@ -21,6 +21,14 @@ new process, even when Linux has reused the PID. Exactly one valid candidate
 is required. No candidate produces `waiting_for_game`, while multiple
 candidates fail closed as `ambiguous`.
 
+The executable-like process name is required when acquiring a new session so
+UMU, pressure-vessel, Python, Wine helpers, and other wrappers cannot inherit
+their way into acceptance. Once acquired, the same PID/start-time pair may be
+revalidated after `/proc/<pid>/comm` changes, because a Windows game can rename
+its main Linux thread. That exception never applies to another PID or a
+recycled start time, and the full executable, prefix, store, required
+environment, and legacy-option checks remain mandatory.
+
 The v1 compatibility boundary is the same Wine prefix. It does not promise
 that the game and trainer share one pressure-vessel container. The watcher
 does not alter the game process, its process group, or its launch lifecycle.

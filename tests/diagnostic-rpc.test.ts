@@ -48,6 +48,34 @@ describe("diagnostic RPC boundary", () => {
     });
   });
 
+  it("decodes a privacy-bounded candidate revalidation event", () => {
+    const revalidated = {
+      ...event,
+      event: "candidate_revalidated",
+      outcome: "accepted",
+      details: {
+        expected_executable: "/games/game.exe",
+        observed_executable: "/games/game.exe",
+        expected_prefix: "/prefix",
+        observed_prefix: "/prefix/pfx",
+        game_id: "umu-0",
+        process_name: "Main Game Threa",
+        store: "gog",
+        wineprefix: "/prefix/pfx",
+        protonpath: "/proton",
+      },
+    };
+
+    expect(
+      decodeDiagnosticEventsResponse({
+        generation: 1,
+        nextCursor: "v1:1:1",
+        cursorReset: false,
+        events: [revalidated],
+      }).events,
+    ).toEqual([revalidated]);
+  });
+
   it.each([
     { ...event, category: "private" },
     { ...event, outcome: "maybe" },

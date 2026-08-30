@@ -344,6 +344,141 @@ class ProcessDiscoveryTests(unittest.TestCase):
             self.assertEqual(result.state, "session")
             self.assertEqual(result.session, SessionIdentity(123, 10))
 
+    def test_revalidates_same_session_after_game_renames_main_thread(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = "/home/deck/Games/BioShock 2 Remastered/Build/Final/Bioshock2HD.exe"
+            prefix = "/home/deck/.local/share/unifideck/prefixes/1482265668"
+            write_candidate(
+                root,
+                57719,
+                start_time=2457048,
+                executable=expected,
+                prefix=prefix + "/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="Bioshock2HD.exe",
+            )
+            discoverer = ProcessDiscoverer(root)
+            initial = discoverer.discover("gog:1482265668", expected, prefix)
+            self.assertEqual(initial.session, SessionIdentity(57719, 2457048))
+
+            (root / "57719" / "comm").write_text("Main Game Threa\n", encoding="utf-8")
+            (root / "57719" / "stat").write_text(
+                proc_stat(57719, "Main Game Threa", 2457048), encoding="utf-8"
+            )
+            revalidated = discoverer.discover(
+                "gog:1482265668",
+                expected,
+                prefix,
+                expected_session=initial.session,
+            )
+
+            self.assertEqual(revalidated.state, "session")
+            self.assertEqual(revalidated.session, initial.session)
+            self.assertEqual(revalidated.decisions[0].reason, "candidate_revalidated")
+
+    def test_does_not_accept_renamed_thread_without_matching_pinned_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="Main Game Threa",
+            )
+
+            result = ProcessDiscoverer(root).discover(
+                "gog:game",
+                "/games/expected.exe",
+                "/home/deck/.local/share/unifideck/prefixes/game",
+                expected_session=SessionIdentity(999, 10),
+            )
+
+            self.assertEqual(result.state, "waiting_for_game")
+            self.assertEqual(result.decisions[0].reason, "process_name_mismatch")
+
+    def test_does_not_revalidate_recycled_pid_after_thread_rename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=11,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="Main Game Threa",
+            )
+
+            result = ProcessDiscoverer(root).discover(
+                "gog:game",
+                "/games/expected.exe",
+                "/home/deck/.local/share/unifideck/prefixes/game",
+                expected_session=SessionIdentity(123, 10),
+            )
+
+            self.assertEqual(result.state, "waiting_for_game")
+            self.assertEqual(result.decisions[0].reason, "process_name_mismatch")
+
+    def test_revalidated_session_and_new_real_session_remain_ambiguous(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for pid, start_time, comm in (
+                (123, 10, "Main Game Threa"),
+                (456, 20, "expected.exe"),
+            ):
+                write_candidate(
+                    root,
+                    pid,
+                    start_time=start_time,
+                    executable="/games/expected.exe",
+                    prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                    game_id="umu-0",
+                    store="gog",
+                    comm=comm,
+                )
+
+            result = ProcessDiscoverer(root).discover(
+                "gog:game",
+                "/games/expected.exe",
+                "/home/deck/.local/share/unifideck/prefixes/game",
+                expected_session=SessionIdentity(123, 10),
+            )
+
+            self.assertEqual(result.state, "ambiguous")
+            self.assertEqual(result.candidates, (SessionIdentity(123, 10), SessionIdentity(456, 20)))
+
+    def test_revalidated_session_still_blocks_reintroduced_legacy_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="Main Game Threa",
+                legacy=True,
+            )
+
+            result = ProcessDiscoverer(root).discover(
+                "gog:game",
+                "/games/expected.exe",
+                "/home/deck/.local/share/unifideck/prefixes/game",
+                expected_session=SessionIdentity(123, 10),
+            )
+
+            self.assertEqual(result.state, "invalid_config")
+            self.assertEqual(result.diagnostic, "legacy_settings_present")
+
     def test_reports_store_mismatch_for_relevant_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

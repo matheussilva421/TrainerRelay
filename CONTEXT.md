@@ -8,7 +8,7 @@ The literal `epic:<game_id>` or `gog:<game_id>` argument that identifies a suppo
 
 ## Game Session
 
-The unique matching Windows process identified by its PID and `/proc/<pid>/stat` start time.
+The unique matching Windows process identified by its PID and `/proc/<pid>/stat` start time. `/proc/<pid>/comm` is only an initial acquisition signal: a game may rename its main thread after startup, so an already anchored session is revalidated by the stable PID/start-time pair together with its executable, prefix, store, and required environment.
 
 ## Prefix Anchor
 

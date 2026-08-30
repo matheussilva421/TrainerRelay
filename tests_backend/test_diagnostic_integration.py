@@ -13,7 +13,7 @@ class StaticDiscoverer:
     def __init__(self, result):
         self.result = result
 
-    def discover(self, *_args):
+    def discover(self, *_args, **_kwargs):
         return self.result
 
 

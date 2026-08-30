@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from trainer_relay.games_map import GamesMapDiagnostic, GamesMapEntry, GamesMapResult
-from trainer_relay.process import CandidateDecision, DiscoveryResult, SessionIdentity
+from trainer_relay.process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity
 from trainer_relay.runner import StopResult
 from trainer_relay.umu import UmuResolution
 from trainer_relay.watcher import RelayWatcher
@@ -44,8 +44,10 @@ class FakeRecorder:
 class FakeDiscoverer:
     def __init__(self, result):
         self.result = result
+        self.expected_sessions = []
 
-    def discover(self, identity, executable, prefix):
+    def discover(self, identity, executable, prefix, *, expected_session=None):
+        self.expected_sessions.append(expected_session)
         return self.result
 
 
@@ -134,6 +136,68 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertEqual(self.recorder.calls[3]["session"].to_wire(), {"pid": 10, "startTime": 20})
+        self.assertEqual(self.discoverer.expected_sessions, [None, self.session])
+
+    async def test_real_proc_session_survives_main_thread_rename_until_running(self):
+        root = Path(self.directory.name)
+        proc_root = root / "proc"
+        process = proc_root / "57719"
+        process.mkdir(parents=True)
+        stat = "57719 (Bioshock2HD.exe) S " + " ".join(["0"] * 18) + " 2457048 0 0"
+        (process / "stat").write_text(stat, encoding="utf-8")
+        (process / "comm").write_text("Bioshock2HD.exe\n", encoding="utf-8")
+        expected_executable = "/games/Bioshock2HD.exe"
+        (process / "cmdline").write_bytes(b"wine\0" + expected_executable.encode() + b"\0")
+        (process / "environ").write_bytes(
+            b"\0".join(
+                (
+                    f"WINEPREFIX={self.prefix}".encode(),
+                    b"PROTONPATH=/proton",
+                    b"GAMEID=umu-0",
+                    b"STORE=gog",
+                )
+            )
+            + b"\0"
+        )
+        entry = GamesMapEntry(self.identity, expected_executable)
+        watcher = RelayWatcher(
+            {
+                "schemaVersion": 1,
+                "games": {
+                    self.identity: {
+                        "enabled": True,
+                        "trainerPath": str(self.trainer),
+                        "prefixOverride": str(self.prefix),
+                    }
+                },
+            },
+            games_map_path="/games.map",
+            map_loader=lambda _: GamesMapResult({self.identity: entry}),
+            process_discoverer=ProcessDiscoverer(proc_root),
+            umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            runner=self.runner,
+            home="/home/deck",
+            clock=lambda: self.clock_value,
+            diagnostics=self.recorder,
+        )
+
+        await watcher.poll_once()
+        self.assertEqual(watcher.status(self.identity)["state"], "launching")
+
+        (process / "comm").write_text("Main Game Threa\n", encoding="utf-8")
+        (process / "stat").write_text(
+            "57719 (Main Game Threa) S " + " ".join(["0"] * 18) + " 2457048 0 0",
+            encoding="utf-8",
+        )
+        self.clock_value = 3.0
+        await watcher.poll_once()
+
+        self.assertEqual(watcher.status(self.identity)["state"], "running")
+        self.assertEqual(len(self.runner.spawn_calls), 1)
+        self.assertEqual(self.runner.stop_calls, [])
+        events = [call["event"] for call in self.recorder.calls]
+        self.assertIn("candidate_revalidated", events)
+        self.assertNotIn("session_ended", events)
 
     async def test_first_premature_exit_retries_once_after_two_seconds(self):
         await self.watcher.poll_once()

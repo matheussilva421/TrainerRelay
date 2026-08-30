@@ -184,7 +184,12 @@ class ProcessDiscoverer:
         return {key: value for key, value in values.items() if value}
 
     def _evaluate(
-        self, process_dir: Path, identity: str, expected_executable: str, expected_prefix: str
+        self,
+        process_dir: Path,
+        identity: str,
+        expected_executable: str,
+        expected_prefix: str,
+        expected_session: SessionIdentity | None = None,
     ) -> CandidateDecision:
         pid = int(process_dir.name)
         try:
@@ -228,7 +233,9 @@ class ProcessDiscoverer:
             return CandidateDecision(pid, first_stat, relevant, False, "store_mismatch", details)
         if not prefix_matches:
             return CandidateDecision(pid, first_stat, relevant, False, "prefix_mismatch", details)
-        if not self._process_name_matches(process_name, expected_basename):
+        session = SessionIdentity(pid, first_stat)
+        process_name_matches = self._process_name_matches(process_name, expected_basename)
+        if not process_name_matches and session != expected_session:
             return CandidateDecision(pid, first_stat, relevant, False, "process_name_mismatch", details)
         command_matches = any(
             self._resolve_executable_argument(argument.decode("utf-8", errors="ignore"), wineprefix).casefold()
@@ -240,10 +247,17 @@ class ProcessDiscoverer:
             return CandidateDecision(pid, first_stat, relevant, False, "executable_mismatch", details)
         if any(key in environment for key in self.LEGACY_ENVIRONMENT):
             return CandidateDecision(pid, first_stat, True, False, "legacy_settings_present", details)
-        session = SessionIdentity(pid, first_stat)
-        return CandidateDecision(pid, first_stat, True, True, "candidate_accepted", details, session, environment)
+        reason = "candidate_accepted" if process_name_matches else "candidate_revalidated"
+        return CandidateDecision(pid, first_stat, True, True, reason, details, session, environment)
 
-    def discover(self, identity: str, expected_executable: str, expected_prefix: str) -> DiscoveryResult:
+    def discover(
+        self,
+        identity: str,
+        expected_executable: str,
+        expected_prefix: str,
+        *,
+        expected_session: SessionIdentity | None = None,
+    ) -> DiscoveryResult:
         try:
             process_dirs = sorted(
                 (entry for entry in self.proc_root.iterdir() if entry.is_dir() and entry.name.isdigit()),
@@ -252,7 +266,8 @@ class ProcessDiscoverer:
         except OSError:
             return DiscoveryResult(DiscoveryState.WAITING_FOR_GAME, diagnostic="proc_unreadable")
         decisions = tuple(
-            self._evaluate(process_dir, identity, expected_executable, expected_prefix) for process_dir in process_dirs
+            self._evaluate(process_dir, identity, expected_executable, expected_prefix, expected_session)
+            for process_dir in process_dirs
         )
         accepted = tuple(decision for decision in decisions if decision.accepted and decision.session is not None)
         sessions = tuple(decision.session for decision in accepted if decision.session is not None)

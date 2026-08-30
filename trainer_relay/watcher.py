@@ -190,7 +190,7 @@ class RelayWatcher:
 
     def _record_candidate(self, identity: str, decision: CandidateDecision) -> None:
         details: dict[str, Any] = dict(decision.details)
-        event = "candidate_accepted" if decision.accepted else "candidate_rejected"
+        event = decision.reason if decision.accepted else "candidate_rejected"
         if not decision.accepted:
             details["reason"] = decision.reason
         session = decision.session
@@ -338,7 +338,12 @@ class RelayWatcher:
             },
         )
         try:
-            discovery: DiscoveryResult = self._process_discoverer.discover(identity, entry.executable, prefix)
+            discovery: DiscoveryResult = self._process_discoverer.discover(
+                identity,
+                entry.executable,
+                prefix,
+                expected_session=state.session,
+            )
         except Exception:
             discovery = DiscoveryResult(DiscoveryState.WAITING_FOR_GAME, diagnostic="proc_unreadable")
         self._record_discovery(identity, discovery)

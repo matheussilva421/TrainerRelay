@@ -75,6 +75,19 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
             "protonpath",
         }
     ),
+    "candidate_revalidated": frozenset(
+        {
+            "expected_executable",
+            "observed_executable",
+            "expected_prefix",
+            "observed_prefix",
+            "game_id",
+            "process_name",
+            "store",
+            "wineprefix",
+            "protonpath",
+        }
+    ),
     "umu_resolved": frozenset({"source", "umu_path"}),
     "umu_rejected": frozenset({"reason"}),
     "trainer_spawned": frozenset({"trainer_path", "process_group_id"}),
