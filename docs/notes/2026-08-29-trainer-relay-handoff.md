@@ -848,3 +848,31 @@ GOG/Epic validation remains explicitly pending.
   implementation so it participates in a genuine RED/GREEN cycle.
 - Next action: commit and push the plan checkpoint, then execute Task 1 through
   Task 10 inline with focused RED/GREEN evidence and small commits.
+
+### Persistent diagnostics backend Tasks 1-5
+
+- Implemented and committed persistent `DiagnosticSettingsV1`, defaulting to
+  disabled and rejecting malformed persisted values.
+- Added a privacy-bounded diagnostic recorder with exact event schemas,
+  sequence/timestamp/session correlation, repeat consolidation, five rotating
+  10 MiB NDJSON files, malformed-line recovery, opaque cursors, generation
+  reset on clear, and disk-failure isolation from the watcher.
+- Added deterministic UTF-8 TXT export through an fsynced temporary file and
+  atomic rename. Exports use timestamp collision suffixes, remain outside the
+  50 MiB journal, and are not removed by journal clearing.
+- Refactored `/proc` discovery into fail-closed `CandidateDecision` results.
+  Relevant processes now report bounded reasons for recycled PID, missing
+  environment anchors, `GAMEID`, store, prefix, executable, and legacy launch
+  settings without copying full environment or command line data.
+- Wired sanitized games-map, process, UMU, spawn, running, exit, retry,
+  session-change/end, SIGTERM, and SIGKILL events into `RelayWatcher`.
+  `OwnedTrainerRunner.stop()` now returns whether escalation was required, and
+  UMU resolution reports whether its unambiguous path came from the bundle or
+  `PATH` while preserving the old path-only API.
+- Privacy integration coverage proves a prefix rejection reaches cursor and
+  TXT export with identity, PID/start time, and approved paths while excluding
+  a seeded token, legacy command content, full argv, and unrelated process
+  path. Current backend gate: 78/78 tests passed; compileall passed.
+- Commits: `a2dbfc4`, `95f9ea8`, `b6ff587`, `d52199a`, and `62f8f3c`.
+- Next action: Task 6, expose the recorder through strict Decky RPCs and make
+  `main.py` own one shared recorder for watcher/RPC lifecycle.
