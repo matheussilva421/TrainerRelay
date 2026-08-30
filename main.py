@@ -34,7 +34,7 @@ _watcher_task: asyncio.Task[Any] | None = None
 _rpc: RelayRpc | None = None
 _diagnostics: DiagnosticRecorder | None = None
 
-PLUGIN_VERSION = "0.1.0-experimental.14"
+PLUGIN_VERSION = "0.1.0-experimental.15"
 
 
 def _current_config() -> dict[str, Any]:

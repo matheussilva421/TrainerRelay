@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.14
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.15
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -76,6 +76,9 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] With diagnostic mode enabled, reproduce one `waiting_for_game` scan and
   confirm the latest events show `process_scan_summary` plus a bounded
   `candidate_accepted` or `candidate_rejected` reason.
+- [ ] For a game that renames its main thread, confirm a bounded
+  `candidate_revalidated` event keeps the same PID/start time and the trainer
+  reaches `running` instead of receiving an early owned-group `SIGTERM`.
 - [ ] In CEF DevTools, filter `[TrainerRelay:diagnostic]` and confirm live events
   continue while the Diagnostics page itself is closed.
 - [ ] Export TXT and confirm it appears under `/home/deck/Downloads`, is UTF-8,

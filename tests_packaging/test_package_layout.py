@@ -57,8 +57,8 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertFalse(any(name.endswith((".env", ".log", ".pyc", ".map")) for name in names))
         self.assertFalse(any("node_modules" in name or "pnpm-lock" in name for name in names))
 
-        self.assertIn(b'"version": "0.1.0-experimental.14"', package_document)
-        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.14"', main_document)
+        self.assertIn(b'"version": "0.1.0-experimental.15"', package_document)
+        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.15"', main_document)
 
     def test_packaged_runtime_imports_from_decky_py_modules_path(self):
         with tempfile.TemporaryDirectory() as directory:

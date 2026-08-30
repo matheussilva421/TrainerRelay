@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-This repository publishes `v0.1.0-experimental.14`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
+This repository publishes `v0.1.0-experimental.15`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.14).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.15).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -40,7 +40,7 @@ Download the plugin archive, not GitHub's automatically generated `Source code.z
 5. Optionally set an absolute prefix override. When empty, Trainer Relay uses `~/.local/share/unifideck/prefixes/<game_id>`.
 6. Enable the relay and launch the shortcut.
 
-Trainer Relay waits for the matching `unifideck-launcher` process, resolves the actual Windows executable from `/proc`, verifies the prefix and launch identity, and then starts the trainer through UniFiDeck's `umu-run` with `PROTON_VERB=runinprefix`. It never invokes a shell or evaluates user-provided command text.
+Trainer Relay resolves the expected executable from UniFiDeck's mapping, selects the actual Windows process from `/proc`, verifies the prefix and launch identity, and then starts the trainer through UniFiDeck's `umu-run` with `PROTON_VERB=runinprefix`. It never invokes a shell or evaluates user-provided command text.
 
 ## Legacy launch-option migration
 
@@ -57,6 +57,10 @@ The watcher is deliberately fail-closed:
 - zero matching processes means `waiting_for_game`;
 - more than one matching candidate means `ambiguous`, and no trainer starts;
 - PID reuse is rejected using `/proc/<pid>/stat` start time;
+- the executable-like process name is required for initial acquisition, but a
+  previously accepted `PID + starttime` remains valid if the game renames its
+  main thread while executable, prefix, store, and required environment stay
+  unchanged;
 - the game, prefix, environment allowlist, and launch identity must agree;
 - a trainer is considered running only after it remains alive for three seconds;
 - one automatic retry is allowed after a two-second delay while the same game session remains active;

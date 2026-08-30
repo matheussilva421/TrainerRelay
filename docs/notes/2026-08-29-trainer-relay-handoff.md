@@ -1014,3 +1014,48 @@ GOG/Epic validation remains explicitly pending.
   start the same BioShock 2 GOG shortcut, wait for the trainer, and export a new
   TXT whether it succeeds or fails. Confirm the trainer exits with the game and
   that retry/failure never terminates the game. Epic validation remains pending.
+
+### Experimental.15 mutable-main-thread session revalidation
+
+- The physical `.14` export
+  `TrainerRelay-diagnostics-20260830-164555.txt` established the exact failure
+  sequence. PID `57719`, start time `2457048`, executable
+  `Bioshock2HD.exe`, GOG store, UniFiDeck prefix, and required environment were
+  accepted twice. The trainer was spawned as owned group `57748`.
+- Two seconds later the same PID/start-time pair and every stable anchor were
+  unchanged, but `/proc/57719/comm` became `Main Game Threa`. The watcher
+  rejected it as `process_name_mismatch`, emitted `session_ended`, and sent
+  `SIGTERM` to the trainer group before the three-second running gate. The
+  same game PID persisted with the renamed thread for almost two further
+  minutes, disproving game exit and PID reuse.
+- TDD RED reproduced both missing contracts: `ProcessDiscoverer.discover()`
+  could not accept an expected session, and `RelayWatcher` passed no existing
+  session on later scans. GREEN adds an optional exact `expected_session`.
+  Only that PID/start-time pair may bypass a changed `comm`; full executable,
+  prefix, store, required environment, stable double-stat read, and legacy
+  checks still run. New PIDs and recycled start times remain strict.
+- A real fake-`/proc` watcher integration now covers acquisition, trainer
+  spawn, main-thread rename, revalidation, and transition to `running` without
+  `session_ended` or an owned-group stop. Additional tests cover an unrelated
+  pinned session and a recycled PID.
+- Diagnostics now emits privacy-bounded `candidate_revalidated` events. The
+  Python journal and TypeScript RPC decoder share the same allowlisted fields;
+  full command lines and environments remain prohibited.
+- Primary-source findings are recorded in
+  `docs/research/2026-08-30-trainer-relay-runtime-contracts.md`. Linux documents
+  `comm` as thread-mutable and 15-character-truncated; UniFiDeck documents that
+  UMU wrappers inherit `WINEPREFIX`; UMU and Proton/GE document
+  `runinprefix` for additional executables in an active prefix.
+- Version advanced to `0.1.0-experimental.15`. Fresh local gates: backend
+  94/94; compileall passed; Biome checked 63 files; both TypeScript typechecks
+  passed; frontend 186/186 in 25 files; Rollup built; package layout/import
+  2/2.
+- Deterministic `.15` candidate: 21 stored entries, 257,815 bytes, SHA-256
+  `569CD7A42E5B781529E39AF26AC1A464AEB811A4BD59E152FADFACADEFCD077E`.
+  Two independent package generations matched byte-for-byte.
+- Pending: inspect the final diff, commit and push `feat/trainer-relay`, update
+  `main`, publish and verify `v0.1.0-experimental.15`, create the user kit, and
+  then install it on the physical Deck. The required physical GOG result is a
+  `candidate_revalidated` event followed by `trainer_running`, with no early
+  `session_ended`/`owned_group_signal`. Epic remains a separate gate; do not
+  promote stable.
