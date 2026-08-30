@@ -1059,3 +1059,28 @@ GOG/Epic validation remains explicitly pending.
   `candidate_revalidated` event followed by `trainer_running`, with no early
   `session_ended`/`owned_group_signal`. Epic remains a separate gate; do not
   promote stable.
+
+### Experimental.15 publication and user kit checkpoint
+
+- Runtime fix commit `715ebc9` and release preparation commit `597c2eb` were
+  pushed to both `feat/trainer-relay` and `main`. Annotated tag
+  `v0.1.0-experimental.15` points to `597c2eb`.
+- GitHub Actions passed for the feature branch (`33325317711`), main
+  (`33325317839`), and tag/release (`33325348759`). The tag run built and
+  published the Decky asset successfully.
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.15`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.15/TrainerRelay.zip`.
+- The published 257,815-byte asset has SHA-256
+  `569CD7A42E5B781529E39AF26AC1A464AEB811A4BD59E152FADFACADEFCD077E`
+  and matches the fresh local deterministic package byte-for-byte.
+- Created `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.15-kit`
+  with the versioned ZIP, Portuguese guide, validation checklist,
+  `LEIA-ME.txt`, and `SHA256SUMS.txt`.
+- No physical PASS is claimed yet. Install `.15` over the current plugin, keep
+  Diagnostics enabled, launch the same BioShock 2 GOG shortcut, wait at least
+  five seconds after the game appears, and export a new TXT. The expected
+  sequence is `candidate_revalidated` followed by `trainer_running`, without
+  premature `session_ended`/`owned_group_signal`. Confirm selective shutdown
+  when the game closes. Epic remains a separate gate; do not promote stable.
