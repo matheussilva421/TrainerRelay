@@ -680,3 +680,19 @@ GOG/Epic validation remains explicitly pending.
   same Trainer Relay screen open on the focused trainer row, and reconnect to
   port 8081. Do not publish another release before this trace identifies the
   boundary that suppresses activation.
+
+### Remote CEF forwarding failure
+
+- The user enabled Decky's remote CEF option and restarted Steam, while the
+  Deck retained `192.168.1.247`. The host still answered ICMP, but TCP ports
+  22, 8080, 8081, and 1337 were all closed from the development PC.
+- This rules out a stale IP and confirms that Decky's remote toggle did not
+  expose the local CEF endpoint on this installation.
+- Official Decky discussion #860 records the same current failure: CEF remains
+  bound to `127.0.0.1:8080` and must be forwarded manually to
+  `0.0.0.0:8081` with `socat` for remote inspection:
+  https://github.com/SteamDeckHomebrew/decky-loader/discussions/860
+- Next action: from Desktop Mode, run a temporary foreground `socat` forward,
+  reconnect to `http://192.168.1.247:8081`, and capture the live
+  SharedJSContext event path. Keep this diagnostic bridge temporary and do not
+  publish `.12` before the trace identifies the failing boundary.
