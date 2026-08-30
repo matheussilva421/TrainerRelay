@@ -1232,3 +1232,28 @@ GOG/Epic validation remains explicitly pending.
 - No `.17` build or runtime edit is authorized by this checkpoint. The invoked
   diagnosis skills require the physical A/B or equivalent captured evidence
   before proceeding to a TDD fix.
+
+### Physical install-path A/B — hypothesis refuted
+
+- `TrainerRelay-diagnostics-20260830-211159.txt` used plugin `.16` and the same
+  FLiNG trainer copied beside `Bioshock2HD.exe` in the game's `Build/Final`
+  directory. The real game session was accepted as PID `75175`, start time
+  `4053062`, and remained valid through 134 `candidate_revalidated` events.
+- First owned trainer group `75202` exited code `1` after 2,134 ms. The single
+  automatic retry launched group `75520`, which exited code `1` after 3,207
+  ms. There was no `trainer_running`; the game session remained intact until
+  `session_ended` at 21:11:51 UTC.
+- Because the same executable failed identically after moving inside the game
+  install directory, the inherited `STEAM_COMPAT_INSTALL_PATH` mismatch is not
+  the primary cause. Do not ship the previously proposed install-path rewrite
+  as a claimed fix.
+- Remaining ranked causes are: an incompatible copied Proton/Steam variable; a
+  need to re-enter the existing UMU container; a FLiNG/GE-Proton-specific
+  startup failure; or an untracked child process after the UMU parent exits.
+  The `.16` export cannot distinguish them because it intentionally excludes
+  trainer/UMU stdout and stderr.
+- Proposed bounded diagnostic change, awaiting explicit approval: continuously
+  drain UMU stdout/stderr to prevent pipe blocking while retaining only a small
+  sanitized tail; record bounded byte counts, redacted tail/classification, and
+  process-group member metadata when the UMU parent exits. Apply TDD first and
+  do not change prefix, environment, retry, or launch behavior in that build.
