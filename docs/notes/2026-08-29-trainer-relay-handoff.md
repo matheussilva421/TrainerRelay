@@ -575,3 +575,17 @@ GOG/Epic validation remains explicitly pending.
   `1A29293153C6A5BDA47ADCC1877CFDF654DAA57685446B3B18CD31861992F864`.
   Physical validation is still required; no claim of a hardware fix should be
   made until the user presses `A` on `Choose trainer` in `.10`.
+- Runtime/docs commit `bf6703f` (`fix: allow safe configuration during legacy
+  migration`) was pushed to `origin/feat/trainer-relay` and `origin/main`.
+  Branch and main workflows passed (`33283443497`, `33283443476`). Tag
+  `v0.1.0-experimental.10` points to that commit; tag/release workflow
+  `33283462760` passed and published the prerelease.
+- Release: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.10
+  Direct asset: https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.10/TrainerRelay.zip
+  The independently downloaded asset matched the local ZIP exactly at 179,747
+  bytes and SHA-256
+  `1A29293153C6A5BDA47ADCC1877CFDF654DAA57685446B3B18CD31861992F864`.
+- User kit created at
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.10-kit` with the
+  versioned official ZIP and updated Portuguese guide. Next action: install
+  `.10`, open the same GOG shortcut, and press `A` on `Choose trainer`.
