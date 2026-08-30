@@ -909,3 +909,33 @@ GOG/Epic validation remains explicitly pending.
   tag and publish `.13`, verify CI and asset bytes, create the Downloads kit,
   then install on the physical Deck. GOG and Epic trainer behavior remain
   physical gates; do not promote to stable.
+
+### Experimental.13 publication and user kit checkpoint
+
+- Release candidate commit `abb8f53e23636199bb7bfd94af5c38249aac9bce`
+  was pushed to `feat/trainer-relay` and `main`; tag
+  `v0.1.0-experimental.13` points to it.
+- GitHub Actions passed for the feature branch (`33310698181`), main
+  (`33310699929`), and tag/release (`33310716123`).
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.13`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.13/TrainerRelay.zip`.
+- The published asset is 253,404 bytes with SHA-256
+  `BFA2EEF6EC96A0F4A97EBC995C142617D08C83DF488F5EB8E88F5B2F2619D481`.
+  A fresh independent download matched the regenerated local deterministic
+  ZIP byte-for-byte.
+- Created the final delivery kit at
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.13-kit` with the
+  versioned ZIP, Portuguese installation/log guide, Steam Deck validation
+  checklist, `LEIA-ME.txt`, and `SHA256SUMS.txt`. The copied ZIP retained the
+  expected size and SHA-256.
+- Final post-publication gates on the tagged tree: backend 86/86; compileall;
+  Biome 63 files; both TypeScript typechecks; frontend 185/185 in 25 files;
+  Rollup build; package layout/import 2/2. The PowerShell `pnpm` wrapper waited
+  on PTY input, so the same project-local Biome, TypeScript, Vitest, and Rollup
+  binaries were executed directly and passed.
+- Remaining product acceptance is physical only: install `.13`, leave
+  diagnostics enabled, reproduce one GOG and one Epic session, export the TXT,
+  and confirm trainer launch, one-instance behavior, retry safety, and
+  selective shutdown. Keep the release experimental until both titles pass.

@@ -617,7 +617,7 @@ git add -- package.json README.md docs/GUIA-INSTALACAO-TESTES-E-LOGS.md docs/STE
 git commit -m "release: prepare experimental 13 diagnostics"
 ```
 
-- [ ] **Step 7: Push, tag, verify CI/release asset, and create user kit**
+- [x] **Step 7: Push, tag, verify CI/release asset, and create user kit**
 
 Push `feat/trainer-relay` and `main`, tag `v0.1.0-experimental.13`, wait for branch/main/tag workflows, download the published `TrainerRelay.zip`, compare SHA-256 byte-for-byte with the local deterministic ZIP, and create `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.13-kit` containing the verified ZIP and Portuguese guide.
 
