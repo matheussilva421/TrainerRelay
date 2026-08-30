@@ -1299,3 +1299,31 @@ GOG/Epic validation remains explicitly pending.
   an overstrong documentation claim about inherited stdout/stderr. Commit/push,
   tag/release, public asset comparison, kit creation, and physical GOG/Epic
   validation remain pending at this checkpoint.
+
+### Experimental.17 publication and installation kit
+
+- Commit `7a1e593` (`fix: re-enter active UMU container`) was pushed to both
+  `feat/trainer-relay` and `main`. Annotated tag
+  `v0.1.0-experimental.17` points to the same commit.
+- GitHub Actions passed for the feature branch (`33340211504`), main
+  (`33340225388`), and tag/release (`33340251841`). The tag workflow completed
+  frontend, backend, package-layout/build, and release publication jobs.
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.17`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.17/TrainerRelay.zip`.
+- The public asset is 285,075 bytes with SHA-256
+  `9516DA7AB6ECC92448F21C785D136EE7A4E53B2F74355194ABD227E1BE8CC095`.
+  Its bytes exactly match the final local deterministic package.
+- Created and verified
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.17-kit` with
+  the versioned public ZIP, Portuguese guide, validation checklist, README,
+  context, `LEIA-ME.txt`, and `SHA256SUMS.txt`. The kit ZIP and copied guide
+  match their sources byte-for-byte.
+- Physical validation remains the only blocker. Install `.17`, select the
+  trainer, confirm **Prepare UMU container re-entry**, close/relaunch the GOG
+  game, and export a TXT. Expected order:
+  `container_reentry_verified`, `trainer_spawned`, `trainer_running`. If the
+  preflight fails, send the bounded `container_reentry_*` code and TXT; no
+  trainer should have been launched. Epic remains a separate gate and stable
+  promotion remains prohibited until both stores pass.
