@@ -1173,3 +1173,36 @@ GOG/Epic validation remains explicitly pending.
 - Physical validation remains pending. Install `.16`, keep Diagnostics enabled,
   test the same BioShock 2 GOG shortcut, and export a TXT after the game/trainer
   attempt. GOG and Epic must both pass before stable promotion.
+
+### Experimental.16 physical GOG result — UMU exits before trainer running
+
+- `TrainerRelay-diagnostics-20260830-205118.txt` confirms the Deck installed
+  plugin version `0.1.0-experimental.16`. The real BioShock process was accepted
+  as PID `61566`, start time `3930176`, and retained through 119
+  `candidate_revalidated` events until the actual game session ended.
+- `.16` reconstructed the intended UMU boundary correctly on both attempts:
+  `WINEPREFIX` and `STEAM_COMPAT_DATA_PATH` were equal to
+  `/home/deck/.local/share/unifideck/prefixes/1482265668`, without `/pfx`, and
+  `PROTON_VERB=runinprefix`. The bundled UniFiDeck `umu-run` was resolved.
+- First owned group `61580` exited code `1` after 3,218 ms. The new retry rule
+  scheduled exactly one retry after two seconds. Second owned group `61685`
+  exited code `1` after 3,171 ms. Neither attempt emitted `trainer_running`.
+  No `owned_group_signal` was sent and the game remained active for more than
+  two additional minutes. Therefore session retention, prefix reconstruction,
+  retry cardinality, and game isolation passed; trainer launch failed.
+- Strongest next hypothesis: Trainer Relay still copies the game's
+  `STEAM_COMPAT_INSTALL_PATH`. UniFiDeck sets it to the game work directory,
+  while the selected FLiNG executable is under `/home/deck/Games/Trainers`.
+  Current UMU preserves a supplied nonempty install path and only derives the
+  executable parent when it is absent. A new pressure-vessel invocation may
+  therefore lack the correct trainer-side mount/path context and exit before
+  Wine keeps the trainer alive.
+- Next correction must be TDD-first: rebuild
+  `STEAM_COMPAT_INSTALL_PATH` from the trainer executable's parent (or omit it
+  so UMU derives that parent), expose the effective value in the bounded
+  `trainer_spawned` diagnostic, retain `PROTON_VERB` assignment last, and add
+  regressions for trainers outside the game directory. Do not claim this
+  hypothesis proven until a new physical export reaches `trainer_running`.
+- No runtime source was changed in this diagnostic turn. Physical GOG status is
+  FAIL for trainer startup but PASS for leaving the game intact. Epic remains
+  untested and stable promotion remains blocked.
