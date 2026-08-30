@@ -631,3 +631,28 @@ GOG/Epic validation remains explicitly pending.
   by `handler-enter` and opens Decky's browser.
 - Pending: commit/push/tag/publish `.11`, independently verify the release asset, create
   the `.11` user kit, then run the physical GOG test followed by one Epic test.
+
+### Experimental.11 publication checkpoint
+
+- Runtime/research/release commit `e672c8f7529d2cda385b9ce1443a6bf0ddb4bc7f`
+  was pushed to `origin/feat/trainer-relay` and `origin/main`.
+- Tag `v0.1.0-experimental.11` points to that commit. Branch run
+  `33285548694`, main run `33285560971`, and tag/release run `33285578347`
+  all passed. The tag workflow published the prerelease and its installation
+  asset.
+- Release:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.11`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.11/TrainerRelay.zip`.
+- GitHub reports 176,965 bytes and digest
+  `sha256:5573edb2e9af27f51c320637accec5a95c4f99519228fb8ae7ea678c67f99e0e`.
+  A fresh independent download matched the local deterministic package
+  byte-for-byte.
+- User kit created at
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.11-kit` with
+  `TrainerRelay-v0.1.0-experimental.11.zip` and the Portuguese `LEIA-ME.md`.
+- Remaining acceptance gate: install `.11` on the physical Deck, open the same
+  GOG shortcut, focus **Trainer executable**, press `A`, confirm
+  `ui-activated -> handler-enter -> api-call` and navigate Decky's browser.
+  Then finish the trainer launch/lifecycle checklist and repeat with one Epic
+  shortcut. Do not promote to stable before both physical tests pass.
