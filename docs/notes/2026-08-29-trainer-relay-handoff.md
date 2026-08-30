@@ -1146,3 +1146,30 @@ GOG/Epic validation remains explicitly pending.
   `test_runner.py`, watcher, fake-`/proc`, and diagnostic integration tests cover
   structured argv, environment handoff, new-session ownership, selective group
   shutdown, and privacy. No production change was made for those two findings.
+
+### Experimental.16 publication and user kit checkpoint
+
+- Runtime commit `ea52795` and release commit `9ca7f8b` were pushed to both
+  `feat/trainer-relay` and `main`. Annotated tag
+  `v0.1.0-experimental.16` points to `9ca7f8b`.
+- GitHub Actions passed for the feature branch (`33328679987`), main
+  (`33328680258`), and tag/release (`33328693883`). The tag workflow published
+  the Decky asset successfully.
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.16`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.16/TrainerRelay.zip`.
+- The public asset is 261,236 bytes with SHA-256
+  `DB88075B7D3A00B9077775A349B3D0632C5CE3FBAE39E0900FADB6FCA491CBCE`
+  and matches the freshly rebuilt local package byte-for-byte.
+- Created `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.16-kit`
+  with the versioned published ZIP, Portuguese guide, validation checklist,
+  README, `LEIA-ME.txt`, and `SHA256SUMS.txt`; the kit copy has the same hash.
+- Local committed-tree gates passed: backend 103/103; compileall; Biome 63
+  files; two TypeScript typechecks; frontend 187/187 in 25 files; Rollup;
+  package layout/import 2/2; deterministic ZIP. The global `pnpm` shim remained
+  hung without output, so the equivalent project-local executables were used;
+  all Linux CI workflows using pnpm passed independently.
+- Physical validation remains pending. Install `.16`, keep Diagnostics enabled,
+  test the same BioShock 2 GOG shortcut, and export a TXT after the game/trainer
+  attempt. GOG and Epic must both pass before stable promotion.
