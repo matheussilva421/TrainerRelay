@@ -247,6 +247,8 @@ class ProcessDiscoverer:
             return CandidateDecision(pid, first_stat, relevant, False, "executable_mismatch", details)
         if any(key in environment for key in self.LEGACY_ENVIRONMENT):
             return CandidateDecision(pid, first_stat, True, False, "legacy_settings_present", details)
+        if environment.get("UMU_CONTAINER_NSENTER") != "1":
+            return CandidateDecision(pid, first_stat, True, False, "container_reentry_missing", details)
         reason = "candidate_accepted" if process_name_matches else "candidate_revalidated"
         return CandidateDecision(pid, first_stat, True, True, reason, details, session, environment)
 
@@ -277,6 +279,14 @@ class ProcessDiscoverer:
                 DiscoveryState.INVALID_CONFIG,
                 candidates=sessions,
                 diagnostic="legacy_settings_present",
+                decisions=decisions,
+                rejection_counts=rejection_counts,
+            )
+        if any(decision.reason == "container_reentry_missing" for decision in decisions):
+            return DiscoveryResult(
+                DiscoveryState.INVALID_CONFIG,
+                candidates=sessions,
+                diagnostic="container_reentry_missing",
                 decisions=decisions,
                 rejection_counts=rejection_counts,
             )

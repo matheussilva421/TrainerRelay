@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .config import default_prefix_for, is_launch_identity, validate_game_config
+from .container_reentry import ContainerReentryProbe
 from .diagnostics import (
     DiagnosticRecorder,
     DiagnosticSession,
@@ -23,6 +24,15 @@ from .environment import build_sanitized_environment
 from .games_map import load_games_map
 from .process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity
 from .types import DiscoveryState, RelayStatus
+
+
+_DIAGNOSTIC_RUNTIME_FLAGS = frozenset(
+    {
+        "STEAM_COMPAT_LAUNCHER_SERVICE",
+        "STEAM_RUNTIME_LIBRARY_PATH",
+        "UMU_CONTAINER_NSENTER",
+    }
+)
 
 
 @dataclass
@@ -45,6 +55,7 @@ class RelayWatcher:
         map_loader: Callable[[str | os.PathLike[str]], Any] = load_games_map,
         process_discoverer: ProcessDiscoverer | Any | None = None,
         umu_resolver: Callable[[], Any] | None = None,
+        container_probe: Any | None = None,
         runner: Any,
         home: str | os.PathLike[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
@@ -58,6 +69,7 @@ class RelayWatcher:
         self._umu_resolver = umu_resolver or (lambda: None)
         self._runner = runner
         self._home = os.fspath(home) if home is not None else str(Path.home())
+        self._container_probe = container_probe or ContainerReentryProbe(self._home)
         self._clock = clock
         self._sleep = sleep
         self._diagnostics = diagnostics or NullDiagnosticRecorder()
@@ -173,6 +185,24 @@ class RelayWatcher:
         if forget is not None:
             await self._maybe_await(forget(handle))
 
+    async def _exit_diagnostics(self, handle: object) -> Mapping[str, Any] | None:
+        getter = getattr(self._runner, "exit_diagnostics", None)
+        if getter is None:
+            return None
+        try:
+            result = await self._maybe_await(getter(handle))
+        except (OSError, ValueError):
+            return None
+        if result is None:
+            return None
+        if isinstance(result, Mapping):
+            return result
+        to_wire = getattr(result, "to_wire", None)
+        if to_wire is None:
+            return None
+        value = to_wire()
+        return value if isinstance(value, Mapping) else None
+
     def _set_state(self, state: _RelayState, value: RelayStatus, diagnostic: str | None = None) -> None:
         state.state = value
         state.diagnostic = diagnostic
@@ -240,20 +270,52 @@ class RelayWatcher:
                 details={"source": str(umu_source), "umu_path": str(umu_path)},
             )
             trainer_path = str(game["trainerPath"])
-            safe_environment = build_sanitized_environment(environment, prefix)
+            source_environment = dict(environment)
+            if getattr(self._diagnostics, "enabled", False):
+                # UMU_LOG=1 enables DEBUG and logs the complete derived UMU
+                # environment. INFO retains re-entry/failure messages without
+                # emitting that privacy-sensitive dump.
+                source_environment["UMU_LOG"] = "info"
+            safe_environment = build_sanitized_environment(source_environment, prefix)
+            reentry = await self._maybe_await(self._container_probe.verify(safe_environment))
+            self._record(
+                "umu",
+                "container_reentry_verified",
+                "accepted",
+                identity=identity,
+                session=session,
+                details={
+                    "bus_name": str(reentry.bus_name),
+                    "runtime_variant": str(reentry.runtime_variant),
+                    "attempt_count": int(reentry.attempts),
+                },
+            )
             state.handle = await self._maybe_await(self._runner.spawn(session, trainer_path, safe_environment))
         except Exception as error:
             candidate_code = str(error)
-            code = candidate_code if candidate_code in {"umu_not_found", "umu_ambiguous"} else "trainer_spawn_failed"
-            event = "umu_rejected" if code.startswith("umu_") else "trainer_spawn_failed"
+            bounded_codes = {
+                "umu_not_found",
+                "umu_ambiguous",
+                "container_reentry_unsupported",
+                "container_reentry_probe_failed",
+                "container_reentry_bus_missing",
+            }
+            code = candidate_code if candidate_code in bounded_codes else "trainer_spawn_failed"
+            event = (
+                "container_reentry_rejected"
+                if code.startswith("container_reentry_")
+                else "umu_rejected"
+                if code.startswith("umu_")
+                else "trainer_spawn_failed"
+            )
             self._record(
-                "umu" if event == "umu_rejected" else "trainer",
+                "umu" if event in {"umu_rejected", "container_reentry_rejected"} else "trainer",
                 event,
-                "rejected" if event == "umu_rejected" else "error",
+                "rejected" if event in {"umu_rejected", "container_reentry_rejected"} else "error",
                 identity=identity,
                 session=session,
                 details={"reason": code}
-                if event == "umu_rejected"
+                if event in {"umu_rejected", "container_reentry_rejected"}
                 else {"trainer_path": str(game["trainerPath"]), "reason": code},
             )
             state.handle = None
@@ -265,6 +327,9 @@ class RelayWatcher:
             "wineprefix": safe_environment["WINEPREFIX"],
             "steam_compat_data_path": safe_environment["STEAM_COMPAT_DATA_PATH"],
             "proton_verb": safe_environment["PROTON_VERB"],
+            "container_reentry": "enabled" if safe_environment.get("UMU_CONTAINER_NSENTER") == "1" else "missing",
+            "environment_key_count": len(safe_environment),
+            "runtime_flags": ",".join(sorted(_DIAGNOSTIC_RUNTIME_FLAGS.intersection(environment))),
         }
         process_group_id = self._process_group_id(state.handle)
         if process_group_id is not None:
@@ -458,6 +523,16 @@ class RelayWatcher:
             launched_at = state.launched_at
             state.handle = None
             state.launched_at = None
+            exit_diagnostics = await self._exit_diagnostics(handle)
+            if exit_diagnostics is not None:
+                self._record(
+                    "umu",
+                    "umu_exit_diagnostics",
+                    "warning" if not was_running else "info",
+                    identity=identity,
+                    session=state.session,
+                    details=exit_diagnostics,
+                )
             await self._discard_exited(handle)
             elapsed = now - (launched_at if launched_at is not None else now)
             self._record(

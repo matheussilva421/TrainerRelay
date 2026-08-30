@@ -8,6 +8,30 @@ describe("planLegacyMigration", () => {
     expect(planLegacyMigration(LaunchOptions.parse("KEEP=1 %command% gog:game-1"))).toEqual({ status: "none" });
   });
 
+  it("prepares a plain UniFiDeck identity for UMU container re-entry after a trainer is selected", () => {
+    expect(planLegacyMigration("gog:1482265568", "/home/deck/Trainers/Game.exe")).toEqual({
+      status: "ready",
+      trainerPath: "/home/deck/Trainers/Game.exe",
+      launchOptions: "UMU_CONTAINER_NSENTER=1 %command% gog:1482265568",
+      changes: "container",
+    });
+  });
+
+  it("requires exactly one canonical container re-entry assignment", () => {
+    const trainerPath = "/home/deck/Trainers/Game.exe";
+    expect(planLegacyMigration("UMU_CONTAINER_NSENTER=1 %command% gog:one", trainerPath)).toEqual({
+      status: "none",
+    });
+    expect(
+      planLegacyMigration("UMU_CONTAINER_NSENTER=0 UMU_CONTAINER_NSENTER=1 %command% gog:one", trainerPath),
+    ).toEqual({
+      status: "ready",
+      trainerPath,
+      launchOptions: "UMU_CONTAINER_NSENTER=1 %command% gog:one",
+      changes: "container",
+    });
+  });
+
   it("returns one decoded exe and the exact source after removing the legacy pair", () => {
     const original = "KEEP='a value' %command% --profile 'Deck Profile' gog:game-1";
     const enabled = sidecarProgram.set(LaunchOptions.parse(original), "/home/deck/Trainers/My Trainer's.exe");
@@ -17,7 +41,8 @@ describe("planLegacyMigration", () => {
     expect(planLegacyMigration(enabled.value)).toEqual({
       status: "ready",
       trainerPath: "/home/deck/Trainers/My Trainer's.exe",
-      launchOptions: original,
+      launchOptions: "KEEP='a value' UMU_CONTAINER_NSENTER=1 %command% --profile 'Deck Profile' gog:game-1",
+      changes: "legacy_and_container",
     });
   });
 
@@ -30,7 +55,9 @@ describe("planLegacyMigration", () => {
     expect(planLegacyMigration(source)).toEqual({
       status: "ready",
       trainerPath: "/two.exe",
-      launchOptions: "KEEP=1  OTHER='two words' UNRELATED=3 %command% --flag 'literal value' epic:one",
+      launchOptions:
+        "KEEP=1  OTHER='two words' UNRELATED=3 UMU_CONTAINER_NSENTER=1 %command% --flag 'literal value' epic:one",
+      changes: "legacy_and_container",
     });
   });
 

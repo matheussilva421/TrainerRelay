@@ -72,7 +72,7 @@ export const buildTrainerRelayViewModel = (
     };
   }
 
-  const migration = planLegacyMigration(details.snapshot.launchOptions);
+  const migration = planLegacyMigration(details.snapshot.launchOptions, config?.trainerPath);
   const migrationClear = migration.status === "none";
   return {
     kind: "supported",

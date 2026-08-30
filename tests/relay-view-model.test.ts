@@ -51,6 +51,26 @@ describe("Trainer Relay view model", () => {
     expect(model.controls).toEqual({ browse: true, enable: false, retry: false });
   });
 
+  it("requires verified container preparation after a trainer is selected", () => {
+    const model = buildTrainerRelayViewModel(
+      {
+        status: "ready",
+        snapshot: { command: "/usr/bin/unifideck-launcher", launchOptions: "gog:1482265568" },
+      },
+      { enabled: false, trainerPath: "/home/deck/Trainers/Game.exe" },
+    );
+
+    expect(model.kind).toBe("supported");
+    if (model.kind !== "supported") throw new Error("expected supported model");
+    expect(model.migration).toEqual({
+      status: "ready",
+      trainerPath: "/home/deck/Trainers/Game.exe",
+      launchOptions: "UMU_CONTAINER_NSENTER=1 %command% gog:1482265568",
+      changes: "container",
+    });
+    expect(model.controls.enable).toBe(false);
+  });
+
   it("blocks configuration when a legacy pair is present and renders the safe status code", () => {
     const model = buildTrainerRelayViewModel(
       {

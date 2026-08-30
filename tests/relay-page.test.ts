@@ -195,4 +195,25 @@ describe("Trainer Relay page", () => {
       controller.currentConfig.trainerPath = previousTrainerPath;
     }
   });
+
+  it("explains the required UMU container preparation without calling it a legacy repair", () => {
+    const previousMigration = controller.model.migration;
+    const previousTrainerPath = controller.currentConfig.trainerPath;
+    (controller.model as { migration: unknown }).migration = {
+      status: "ready",
+      trainerPath: "/home/deck/trainer.exe",
+      launchOptions: "UMU_CONTAINER_NSENTER=1 %command% gog:1482265568",
+      changes: "container",
+    };
+    controller.currentConfig.trainerPath = "/home/deck/trainer.exe";
+
+    try {
+      const text = textContent(RelayPage({ appid: 48_226_5568 }));
+      expect(text).toContain("Prepare UMU container re-entry");
+      expect(text).not.toContain("incomplete or unsafe");
+    } finally {
+      controller.model.migration = previousMigration;
+      controller.currentConfig.trainerPath = previousTrainerPath;
+    }
+  });
 });

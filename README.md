@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-This repository publishes `v0.1.0-experimental.16`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract is the same Wine prefix, not a formal guarantee that the trainer runs inside the same pressure-vessel container as the game.
+This repository publishes `v0.1.0-experimental.17`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.16).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.17).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -36,17 +36,28 @@ Download the plugin archive, not GitHub's automatically generated `Source code.z
 1. Open the UniFiDeck shortcut's game details in Game Mode.
 2. Open the **Trainer Relay** menu.
 3. Use the focused folder button to browse the Deck and select an absolute Windows `.exe` trainer. The path field is read-only; Trainer Relay rejects relative paths, `.bat` files, and arguments.
-4. Leave **Enable Trainer Relay** off until the path is selected and any migration prompt has been reviewed.
+4. Confirm **Prepare UMU container re-entry**. Trainer Relay adds exactly one
+   `UMU_CONTAINER_NSENTER=1` assignment, re-reads AppDetails, and enables only
+   after Steam confirms the expected launch options.
 5. Optionally set an absolute prefix override. When empty, Trainer Relay uses `~/.local/share/unifideck/prefixes/<game_id>`.
-6. Enable the relay and launch the shortcut.
+6. If the game was already open, close and relaunch it after preparation.
 
-Trainer Relay resolves the expected executable from UniFiDeck's mapping, selects the actual Windows process from `/proc`, verifies the prefix and launch identity, and then starts the trainer through UniFiDeck's `umu-run` with `PROTON_VERB=runinprefix`. It never invokes a shell or evaluates user-provided command text.
+Trainer Relay resolves the expected executable from UniFiDeck's mapping,
+selects the actual Windows process from `/proc`, verifies the prefix and launch
+identity, and then starts the trainer through UniFiDeck's `umu-run`. UMU locates
+the same-prefix launcher-service bus, re-enters the game's container with
+`steam-runtime-launch-client`, and uses `PROTON_VERB=runinprefix`. It never
+invokes a shell or evaluates user-provided command text.
 
 ## Legacy launch-option migration
 
 Earlier CheatDeck setups may have used `PROTON_REMOTE_DEBUG_CMD` and `PRESSURE_VESSEL_FILESYSTEMS_RW` in Steam launch options. Trainer Relay can identify these two legacy variables and show the trainer it found before offering migration.
 
-The migration preserves `%command%`, the `epic:<game_id>` or `gog:<game_id>` token, and unrelated launch options. It removes only the two legacy assignments. After saving, Trainer Relay re-reads AppDetails and enables the new configuration only when the expected text is confirmed.
+The migration preserves `%command%`, the `epic:<game_id>` or `gog:<game_id>`
+token, and unrelated launch options. It removes only the two legacy
+assignments and adds `UMU_CONTAINER_NSENTER=1`. After saving, Trainer Relay
+re-reads AppDetails and enables the new configuration only when the expected
+text is confirmed.
 
 If CheatDeck reintroduces either legacy variable, Trainer Relay fails closed and reports `invalid_config`. Remove or migrate the legacy options before trying again. If the proposed trainer is not the one intended for the shortcut, cancel the migration and configure the path manually.
 
@@ -62,6 +73,11 @@ The watcher is deliberately fail-closed:
   main thread while executable, prefix, store, and required environment stay
   unchanged;
 - the game, prefix, environment allowlist, and launch identity must agree;
+- the accepted game process must contain `UMU_CONTAINER_NSENTER=1`; otherwise
+  the plugin reports `container_reentry_missing` and launches nothing;
+- before spawn, the plugin resolves the matching UMU runtime launch client and
+  requires the exact same-prefix bus to be listed; otherwise it reports a
+  bounded `container_reentry_*` code and launches nothing;
 - the `umu-run` sidecar receives the selected UniFiDeck compatdata root, not the
   child process's Proton-expanded `<root>/pfx` value;
 - a trainer is considered running only after it remains alive for three seconds;
@@ -79,7 +95,7 @@ Experimental `.13` adds a separate **Diagnostics** page. Diagnostic mode is off 
 
 **Export TXT** writes a timestamped report atomically to `/home/deck/Downloads`. **Clear logs** removes only Trainer Relay's rotating journal and metadata after confirmation; it does not remove exported TXT files. While diagnostic mode is enabled, the same sanitized events appear in CEF DevTools under the filter `[TrainerRelay:diagnostic]`.
 
-Allowed technical values are limited to identity/session anchors, expected and observed executable/prefix paths, trainer and `umu-run` paths, `GAMEID`, `STORE`, `WINEPREFIX`, `PROTONPATH`, bounded counts, exit codes, and timing. The journal rejects complete environments, complete command lines, credentials, cookies, tokens, authorization data, legacy debug-command content, and trainer stdout/stderr. The environment copied to the trainer is a separate explicit allowlist; `PROTON_REMOTE_DEBUG_CMD` is never copied, the UMU-derived `STEAM_COMPAT_CLIENT_INSTALL_PATH` is not replayed, and `PROTON_VERB=runinprefix` is set last.
+Allowed technical values are limited to identity/session anchors, expected and observed executable/prefix paths, trainer and `umu-run` paths, `GAMEID`, `STORE`, `WINEPREFIX`, `PROTONPATH`, bounded counts, exit codes, and timing. The journal rejects complete environments, complete command lines, credentials, cookies, tokens, authorization data, and legacy debug-command content. When a spawned process exits, it may retain at most a 1,024-character sanitized tail from each inherited UMU stdout/stderr pipe; because Proton/Wine children can inherit those pipes, review that small tail before sharing an export. The environment copied to the trainer is a separate explicit allowlist; `PROTON_REMOTE_DEBUG_CMD` is never copied, the UMU-derived `STEAM_COMPAT_CLIENT_INSTALL_PATH` is not replayed, and `PROTON_VERB=runinprefix` is set last.
 
 For the physical-device checklist, see [`docs/STEAM-DECK-VALIDATION.md`](docs/STEAM-DECK-VALIDATION.md). For the architectural decision, see [`docs/adr/0001-session-watcher.md`](docs/adr/0001-session-watcher.md).
 
@@ -93,7 +109,14 @@ To roll back, disable the per-game Trainer Relay configuration or uninstall the 
 - **The game opens but the trainer remains at `waiting_for_game`:** install `.14`, enable the persistent mode on the **Diagnostics** page, reproduce once, then export the TXT. Look for `candidate_rejected` and its bounded reason such as `prefix_mismatch`, `process_name_mismatch`, `store_mismatch`, or `executable_mismatch`. `.14` accepts UniFiDeck's valid `GAMEID=umu-0` while still rejecting UMU wrappers and Wine helper processes.
 - **`waiting_for_game`:** launch the shortcut from UniFiDeck and allow the launcher to reach the game process before pressing Retry.
 - **`ambiguous`:** close duplicate launcher/game instances and try again. Trainer Relay will not guess.
-- **`invalid_config`:** remove the legacy variables, or complete the migration prompt and verify the resulting launch options.
+- **`invalid_config (container_reentry_missing)`:** complete UMU container
+  preparation, close the currently running game, and launch it again.
+- **`invalid_config (container_reentry_bus_missing)`:** the prepared game did
+  not expose the exact same-prefix service after five probes; restart it and
+  export Diagnostics. `container_reentry_unsupported` or
+  `container_reentry_probe_failed` means the runtime/client could not be
+  identified or queried safely.
+- **Other `invalid_config`:** remove the legacy variables, or complete the migration prompt and verify the resulting launch options.
 - **`failed`:** confirm the `.exe` is absolute and readable, the prefix exists, and the trainer supports the game's Wine environment.
 - **Trainer window not visible:** switch between open windows with the Steam button; this plugin does not force window focus.
 

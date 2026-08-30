@@ -63,9 +63,13 @@ def build_sanitized_environment(source: Mapping[str, str], prefix_anchor: str | 
     # This is derived by umu-run. Replaying the Proton child's value can pin a
     # symlinked Steam root and make pressure-vessel fail before Wine starts.
     result.pop("STEAM_COMPAT_CLIENT_INSTALL_PATH", None)
+    # A launcher service inherited from the game points at the existing UMU
+    # process. umu-run must resolve the service itself for this invocation.
+    result.pop("STEAM_COMPAT_LAUNCHER_SERVICE", None)
     if prefix_anchor is not None:
         umu_prefix = _umu_prefix_root(prefix_anchor)
         result["WINEPREFIX"] = umu_prefix
         result["STEAM_COMPAT_DATA_PATH"] = umu_prefix
+    result["UMU_CONTAINER_NSENTER"] = "1"
     result["PROTON_VERB"] = "runinprefix"
     return result

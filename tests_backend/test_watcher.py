@@ -2,7 +2,9 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
+from trainer_relay.container_reentry import ContainerReentryError
 from trainer_relay.games_map import GamesMapDiagnostic, GamesMapEntry, GamesMapResult
 from trainer_relay.process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity
 from trainer_relay.runner import StopResult
@@ -29,9 +31,16 @@ class FakeRunner:
         self.stop_calls.append(handle)
         return StopResult(forced=False)
 
+    def exit_diagnostics(self, handle):
+        return handle.get("exit_diagnostics")
+
+    def forget(self, handle):
+        return None
+
 
 class FakeRecorder:
-    def __init__(self):
+    def __init__(self, enabled=True):
+        self.enabled = enabled
         self.calls = []
 
     def record(self, category, event, outcome, **kwargs):
@@ -49,6 +58,22 @@ class FakeDiscoverer:
     def discover(self, identity, executable, prefix, *, expected_session=None):
         self.expected_sessions.append(expected_session)
         return self.result
+
+
+class FakeContainerProbe:
+    def __init__(self, error=None):
+        self.error = error
+        self.calls = []
+
+    async def verify(self, environment):
+        self.calls.append(environment)
+        if self.error is not None:
+            raise self.error
+        return SimpleNamespace(
+            bus_name="com.steampowered.Appabc",
+            runtime_variant="steamrt3",
+            attempts=1,
+        )
 
 
 class WatcherTests(unittest.IsolatedAsyncioTestCase):
@@ -97,12 +122,14 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.runner = FakeRunner()
         self.recorder = FakeRecorder()
         self.discoverer = FakeDiscoverer(self.discovery)
+        self.container_probe = FakeContainerProbe()
         self.watcher = RelayWatcher(
             {"schemaVersion": 1, "games": {self.identity: {"enabled": True, "trainerPath": str(self.trainer)}}},
             games_map_path="/games.map",
             map_loader=lambda _: self.map_result,
             process_discoverer=self.discoverer,
             umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            container_probe=self.container_probe,
             runner=self.runner,
             diagnostics=self.recorder,
             home="/home/deck",
@@ -127,6 +154,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
                 "process_scan_summary",
                 "candidate_accepted",
                 "umu_resolved",
+                "container_reentry_verified",
                 "trainer_spawned",
                 "games_map_loaded",
                 "prefix_selected",
@@ -155,6 +183,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
                     b"PROTONPATH=/proton",
                     b"GAMEID=umu-0",
                     b"STORE=gog",
+                    b"UMU_CONTAINER_NSENTER=1",
                 )
             )
             + b"\0"
@@ -175,6 +204,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             map_loader=lambda _: GamesMapResult({self.identity: entry}),
             process_discoverer=ProcessDiscoverer(proc_root),
             umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            container_probe=self.container_probe,
             runner=self.runner,
             home="/home/deck",
             clock=lambda: self.clock_value,
@@ -251,6 +281,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             map_loader=lambda _: self.map_result,
             process_discoverer=FakeDiscoverer(discovery),
             umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            container_probe=self.container_probe,
             runner=self.runner,
             home="/home/deck",
             clock=lambda: self.clock_value,
@@ -284,6 +315,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             map_loader=lambda _: GamesMapResult({identity: entry}),
             process_discoverer=FakeDiscoverer(discovery),
             umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            container_probe=self.container_probe,
             runner=self.runner,
             home="/home/deck",
             clock=lambda: self.clock_value,
@@ -314,6 +346,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             map_loader=lambda _: self.map_result,
             process_discoverer=FakeDiscoverer(self.discovery),
             umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            container_probe=self.container_probe,
             runner=self.runner,
             home="/home/deck",
             clock=lambda: self.clock_value,
@@ -335,13 +368,57 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
                 "wineprefix": spawned["details"]["wineprefix"],
                 "steam_compat_data_path": spawned["details"]["steam_compat_data_path"],
                 "proton_verb": spawned["details"]["proton_verb"],
+                "container_reentry": spawned["details"]["container_reentry"],
             },
             {
                 "wineprefix": "/home/deck/.local/share/unifideck/prefixes/game",
                 "steam_compat_data_path": "/home/deck/.local/share/unifideck/prefixes/game",
                 "proton_verb": "runinprefix",
+                "container_reentry": "enabled",
             },
         )
+
+    async def test_fails_closed_before_spawn_when_container_bus_is_missing(self):
+        self.watcher._container_probe = FakeContainerProbe(ContainerReentryError("container_reentry_bus_missing"))
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.runner.spawn_calls, [])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "invalid_config")
+        self.assertEqual(
+            self.watcher.status(self.identity)["diagnostic"],
+            {"code": "container_reentry_bus_missing"},
+        )
+        self.assertIn("container_reentry_rejected", [call["event"] for call in self.recorder.calls])
+
+    async def test_diagnostic_mode_uses_info_logging_and_records_only_known_runtime_flag_names(self):
+        self.discovery.environment.update(
+            {
+                "STEAM_COMPAT_LAUNCHER_SERVICE": "private-value",
+                "UMU_CONTAINER_NSENTER": "1",
+                "STEAM_RUNTIME_LIBRARY_PATH": "/private/runtime",
+            }
+        )
+
+        await self.watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(launch_environment["UMU_LOG"], "info")
+        self.assertNotIn("STEAM_COMPAT_LAUNCHER_SERVICE", launch_environment)
+        spawned = next(call for call in self.recorder.calls if call["event"] == "trainer_spawned")
+        self.assertEqual(spawned["details"]["environment_key_count"], len(launch_environment))
+        self.assertEqual(
+            spawned["details"]["runtime_flags"],
+            "STEAM_COMPAT_LAUNCHER_SERVICE,STEAM_RUNTIME_LIBRARY_PATH,UMU_CONTAINER_NSENTER",
+        )
+        self.assertNotIn("private-value", repr(spawned))
+
+    async def test_disabled_diagnostic_mode_does_not_force_umu_logging(self):
+        self.watcher._diagnostics = FakeRecorder(enabled=False)
+
+        await self.watcher.poll_once()
+
+        self.assertNotIn("UMU_LOG", self.runner.spawn_calls[0][2])
 
     async def test_first_premature_exit_retries_once_after_two_seconds(self):
         await self.watcher.poll_once()
@@ -358,6 +435,46 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         events = [call["event"] for call in self.recorder.calls]
         self.assertIn("trainer_exited", events)
         self.assertIn("trainer_retry_scheduled", events)
+
+    async def test_premature_exit_records_bounded_umu_diagnostics_before_retry(self):
+        await self.watcher.poll_once()
+        self.runner.handles[0]["exit_code"] = 1
+        self.runner.handles[0]["exit_diagnostics"] = {
+            "stdout_bytes": 25,
+            "stderr_bytes": 50,
+            "stdout_truncated": False,
+            "stderr_truncated": True,
+            "stdout_tail": "umu stdout",
+            "stderr_tail": "wine error",
+            "failure_class": "wine",
+            "group_member_count": 1,
+            "group_member_names": "trainer.exe",
+            "observed_descendant_count": 2,
+            "observed_descendant_names": "pressure-vessel,wine64",
+        }
+        self.clock_value = 1.0
+
+        await self.watcher.poll_once()
+
+        diagnostic = next(call for call in self.recorder.calls if call["event"] == "umu_exit_diagnostics")
+        self.assertEqual(
+            diagnostic["details"],
+            {
+                "stdout_bytes": 25,
+                "stderr_bytes": 50,
+                "stdout_truncated": False,
+                "stderr_truncated": True,
+                "stdout_tail": "umu stdout",
+                "stderr_tail": "wine error",
+                "failure_class": "wine",
+                "group_member_count": 1,
+                "group_member_names": "trainer.exe",
+                "observed_descendant_count": 2,
+                "observed_descendant_names": "pressure-vessel,wine64",
+            },
+        )
+        events = [call["event"] for call in self.recorder.calls]
+        self.assertLess(events.index("umu_exit_diagnostics"), events.index("trainer_exited"))
 
     async def test_exit_after_three_seconds_retries_when_never_observed_running(self):
         await self.watcher.poll_once()
@@ -431,6 +548,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             map_loader=lambda _: self.map_result,
             process_discoverer=self.discoverer,
             umu_resolver=lambda: "/umu-run",
+            container_probe=self.container_probe,
             runner=self.runner,
             home="/home/deck",
         )
@@ -442,6 +560,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             map_loader=lambda _: self.map_result,
             process_discoverer=self.discoverer,
             umu_resolver=lambda: "/umu-run",
+            container_probe=self.container_probe,
             runner=self.runner,
             home="/home/deck",
         )

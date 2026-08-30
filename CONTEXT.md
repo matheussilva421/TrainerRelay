@@ -18,6 +18,18 @@ The UniFiDeck compatdata root selected for a launch identity: its configured abs
 
 A trainer process group created and tracked by Trainer Relay; only this group may be terminated by the plugin.
 
+## Container Re-entry
+
+The explicit UMU 1.4.4 contract enabled by `UMU_CONTAINER_NSENTER=1`. The game
+launch exposes a pressure-vessel launcher service keyed by the MD5 of the
+compatdata-root prefix. The owned sidecar uses the same root and flag so UMU
+can call `steam-runtime-launch-client` and run the trainer through that service
+with `PROTON_VERB=runinprefix`. A session launched without the flag is rejected
+as `container_reentry_missing` and must be restarted after preparation.
+Before spawning, Trainer Relay resolves the launch client using UMU's runtime
+location precedence and requires the exact bus for that prefix to exist. A
+missing, unsupported, or unqueryable service fails closed without a sidecar.
+
 ## Legacy Configuration
 
 The existing CheatDeck launch-option assignments, especially `PROTON_REMOTE_DEBUG_CMD` and `PRESSURE_VESSEL_FILESYSTEMS_RW`, which may be migrated only after explicit confirmation and persistence verification.
@@ -32,4 +44,8 @@ The existing CheatDeck launch-option assignments, especially `PROTON_REMOTE_DEBU
 
 ## Explicit boundary
 
-The release promises a shared Wine prefix selected from UniFiDeck's game mapping. It does not promise generic attachment to the game's pressure-vessel container because Proton and Steam Runtime do not expose a stable public API for that operation. The watcher therefore validates only the evidence available to the plugin and refuses to guess when evidence conflicts.
+The release promises a shared Wine prefix and uses the explicit container
+re-entry behavior implemented by UniFiDeck's bundled UMU 1.4.4. It does not
+claim a generic Proton or pressure-vessel API outside that bounded UMU contract.
+The watcher validates the game was prepared for re-entry and refuses to guess
+when evidence conflicts.

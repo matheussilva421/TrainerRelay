@@ -8,7 +8,10 @@ import { formatRelayStatus } from "../domain/relay/viewModel";
 import { useRelayPageController } from "../hooks/useRelayPageController";
 
 const migrationDescription = (plan: LegacyMigrationPlan): string => {
-  if (plan.status === "ready") return `Trainer found: ${plan.trainerPath}`;
+  if (plan.status === "ready" && plan.changes === "container")
+    return "Prepare UMU container re-entry before enabling the trainer. The game launch remains otherwise unchanged.";
+  if (plan.status === "ready")
+    return `Trainer found: ${plan.trainerPath}. Legacy options will be removed and UMU container re-entry prepared.`;
   if (plan.status === "blocked")
     return "Legacy trainer launch options are incomplete or unsafe. Repair them manually before configuring Trainer Relay.";
   return "";
@@ -36,11 +39,16 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
     supportedIdentity: LaunchIdentity,
     plan: Extract<LegacyMigrationPlan, { status: "ready" }>,
   ) => {
+    const containerOnly = plan.changes === "container";
     showModal(
       <ConfirmModal
-        strTitle="Migrate legacy trainer settings?"
-        strDescription={`Trainer Relay found ${plan.trainerPath}. It will remove only PROTON_REMOTE_DEBUG_CMD and PRESSURE_VESSEL_FILESYSTEMS_RW, preserving the rest of the launch options.`}
-        strOKButtonText="Migrate"
+        strTitle={containerOnly ? "Prepare UMU container re-entry?" : "Migrate legacy trainer settings?"}
+        strDescription={
+          containerOnly
+            ? "Trainer Relay will add UMU_CONTAINER_NSENTER=1 to this shortcut so the game exposes a container service that the trainer can re-enter. Other launch options are preserved."
+            : `Trainer Relay found ${plan.trainerPath}. It will remove only PROTON_REMOTE_DEBUG_CMD and PRESSURE_VESSEL_FILESYSTEMS_RW, add UMU_CONTAINER_NSENTER=1, and preserve the rest.`
+        }
+        strOKButtonText={containerOnly ? "Prepare" : "Migrate"}
         strCancelButtonText="Cancel"
         onCancel={() => undefined}
         onOK={() => void migrate(supportedIdentity, plan)}
@@ -80,11 +88,13 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
   const readyMigration = model.migration.status === "ready" ? model.migration : undefined;
   const statusText = formatRelayStatus(model.status);
   const statusExplanation =
-    model.status.state === "ambiguous" || model.status.state === "invalid_config"
-      ? "Nothing was launched because the session could not be identified safely."
-      : model.status.state === "failed"
-        ? "The trainer failed without affecting the game."
-        : "The watcher is monitoring the game session.";
+    model.status.diagnosticCode === "container_reentry_missing"
+      ? "Restart the game after completing UMU container preparation. Nothing was launched."
+      : model.status.state === "ambiguous" || model.status.state === "invalid_config"
+        ? "Nothing was launched because the session could not be identified safely."
+        : model.status.state === "failed"
+          ? "The trainer failed without affecting the game."
+          : "The watcher is monitoring the game session.";
 
   return (
     <Focusable style={{ display: "flex", flexDirection: "column" }}>
@@ -114,7 +124,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
             disabled={migrationBusy || configState.status !== "ready"}
             onClick={() => confirmMigration(model.identity, readyMigration)}
           >
-            Confirm migration
+            {readyMigration.changes === "container" ? "Prepare UMU container re-entry" : "Confirm migration"}
           </DialogButton>
         </Field>
       )}
@@ -159,7 +169,7 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
       </Field>
       <ToggleField
         label="Enabled"
-        description="Browsing saves disabled. A verified legacy migration enables the discovered trainer automatically."
+        description="Browsing saves disabled. Verified launch preparation enables the trainer automatically."
         checked={currentConfig.enabled}
         disabled={configurationDisabled || !model.controls.enable}
         onChange={(enabled) => void toggleRelay(enabled)}

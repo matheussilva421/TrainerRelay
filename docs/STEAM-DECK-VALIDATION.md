@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.16
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.17
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -9,6 +9,8 @@ This checklist is intentionally manual. The release must not be promoted to stab
 - [ ] Choose one supported Epic shortcut and one supported GOG shortcut created by UniFiDeck.
 - [ ] Use a trusted Windows `.exe` trainer for each title. Do not use `.bat` files or trainer arguments.
 - [ ] Capture screenshots of the Trainer Relay configuration and status, but do not capture credentials or complete launch options.
+- [ ] After selecting each trainer, confirm **Prepare UMU container re-entry**,
+  then close and relaunch any game that was already open.
 
 ## Evidence commands
 
@@ -27,6 +29,7 @@ Expected evidence:
 - `/proc/<PID>/exe` resolves to the expected Windows executable path;
 - the process identity remains stable while the trainer starts;
 - the selected prefix is the configured default or absolute override;
+- the game process exposes `UMU_CONTAINER_NSENTER=1`;
 - no complete environment or secret-bearing launch option is copied into the report.
 
 Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a bug report.
@@ -37,6 +40,9 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Launch the game from the UniFiDeck shortcut.
 - [ ] Confirm the game reaches its main menu before the trainer window appears.
 - [ ] Confirm the Trainer Relay status progresses through `waiting_for_game` and `launching` to `running`.
+- [ ] Confirm `trainer_spawned` reports `container_reentry=enabled` and the UMU
+  output contains `Re-entering container through bus`, not five
+  `Failed to find bus name` attempts.
 - [ ] Confirm exactly one trainer instance is present.
 - [ ] Confirm the trainer and game use the same prefix anchor.
 - [ ] In Diagnostics, confirm `trainer_spawned` reports equal `wineprefix` and
@@ -58,7 +64,8 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] On a disposable copy of one shortcut, add the legacy `PROTON_REMOTE_DEBUG_CMD` and `PRESSURE_VESSEL_FILESYSTEMS_RW` options.
 - [ ] Confirm Trainer Relay displays the discovered trainer and asks for confirmation.
 - [ ] Confirm `%command%`, the identity token, and unrelated launch options are preserved.
-- [ ] Confirm only the two legacy variables are removed.
+- [ ] Confirm only the two legacy variables are removed and exactly one
+  `UMU_CONTAINER_NSENTER=1` assignment is added.
 - [ ] Confirm AppDetails is re-read and the new configuration is enabled only after the expected text is present.
 - [ ] Confirm reintroducing either legacy variable produces `invalid_config` and no trainer launch.
 
@@ -90,8 +97,10 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
   anchors shown in the page.
 - [ ] Confirm allowed technical paths and `GAMEID`, `STORE`, `WINEPREFIX`, and
   `PROTONPATH` may appear when relevant, but no complete environment/command
-  line, debug-command content, credential, token, cookie, authorization value,
-  trainer stdout, or trainer stderr appears.
+  line, debug-command content, credential, token, cookie, or authorization
+  value appears. Bounded sanitized inherited UMU stdout/stderr tails may appear
+  only for launcher diagnosis; review them manually because Proton/Wine or the
+  trainer can inherit the same pipes.
 - [ ] Confirm storage reports a 52,428,800-byte limit and only the latest 20
   events are rendered on the page.
 - [ ] Export once, choose **Clear logs**, confirm the journal becomes empty, and

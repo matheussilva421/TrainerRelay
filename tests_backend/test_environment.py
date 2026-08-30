@@ -30,6 +30,8 @@ class EnvironmentTests(unittest.TestCase):
             "STEAM_COMPAT_DATA_PATH": "/compatdata",
             "SteamGameId": "123",
             "UMU_LOG": "1",
+            "UMU_CONTAINER_NSENTER": "0",
+            "STEAM_COMPAT_LAUNCHER_SERVICE": "stale-game-service",
             "DXVK_HUD": "full",
             "WINEDEBUG": "-all",
             "API_TOKEN": "must-not-cross",
@@ -45,7 +47,9 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(result["HOME"], "/home/deck")
         self.assertEqual(result["STEAM_COMPAT_DATA_PATH"], "/compatdata")
         self.assertEqual(result["SteamGameId"], "123")
+        self.assertEqual(result["UMU_CONTAINER_NSENTER"], "1")
         self.assertEqual(result["PROTON_VERB"], "runinprefix")
+        self.assertEqual(next(reversed(result)), "PROTON_VERB")
         for key in (
             "API_TOKEN",
             "STEAM_PASSWORD",
@@ -53,6 +57,7 @@ class EnvironmentTests(unittest.TestCase):
             "UNRELATED",
             "PROTON_REMOTE_DEBUG_CMD",
             "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+            "STEAM_COMPAT_LAUNCHER_SERVICE",
         ):
             self.assertNotIn(key, result)
 

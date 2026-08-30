@@ -1,5 +1,9 @@
 import signal
 import subprocess
+import os
+import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -32,10 +36,164 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(calls[0][1]["shell"])
         self.assertTrue(calls[0][1]["start_new_session"])
         self.assertIs(calls[0][1]["env"], handle.environment)
-        self.assertEqual(calls[0][1]["stdout"], subprocess.DEVNULL)
-        self.assertEqual(calls[0][1]["stderr"], subprocess.DEVNULL)
+        self.assertEqual(calls[0][1]["stdout"], subprocess.PIPE)
+        self.assertEqual(calls[0][1]["stderr"], subprocess.PIPE)
         self.assertEqual(handle.process_group_id, process.pid)
         self.assertIn(handle, runner.owned)
+
+    def test_exit_diagnostics_drains_bounds_and_sanitizes_umu_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "import sys\n"
+                "print('x' * 5000)\n"
+                "print('API_TOKEN=super-private')\n"
+                "print('https://user:password@example.invalid/path', file=sys.stderr)\n"
+                "print('wine: failed to load kernel32.dll', file=sys.stderr)\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(
+                sys.executable,
+                process_group_members=lambda _: ("umu-run", "trainer.exe"),
+            )
+
+            handle = runner.spawn(SessionIdentity(7, 99), str(script), dict(os.environ))
+            deadline = time.monotonic() + 5.0
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            diagnostic = runner.exit_diagnostics(handle)
+
+            self.assertGreater(diagnostic.stdout_bytes, 4096)
+            self.assertTrue(diagnostic.stdout_truncated)
+            self.assertLessEqual(len(diagnostic.stdout_tail), 1024)
+            self.assertNotIn("super-private", diagnostic.stdout_tail)
+            self.assertIn("API_TOKEN=[REDACTED]", diagnostic.stdout_tail)
+            self.assertNotIn("user:password", diagnostic.stderr_tail)
+            self.assertIn("[REDACTED]@example.invalid", diagnostic.stderr_tail)
+            self.assertIn("kernel32.dll", diagnostic.stderr_tail)
+            self.assertEqual(diagnostic.group_member_count, 2)
+            self.assertEqual(diagnostic.group_member_names, "trainer.exe,umu-run")
+            runner.forget(handle)
+
+    def test_exit_diagnostics_classifies_empty_output_without_exposing_environment(self):
+        process = FakeProcess(pid=91, returncode=1)
+        runner = OwnedTrainerRunner(
+            "/umu-run",
+            popen_factory=lambda *args, **kwargs: process,
+            process_group_members=lambda _: (),
+        )
+        handle = runner.spawn(SessionIdentity(1, 2), "/game.exe", {"API_TOKEN": "private"})
+
+        diagnostic = runner.exit_diagnostics(handle)
+
+        self.assertEqual(diagnostic.failure_class, "no_output")
+        self.assertNotIn("private", repr(diagnostic))
+
+    def test_poll_retains_descendant_names_observed_before_the_umu_parent_exits(self):
+        process = FakeProcess(pid=91)
+        snapshots = iter((("pressure-vessel", "wine64"), ()))
+        runner = OwnedTrainerRunner(
+            "/umu-run",
+            popen_factory=lambda *args, **kwargs: process,
+            process_group_members=lambda _: (),
+            process_descendants=lambda _: next(snapshots),
+        )
+        handle = runner.spawn(SessionIdentity(1, 2), "/game.exe", {})
+
+        self.assertIsNone(runner.poll(handle))
+        process.returncode = 1
+        self.assertEqual(runner.poll(handle), 1)
+        diagnostic = runner.exit_diagnostics(handle)
+
+        self.assertEqual(diagnostic.observed_descendant_count, 2)
+        self.assertEqual(diagnostic.observed_descendant_names, "pressure-vessel,wine64")
+
+    def test_sanitization_redacts_a_secret_whose_key_starts_before_the_retained_tail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "print('API_TOKEN=' + 's' * 6000)\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable, process_group_members=lambda _: ())
+            handle = runner.spawn(SessionIdentity(7, 99), str(script), dict(os.environ))
+            deadline = time.monotonic() + 5.0
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            diagnostic = runner.exit_diagnostics(handle)
+
+            self.assertNotIn("s" * 128, diagnostic.stdout_tail)
+            self.assertIn("[REDACTED]", diagnostic.stdout_tail)
+            runner.forget(handle)
+
+    def test_sanitization_redacts_secret_url_parameters_and_authorization_headers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "print('GET https://example.invalid/run?token=private&safe=yes')\n"
+                "print('Authorization: Basic cHJpdmF0ZQ==')\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable, process_group_members=lambda _: ())
+            handle = runner.spawn(SessionIdentity(7, 99), str(script), dict(os.environ))
+            deadline = time.monotonic() + 5.0
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            diagnostic = runner.exit_diagnostics(handle)
+
+            self.assertNotIn("private", diagnostic.stdout_tail)
+            self.assertNotIn("cHJpdmF0ZQ", diagnostic.stdout_tail)
+            self.assertIn("token=[REDACTED]", diagnostic.stdout_tail)
+            self.assertIn("Authorization: [REDACTED]", diagnostic.stdout_tail)
+            runner.forget(handle)
+
+    def test_sanitization_redacts_api_access_and_private_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "print('OPENAI_API_KEY=sk-private')\n"
+                "print('AWS_ACCESS_KEY=access-private')\n"
+                "print('PRIVATE_KEY=private-material')\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable, process_group_members=lambda _: ())
+            handle = runner.spawn(SessionIdentity(7, 99), str(script), dict(os.environ))
+            deadline = time.monotonic() + 5.0
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            diagnostic = runner.exit_diagnostics(handle)
+
+            self.assertNotIn("sk-private", diagnostic.stdout_tail)
+            self.assertNotIn("access-private", diagnostic.stdout_tail)
+            self.assertNotIn("private-material", diagnostic.stdout_tail)
+            self.assertEqual(diagnostic.stdout_tail.count("[REDACTED]"), 3)
+            runner.forget(handle)
+
+    def test_exit_diagnostics_does_not_wait_for_a_child_that_inherits_the_pipes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "import subprocess, sys, tempfile\n"
+                "subprocess.Popen([sys.executable, '-c', \"import time; print('child alive', flush=True); time.sleep(2)\"], cwd=tempfile.gettempdir())\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable, process_group_members=lambda _: ("trainer.exe",))
+            handle = runner.spawn(SessionIdentity(7, 99), str(script), dict(os.environ))
+            deadline = time.monotonic() + 5.0
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            started = time.monotonic()
+            diagnostic = runner.exit_diagnostics(handle)
+            elapsed = time.monotonic() - started
+
+            self.assertLess(elapsed, 0.75)
+            self.assertEqual(diagnostic.group_member_count, 1)
+            runner.forget(handle)
 
     def test_rejects_a_log_path_that_could_capture_arbitrary_trainer_output(self):
         with self.assertRaisesRegex(TypeError, "log_path"):

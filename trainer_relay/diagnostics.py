@@ -16,6 +16,7 @@ from .config import is_launch_identity
 
 
 MAX_DETAIL_STRING_LENGTH = 4096
+MAX_UMU_OUTPUT_TAIL_LENGTH = 1024
 DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_FILES = 5
 _CATEGORIES = {"config", "games_map", "process", "umu", "trainer", "lifecycle"}
@@ -90,6 +91,23 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     ),
     "umu_resolved": frozenset({"source", "umu_path"}),
     "umu_rejected": frozenset({"reason"}),
+    "container_reentry_verified": frozenset({"bus_name", "runtime_variant", "attempt_count"}),
+    "container_reentry_rejected": frozenset({"reason"}),
+    "umu_exit_diagnostics": frozenset(
+        {
+            "stdout_bytes",
+            "stderr_bytes",
+            "stdout_truncated",
+            "stderr_truncated",
+            "stdout_tail",
+            "stderr_tail",
+            "failure_class",
+            "group_member_count",
+            "group_member_names",
+            "observed_descendant_count",
+            "observed_descendant_names",
+        }
+    ),
     "trainer_spawned": frozenset(
         {
             "trainer_path",
@@ -97,6 +115,9 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
             "wineprefix",
             "steam_compat_data_path",
             "proton_verb",
+            "container_reentry",
+            "environment_key_count",
+            "runtime_flags",
         }
     ),
     "trainer_spawn_failed": frozenset({"trainer_path", "reason"}),
@@ -174,7 +195,12 @@ def _safe_details(event: str, details: Mapping[str, Any] | None) -> dict[str, st
     safe: dict[str, str | int | bool | None] = {}
     for key, value in source.items():
         if isinstance(value, str):
-            if len(value) > MAX_DETAIL_STRING_LENGTH:
+            maximum_length = (
+                MAX_UMU_OUTPUT_TAIL_LENGTH
+                if event == "umu_exit_diagnostics" and key in {"stdout_tail", "stderr_tail"}
+                else MAX_DETAIL_STRING_LENGTH
+            )
+            if len(value) > maximum_length:
                 raise DiagnosticValidationError("diagnostic_event_rejected")
         elif value is None or type(value) in {int, bool}:
             pass
@@ -594,7 +620,7 @@ class DiagnosticRecorder:
                 f"Diagnostic mode: {'enabled' if self.enabled else 'disabled'}\n"
                 f"Journal bytes: {current_stats['bytesUsed']} / {current_stats['byteLimit']}\n"
                 "Privacy: sanitized allowlisted events only; no complete environment, command line, credentials, "
-                "legacy debug-command content, trainer stdout, or trainer stderr.\n"
+                "or legacy debug-command content; includes bounded sanitized UMU process output tails.\n"
                 "\n"
             )
             with tempfile.NamedTemporaryFile(

@@ -29,9 +29,10 @@ its main Linux thread. That exception never applies to another PID or a
 recycled start time, and the full executable, prefix, store, required
 environment, and legacy-option checks remain mandatory.
 
-The v1 compatibility boundary is the same Wine prefix. It does not promise
-that the game and trainer share one pressure-vessel container. The watcher
-does not alter the game process, its process group, or its launch lifecycle.
+The v1 compatibility boundary is the same Wine prefix plus UMU's explicit
+same-prefix container re-entry service when using the bundled UMU 1.4.4. The
+watcher does not alter the game process, its process group, or its launch
+lifecycle.
 
 The process scanner may observe `WINEPREFIX=<anchor>/pfx` because Proton
 rewrites the variable for Windows descendants. A fresh `umu-run` instead
@@ -41,6 +42,14 @@ expects the compatdata anchor. The owned sidecar therefore receives
 `STEAM_COMPAT_CLIENT_INSTALL_PATH`, which UMU derives for the new invocation.
 The scanner still accepts either anchor shape as evidence, but the launch
 boundary never feeds transformed child values back into UMU.
+
+Trainer Relay prepares supported shortcuts with `UMU_CONTAINER_NSENTER=1`
+after explicit confirmation and AppDetails verification. The same flag is set
+on the owned sidecar. UMU hashes the prefix into its launcher-service bus name,
+then uses `steam-runtime-launch-client` to re-enter that service and applies
+`runinprefix`. A matching game process without the flag is rejected as stale
+configuration, because a sidecar cannot retroactively create the service for
+an already-running game.
 
 ## Alternatives considered
 
@@ -63,11 +72,11 @@ release, so the additional dependency is not justified.
 A PID without its process start time can attach to an unrelated process after
 PID reuse. It is not safe for a watcher that owns a trainer lifecycle.
 
-### Container identity as the boundary
+### Fresh second container
 
-Requiring a shared pressure-vessel container would be stronger than the
-supported product contract and would reject valid same-prefix sessions. The
-prefix anchor is the intentionally narrower and portable v1 boundary.
+Launching the trainer through a separate `umu-run` was safe for the game but
+failed physically with exit code 1 in repeated GOG tests. UMU 1.4.4's explicit
+launcher-service re-entry path is now required instead.
 
 ## Consequences
 

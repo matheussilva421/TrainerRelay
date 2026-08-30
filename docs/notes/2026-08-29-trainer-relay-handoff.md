@@ -1257,3 +1257,45 @@ GOG/Epic validation remains explicitly pending.
   sanitized tail; record bounded byte counts, redacted tail/classification, and
   process-group member metadata when the UMU parent exits. Apply TDD first and
   do not change prefix, environment, retry, or launch behavior in that build.
+
+### Experimental.17 same-container re-entry implementation
+
+- The user explicitly approved the diagnostic and runtime correction after the
+  `.16` A/B refuted trainer location. Primary-source analysis of UniFiDeck's
+  bundled UMU 1.4.4 identified its supported `UMU_CONTAINER_NSENTER=1` path:
+  the initial game container exposes a prefix-keyed launcher service and a
+  later invocation can use `steam-runtime-launch-client` with
+  `PROTON_VERB=runinprefix`.
+- The source-preserving launch-option flow now adds exactly one
+  `UMU_CONTAINER_NSENTER=1` after explicit confirmation and AppDetails
+  verification. Plain `gog:<id>`/`epic:<id>` shortcuts are converted to an
+  explicit `%command%` form; legacy CheatDeck variables are the only values
+  removed. The relay remains disabled until verification succeeds and a game
+  already running must be restarted.
+- Process discovery rejects an otherwise matching game whose inherited flag is
+  missing. Before spawn, `ContainerReentryProbe` resolves the runtime from the
+  active Proton `toolmanifest.vdf`, mirrors UMU's `UMU_FOLDERS_PATH` then
+  `XDG_DATA_HOME` location precedence, computes the exact MD5 prefix bus, and
+  requires `steam-runtime-launch-client --list` to contain that bus. Missing,
+  unsupported, or failed probes launch no trainer and leave the game intact.
+- The sidecar still uses structured argv and its owned process group. It removes
+  stale `STEAM_COMPAT_LAUNCHER_SERVICE`, forces re-entry, and assigns
+  `PROTON_VERB=runinprefix` last. Diagnostic mode uses `UMU_LOG=info`, captures
+  continuously drained 4 KiB tails, stores at most 1,024 sanitized characters
+  per stream after exit, and records bounded group/descendant names. Common
+  token/password/cookie/authorization/credential/API-key/access-key/private-key
+  forms and credential-bearing URLs are redacted.
+- Version is `0.1.0-experimental.17`. Fresh local gates: backend 124/124;
+  compileall passed; frontend 191/191 in 25 files; Biome checked 63 files; both
+  TypeScript typechecks passed; Rollup built; package layout/import 2/2. The
+  global pnpm version switch could not verify the registry signature in the
+  restricted environment, so the same project-local scripts ran through npm.
+- Three independently generated ZIP_STORED archives match byte-for-byte: 22
+  entries, 285,075 bytes, SHA-256
+  `9516DA7AB6ECC92448F21C785D136EE7A4E53B2F74355194ABD227E1BE8CC095`.
+  Two independent read-only reviewer attempts stalled without a report and
+  were shut down. The main-agent two-axis review found and fixed two concrete
+  issues before commit: UMU runtime-root precedence/relative-path ambiguity and
+  an overstrong documentation claim about inherited stdout/stderr. Commit/push,
+  tag/release, public asset comparison, kit creation, and physical GOG/Epic
+  validation remain pending at this checkpoint.

@@ -29,6 +29,7 @@ def write_candidate(
     store: str,
     comm: str = "expected.exe",
     legacy: bool = False,
+    container_reentry: bool = True,
 ) -> None:
     process = root / str(pid)
     process.mkdir()
@@ -41,6 +42,8 @@ def write_candidate(
         "GAMEID": game_id,
         "STORE": store,
     }
+    if container_reentry:
+        environment["UMU_CONTAINER_NSENTER"] = "1"
     if legacy:
         environment["PROTON_REMOTE_DEBUG_CMD"] = "/home/deck/legacy.exe"
         environment["PRESSURE_VESSEL_FILESYSTEMS_RW"] = "/tmp"
@@ -178,6 +181,26 @@ class ProcessDiscoveryTests(unittest.TestCase):
 
             self.assertEqual(result.state, "invalid_config")
             self.assertEqual(result.diagnostic, "legacy_settings_present")
+            self.assertIsNone(result.session)
+
+    def test_blocks_a_matching_session_not_started_with_umu_container_reentry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                123,
+                start_time=10,
+                executable="/games/expected.exe",
+                prefix="/home/deck/.local/share/unifideck/prefixes/game/pfx",
+                game_id="game",
+                store="gog",
+                container_reentry=False,
+            )
+
+            result = self.discover_one(root)
+
+            self.assertEqual(result.state, "invalid_config")
+            self.assertEqual(result.diagnostic, "container_reentry_missing")
             self.assertIsNone(result.session)
 
     def test_returns_ambiguous_for_multiple_matching_stable_sessions(self):

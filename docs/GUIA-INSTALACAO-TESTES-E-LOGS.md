@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.16`
+Versão deste guia: `v0.1.0-experimental.17`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay-v0.1.0-experimental.16.zip`.
+- O arquivo `TrainerRelay-v0.1.0-experimental.17.zip`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -18,23 +18,22 @@ mais de uma sessão do mesmo jogo. Esses casos não fazem parte desta versão.
 
 ## 1. Conferir o ZIP
 
-O ZIP local verificado desta versão tem:
+O ZIP local determinístico da `.17` tem 285.075 bytes e SHA-256:
 
-- tamanho: `261236` bytes;
-- SHA-256:
-  `DB88075B7D3A00B9077775A349B3D0632C5CE3FBAE39E0900FADB6FCA491CBCE`.
+```text
+9516DA7AB6ECC92448F21C785D136EE7A4E53B2F74355194ABD227E1BE8CC095
+```
 
-O mesmo valor também está no `SHA256SUMS.txt` do kit. A release do GitHub só
-deve ser considerada verificada depois de o asset publicado ser baixado e
-comparado byte a byte com este ZIP determinístico.
+Depois da publicação, use o `SHA256SUMS.txt` do kit final e confirme que o asset
+do GitHub continua idêntico a esse arquivo local.
 
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 
 ```bash
-sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.16.zip"
+sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.17.zip"
 ```
 
-O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
+O valor mostrado precisa ser exatamente o SHA-256 do kit. Não instale o arquivo
 `Source code.zip` criado automaticamente pelo GitHub.
 
 ## 2. Instalar no Decky
@@ -47,7 +46,7 @@ O valor mostrado precisa ser exatamente o SHA-256 acima. Não instale o arquivo
 4. Abra o Decky Loader e suas configurações.
 5. Ative as opções de desenvolvedor, se a instalação local não estiver visível.
 6. Escolha **Install Plugin from ZIP** ou o nome equivalente da sua versão.
-7. Selecione `TrainerRelay-v0.1.0-experimental.16.zip` em Downloads.
+7. Selecione `TrainerRelay-v0.1.0-experimental.17.zip` em Downloads.
 8. Recarregue o Decky ou reinicie o Steam Deck se o plugin não aparecer.
 
 Os nomes exatos das opções podem variar entre versões do Decky. Sempre use o
@@ -58,7 +57,7 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.16/TrainerRelay.zip
+https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.17/TrainerRelay.zip
 ```
 
 Não use URLs de outras versões. A `experimental.3` falha ao abrir a tela no
@@ -98,6 +97,10 @@ reutilizar o `WINEPREFIX=<raiz>/pfx` nem o
 repetição automática quando a primeira execução termina antes de o watcher ter
 observado `running`, mesmo com atraso de polling. Ela continua experimental até
 os testes físicos Epic e GOG terminarem.
+A `.17` prepara o atalho com `UMU_CONTAINER_NSENTER=1` e usa o caminho explícito
+do UMU 1.4.4 para reentrar no container do jogo pelo serviço do mesmo prefixo.
+Ela também captura somente caudas sanitizadas e limitadas da saída do processo
+UMU, usando `UMU_LOG=info` para não despejar o ambiente derivado completo.
 
 ## 3. Preparar o trainer
 
@@ -126,8 +129,11 @@ O caminho selecionado no plugin deve ser absoluto, por exemplo:
    mostrará o caminho absoluto selecionado.
 6. Deixe **Prefix override** vazio no primeiro teste. Assim será usado o prefixo
    padrão do UniFiDeck.
-7. Se não houver migração legada, ative manualmente **Enabled**.
-8. Inicie o jogo pelo mesmo atalho.
+7. Pressione **Prepare UMU container re-entry**, revise a mudança e confirme.
+   O plugin adiciona somente `UMU_CONTAINER_NSENTER=1`, relê os detalhes do
+   atalho e habilita o relay apenas após a confirmação do Steam.
+8. Se o jogo estava aberto, feche-o. Inicie novamente pelo mesmo atalho; a
+   preparação não funciona retroativamente em um container já iniciado.
 
 ### Se aparecer migração legada
 
@@ -140,7 +146,8 @@ Confira cuidadosamente o trainer mostrado. Se estiver correto, confirme a
 migração. O Trainer Relay deve:
 
 1. salvar a configuração desabilitada;
-2. remover somente as duas variáveis antigas;
+2. remover somente as duas variáveis antigas e adicionar
+   `UMU_CONTAINER_NSENTER=1`;
 3. preservar `%command%`, `epic:<id>`/`gog:<id>` e as demais opções;
 4. reler os detalhes do atalho;
 5. habilitar o trainer somente depois da confirmação do Steam.
@@ -160,6 +167,18 @@ meio da migração.
 | `failed` | Trainer falhou sem afetar o jogo | Corrija o trainer e use Retry |
 | `ambiguous` | Mais de uma sessão candidata | Feche instâncias duplicadas |
 | `invalid_config` | Configuração, ambiente, UMU ou opções legadas inválidas | Anote o código e colete os logs |
+
+Se o código for `container_reentry_missing`, finalize a preparação no plugin,
+feche o jogo atual e abra novamente. O plugin não tenta anexar o trainer a uma
+sessão antiga sem o serviço de container.
+
+Se o código for `container_reentry_bus_missing`, o jogo recebeu a opção, mas o
+serviço do mesmo prefixo não apareceu depois de cinco verificações. Feche o
+jogo, confirme que a preparação continua nas launch options, abra novamente e
+gere um TXT. `container_reentry_unsupported` indica que o runtime/Proton ativo
+não pôde ser identificado com segurança; `container_reentry_probe_failed`
+indica falha ao consultar o serviço. Nesses três casos, nenhum trainer é
+iniciado e o jogo fica intacto.
 
 ## 6. Teste mínimo obrigatório
 
@@ -202,7 +221,10 @@ prefixo, UniFiDeck ou logs de outros plugins.
 
 O TXT/journal aceita apenas campos técnicos predefinidos. Não registra ambiente
 completo, linha de comando completa, conteúdo de comando de debug legado,
-credenciais, cookies, tokens, autorização, stdout ou stderr do trainer.
+credenciais, cookies, tokens ou autorização. Para diagnóstico do launcher,
+pode registrar somente caudas pequenas e sanitizadas dos pipes stdout/stderr
+herdados do processo UMU. Como Proton/Wine e o trainer podem herdar esses pipes,
+revise essa pequena cauda antes de compartilhar o TXT.
 
 Os comandos abaixo ficam como alternativas avançadas caso o próprio backend do
 plugin não consiga iniciar. Faça o problema acontecer e, sem reiniciar o Deck,
@@ -312,7 +334,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.16
+Trainer Relay: v0.1.0-experimental.17
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -349,15 +371,17 @@ Só envie o log completo após revisar o conteúdo.
   `.12` ou posterior, filtre `[TrainerRelay:picker]` no Console e pressione o
   botão uma vez.
 - `Unsupported shortcut`: recrie/sincronize o atalho pelo UniFiDeck.
-- `waiting_for_game`: na `.16`, ative Diagnostics e procure
+- `waiting_for_game`: na `.17`, ative Diagnostics e procure
   `candidate_rejected`/`process_scan_summary`; não pressione Retry repetidamente
   durante o carregamento.
-- `session_ended` seguido imediatamente de `owned_group_signal`: na `.16`,
+- `session_ended` seguido imediatamente de `owned_group_signal`: na `.17`,
   procure antes por `candidate_revalidated`. Ele confirma que o mesmo PID e
   start time foram mantidos mesmo se o jogo renomeou a thread principal.
 - `ambiguous`: feche o jogo, launcher e instâncias duplicadas; abra novamente.
-- `invalid_config`: conclua a migração e remova variáveis legadas reintroduzidas
-  pelo CheatDeck naquele atalho UniFiDeck.
+- `invalid_config (container_reentry_missing)`: confirme a preparação, feche o
+  jogo aberto antes dela e inicie novamente.
+- outro `invalid_config`: conclua a migração e remova variáveis legadas
+  reintroduzidas pelo CheatDeck naquele atalho UniFiDeck.
 - `failed`: confira se o caminho é absoluto, o arquivo é `.exe` regular e o
   trainer corresponde à versão do jogo.
 - Trainer sem janela: use o botão Steam para alternar entre janelas abertas.
@@ -373,6 +397,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.16
+- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.17
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

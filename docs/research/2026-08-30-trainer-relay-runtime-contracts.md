@@ -68,17 +68,38 @@ accepted game process, removes `PROTON_REMOTE_DEBUG_CMD`, and assigns
 `PROTON_VERB=runinprefix` last. It invokes `[umu-run, trainer.exe]` with
 `shell=False` in a process group it owns.
 
-### The supported boundary remains the Wine prefix
+### UMU 1.4.4 provides an explicit same-prefix container re-entry path
 
-UMU creates a Steam Runtime container for its invocation. No cited public
-contract offers a generic way for an unrelated Decky backend to attach a new
-host process to an already-running pressure-vessel container. The defensible
-v1 promise is therefore same Wine prefix and equivalent Proton/UMU settings,
-not formal identity with the game's existing container.
+The physical `.16` A/B tests refuted trainer location and confirmed that a
+fresh, separate UMU container exits before the trainer remains active. The
+bundled UniFiDeck UMU version is `1.4.4`. Its source provides a narrowly scoped
+re-entry contract through `UMU_CONTAINER_NSENTER=1`:
+
+1. `set_env()` hashes the normalized `WINEPREFIX` into
+   `STEAM_COMPAT_APP_ID`;
+2. the first UMU launch sets `STEAM_COMPAT_LAUNCHER_SERVICE` for the runtime,
+   which lets pressure-vessel expose a launcher service keyed by that prefix;
+3. a later UMU invocation lists `steam-runtime-launch-client` services, looks
+   for `com.steampowered.App<md5(prefix)>`, and, if present, prefixes the
+   command with `steam-runtime-launch-client --bus-name=... --`;
+4. the re-entered command is forced to `PROTON_VERB=runinprefix`.
+
+This is not generic namespace attachment guessed from internals: it is behavior
+implemented by the exact public launcher bundled by UniFiDeck. It requires the
+game's initial UMU invocation and the trainer sidecar to both receive
+`UMU_CONTAINER_NSENTER=1`, with the same compatdata-root `WINEPREFIX`.
+
+UniFiDeck constructs the game environment from `dict(os.environ)`, so the
+Steam shortcut assignment reaches its initial `umu-run`. Trainer Relay must
+therefore add that assignment to the shortcut only after explicit confirmation
+and AppDetails verification. Its sidecar environment must set the same flag,
+omit any inherited `STEAM_COMPAT_LAUNCHER_SERVICE` value so UMU derives the
+correct one, and fail closed if the accepted game process lacks the flag.
 
 Primary sources:
 
 - [UMU project description](https://github.com/Open-Wine-Components/umu-launcher)
+- [UMU 1.4.4 `set_env` and `build_command`](https://github.com/Open-Wine-Components/umu-launcher/blob/1.4.4/umu/umu_run.py)
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 - [Decky plugin template and ZIP layout](https://github.com/SteamDeckHomebrew/decky-plugin-template)
 
@@ -128,7 +149,18 @@ Primary sources:
 7. Schedule the one automatic retry when the first process exits before the
    watcher has actually observed `running`; polling jitter around three
    seconds must not suppress it.
+8. After a trainer is selected, atomically prepare the shortcut with exactly
+   one `UMU_CONTAINER_NSENTER=1` assignment and verify AppDetails before
+   enabling the relay. Refuse a running session that predates preparation.
+9. Set `UMU_CONTAINER_NSENTER=1` for the sidecar, remove inherited launcher
+   service state, and keep `PROTON_VERB=runinprefix` last.
+10. Use `UMU_LOG=info` in persistent diagnostics. UMU's `1`/`debug` mode logs
+    its complete derived environment, which violates the plugin's privacy
+    boundary.
+11. Before spawning, resolve the runtime launch client with the same UMU 1.4.4
+    precedence (`UMU_FOLDERS_PATH`, then `XDG_DATA_HOME`, then
+    `~/.local/share`) and require the exact same-prefix bus to be listed.
 
-These are narrow corrections to session revalidation and sidecar environment
-reconstruction. They do not loosen initial wrapper filtering, alter UniFiDeck,
-or claim pressure-vessel attachment.
+These are narrow corrections to session revalidation and UMU's supported
+same-prefix re-entry path. They do not loosen initial wrapper filtering or
+modify UniFiDeck, Proton, Steam Runtime, or the running game.

@@ -87,6 +87,9 @@ class DiagnosticRecorderTests(unittest.TestCase):
                 "wineprefix": "/prefix",
                 "steam_compat_data_path": "/prefix",
                 "proton_verb": "runinprefix",
+                "container_reentry": "enabled",
+                "environment_key_count": 5,
+                "runtime_flags": "UMU_CONTAINER_NSENTER",
             },
         )
 
@@ -98,8 +101,52 @@ class DiagnosticRecorderTests(unittest.TestCase):
                 "wineprefix": "/prefix",
                 "steam_compat_data_path": "/prefix",
                 "proton_verb": "runinprefix",
+                "container_reentry": "enabled",
+                "environment_key_count": 5,
+                "runtime_flags": "UMU_CONTAINER_NSENTER",
             },
         )
+
+    def test_accepts_only_bounded_sanitized_umu_exit_diagnostics(self):
+        recorder = self.recorder()
+        details = {
+            "stdout_bytes": 10,
+            "stderr_bytes": 20,
+            "stdout_truncated": False,
+            "stderr_truncated": True,
+            "stdout_tail": "safe output",
+            "stderr_tail": "wine error",
+            "failure_class": "wine",
+            "group_member_count": 1,
+            "group_member_names": "trainer.exe",
+            "observed_descendant_count": 2,
+            "observed_descendant_names": "pressure-vessel,wine64",
+        }
+
+        recorder.record("umu", "umu_exit_diagnostics", "warning", details=details)
+
+        self.assertEqual(self.read_events()[0]["details"], details)
+
+    def test_rejects_umu_output_tail_larger_than_the_runner_retention_limit(self):
+        recorder = self.recorder()
+        details = {
+            "stdout_bytes": 1025,
+            "stderr_bytes": 0,
+            "stdout_truncated": True,
+            "stderr_truncated": False,
+            "stdout_tail": "x" * 1025,
+            "stderr_tail": "",
+            "failure_class": "unknown",
+            "group_member_count": 0,
+            "group_member_names": "",
+            "observed_descendant_count": 0,
+            "observed_descendant_names": "",
+        }
+
+        with self.assertRaisesRegex(DiagnosticValidationError, "diagnostic_event_rejected"):
+            recorder.record("umu", "umu_exit_diagnostics", "warning", details=details)
+
+        self.assertEqual(recorder.stats()["eventCount"], 0)
 
     def test_rejects_unknown_or_forbidden_details_without_writing(self):
         recorder = self.recorder()
@@ -245,6 +292,7 @@ class DiagnosticRecorderTests(unittest.TestCase):
         text = Path(first["path"]).read_text(encoding="utf-8")
         self.assertIn("Trainer Relay diagnostic export", text)
         self.assertIn("Privacy: sanitized allowlisted events only", text)
+        self.assertIn("bounded sanitized UMU process output tails", text)
         self.assertLess(text.index("#1 process rejected candidate_rejected"), text.index("#2 lifecycle info plugin_unloaded"))
         self.assertIn("identity=gog:game pid=123 startTime=456", text)
         self.assertIn("expected_prefix=/a observed_prefix=/b reason=prefix_mismatch", text)

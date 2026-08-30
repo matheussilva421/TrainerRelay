@@ -22,7 +22,7 @@ const defaultGameConfig = (): RelayGameConfig => ({ enabled: false, trainerPath:
 const migrationResultMessage = (result: LegacyMigrationVerificationResult): string => {
   switch (result.status) {
     case "verified":
-      return "Launch options migrated, verified, and Trainer Relay enabled.";
+      return "Launch options prepared and verified. Restart the game so UMU container re-entry takes effect.";
     case "cancelled":
       return "Migration cancelled. Trainer Relay remains disabled.";
     case "mismatch":
@@ -118,7 +118,7 @@ export const useRelayPageController = (appid: number) => {
       logger.info("[TrainerRelay:picker] persistence-result", { status: result.status });
       if (result.status === "persisted_disabled") {
         updateGameConfig(model.identity, result.config);
-        setMigrationMessage("Trainer selected. Enable it explicitly when ready.");
+        setMigrationMessage("Trainer selected. Prepare UMU container re-entry before enabling it.");
       } else {
         sendNotice("Trainer path could not be saved; relay remains disabled.");
       }
@@ -142,7 +142,7 @@ export const useRelayPageController = (appid: number) => {
         : await disableTrainerRelay(relayRpc, model.identity, current);
       if (result.status === "enabled" || result.status === "disabled") updateGameConfig(model.identity, result.config);
       else if (result.status === "blocked")
-        sendNotice("Choose a valid .exe and complete launch-option migration first.");
+        sendNotice("Choose a valid .exe and complete launch-option preparation first.");
       else sendNotice("Relay configuration could not be saved; it remains disabled.");
     } finally {
       setBusy(false);
@@ -209,11 +209,13 @@ export const useRelayPageController = (appid: number) => {
       });
       updateGameConfig(supportedIdentity, result.config);
       if (result.status === "enabled") {
-        setMigrationMessage("Launch options migrated, verified, and Trainer Relay enabled.");
+        setMigrationMessage(
+          "Launch options prepared and verified. Restart the game so UMU container re-entry takes effect.",
+        );
       } else if (result.status === "verification_failed") {
         setMigrationMessage(migrationResultMessage(result.verification));
       } else {
-        setMigrationMessage("Migration could not begin or finish safely. Trainer Relay remains disabled.");
+        setMigrationMessage("Launch preparation could not finish safely. Trainer Relay remains disabled.");
       }
     } finally {
       setMigrationBusy(false);
