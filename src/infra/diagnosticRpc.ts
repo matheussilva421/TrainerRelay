@@ -104,7 +104,7 @@ const detailKeys: Readonly<Record<string, readonly string[]>> = {
   ],
   umu_resolved: ["source", "umu_path"],
   umu_rejected: ["reason"],
-  trainer_spawned: ["trainer_path", "process_group_id"],
+  trainer_spawned: ["trainer_path", "process_group_id", "wineprefix", "steam_compat_data_path", "proton_verb"],
   trainer_spawn_failed: ["trainer_path", "reason"],
   trainer_running: ["trainer_path", "elapsed_ms"],
   trainer_exited: ["trainer_path", "exit_code", "elapsed_ms"],

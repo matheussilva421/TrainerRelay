@@ -82,6 +82,34 @@ Primary sources:
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 - [Decky plugin template and ZIP layout](https://github.com/SteamDeckHomebrew/decky-plugin-template)
 
+### UMU consumes the compatdata root, while Proton descendants expose `pfx`
+
+The `.15` physical exports captured a second, distinct failure. Trainer Relay
+correctly retained PID `59645` and start time `2879747` through 121
+`candidate_revalidated` events, but the owned `umu-run` exited with code `1`
+after 3,248 milliseconds. The game remained alive for more than two minutes,
+so session discovery was no longer the failing boundary.
+
+UniFiDeck builds the launch environment with both `WINEPREFIX` and
+`STEAM_COMPAT_DATA_PATH` set to its per-game root. UMU consumes that root and
+sets the Steam compatibility path from it. Proton then points the Windows
+descendant's `WINEPREFIX` at the root's `pfx` child. Copying the descendant
+value back into a fresh UMU invocation changes the compatibility root and can
+produce a nested `pfx/pfx` layout. Trainer Relay must therefore use the
+already-validated prefix anchor for the sidecar launch rather than treating
+the descendant's transformed `WINEPREFIX` as launch input.
+
+The same UniFiDeck builder explicitly removes
+`STEAM_COMPAT_CLIENT_INSTALL_PATH` and leaves its derivation to `umu-run`.
+Replaying the descendant's value can pin a symlinked Steam root and make
+pressure-vessel terminate before Wine starts. The sidecar must omit it too.
+
+Primary sources:
+
+- [UniFiDeck Proton environment builder](https://github.com/mubaraknumann/unifideck/blob/staging/py_modules/unifideck/launcher/proton/infrastructure/core.py)
+- [UMU environment construction](https://github.com/Open-Wine-Components/umu-launcher/blob/main/umu/umu_run.py)
+- [Valve Proton source](https://github.com/ValveSoftware/Proton/blob/experimental/proton)
+
 ## Implementation consequence
 
 1. Acquire a new session strictly: executable, full resolved executable path,
@@ -93,6 +121,14 @@ Primary sources:
    fails closed.
 5. Emit a bounded `candidate_revalidated` event so physical validation can
    distinguish a legal thread rename from a new process or session loss.
+6. Launch a sidecar from the validated compatdata root, setting both
+   `WINEPREFIX` and `STEAM_COMPAT_DATA_PATH` to that root before assigning
+   `PROTON_VERB=runinprefix` last; do not replay the child-derived
+   `STEAM_COMPAT_CLIENT_INSTALL_PATH`.
+7. Schedule the one automatic retry when the first process exits before the
+   watcher has actually observed `running`; polling jitter around three
+   seconds must not suppress it.
 
-This is a narrow correction to session revalidation. It does not loosen
-initial wrapper filtering, alter UniFiDeck, or claim pressure-vessel attachment.
+These are narrow corrections to session revalidation and sidecar environment
+reconstruction. They do not loosen initial wrapper filtering, alter UniFiDeck,
+or claim pressure-vessel attachment.

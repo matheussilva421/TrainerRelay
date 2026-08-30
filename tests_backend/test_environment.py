@@ -26,6 +26,7 @@ class EnvironmentTests(unittest.TestCase):
             "PROTONPATH": "/proton",
             "GAMEID": "game",
             "STORE": "gog",
+            "STEAM_COMPAT_CLIENT_INSTALL_PATH": "/home/deck/.steam/root",
             "STEAM_COMPAT_DATA_PATH": "/compatdata",
             "SteamGameId": "123",
             "UMU_LOG": "1",
@@ -45,8 +46,21 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(result["STEAM_COMPAT_DATA_PATH"], "/compatdata")
         self.assertEqual(result["SteamGameId"], "123")
         self.assertEqual(result["PROTON_VERB"], "runinprefix")
-        for key in ("API_TOKEN", "STEAM_PASSWORD", "WINE_AUTH_COOKIE", "UNRELATED", "PROTON_REMOTE_DEBUG_CMD"):
+        for key in (
+            "API_TOKEN",
+            "STEAM_PASSWORD",
+            "WINE_AUTH_COOKIE",
+            "UNRELATED",
+            "PROTON_REMOTE_DEBUG_CMD",
+            "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+        ):
             self.assertNotIn(key, result)
+
+    def test_preserves_posix_root_prefix_anchor(self):
+        result = build_sanitized_environment({}, "/")
+
+        self.assertEqual(result["WINEPREFIX"], "/")
+        self.assertEqual(result["STEAM_COMPAT_DATA_PATH"], "/")
 
 
 class UmuResolutionTests(unittest.TestCase):

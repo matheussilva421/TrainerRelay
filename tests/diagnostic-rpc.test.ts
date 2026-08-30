@@ -76,6 +76,31 @@ describe("diagnostic RPC boundary", () => {
     ).toEqual([revalidated]);
   });
 
+  it("decodes the effective UMU shape of a trainer spawn", () => {
+    const spawned = {
+      ...event,
+      category: "trainer",
+      event: "trainer_spawned",
+      outcome: "accepted",
+      details: {
+        trainer_path: "/games/trainer.exe",
+        process_group_id: 789,
+        wineprefix: "/prefix",
+        steam_compat_data_path: "/prefix",
+        proton_verb: "runinprefix",
+      },
+    };
+
+    expect(
+      decodeDiagnosticEventsResponse({
+        generation: 1,
+        nextCursor: "v1:1:1",
+        cursorReset: false,
+        events: [spawned],
+      }).events,
+    ).toEqual([spawned]);
+  });
+
   it.each([
     { ...event, category: "private" },
     { ...event, outcome: "maybe" },

@@ -199,6 +199,150 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("candidate_revalidated", events)
         self.assertNotIn("session_ended", events)
 
+    async def test_spawn_rebuilds_umu_root_from_proton_child_wineprefix(self):
+        child_prefix = self.prefix / "pfx"
+        self.discoverer.result = DiscoveryResult(
+            "session",
+            session=self.session,
+            environment={
+                "WINEPREFIX": str(child_prefix),
+                "STEAM_COMPAT_DATA_PATH": str(self.prefix),
+                "PROTONPATH": "/proton",
+                "GAMEID": "umu-0",
+                "STORE": "gog",
+            },
+        )
+
+        await self.watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(launch_environment["WINEPREFIX"], "/home/deck/.local/share/unifideck/prefixes/game")
+        self.assertEqual(
+            launch_environment["STEAM_COMPAT_DATA_PATH"], "/home/deck/.local/share/unifideck/prefixes/game"
+        )
+        self.assertEqual(launch_environment["PROTON_VERB"], "runinprefix")
+
+    async def test_spawn_normalizes_prefix_override_that_points_at_pfx(self):
+        child_prefix = self.prefix / "pfx"
+        child_prefix.mkdir()
+        discovery = DiscoveryResult(
+            "session",
+            session=self.session,
+            environment={
+                "WINEPREFIX": str(child_prefix),
+                "STEAM_COMPAT_DATA_PATH": str(self.prefix),
+                "PROTONPATH": "/proton",
+                "GAMEID": "umu-0",
+                "STORE": "gog",
+            },
+        )
+        watcher = RelayWatcher(
+            {
+                "schemaVersion": 1,
+                "games": {
+                    self.identity: {
+                        "enabled": True,
+                        "trainerPath": str(self.trainer),
+                        "prefixOverride": str(child_prefix),
+                    }
+                },
+            },
+            games_map_path="/games.map",
+            map_loader=lambda _: self.map_result,
+            process_discoverer=FakeDiscoverer(discovery),
+            umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            runner=self.runner,
+            home="/home/deck",
+            clock=lambda: self.clock_value,
+            diagnostics=self.recorder,
+        )
+
+        await watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(launch_environment["WINEPREFIX"], str(self.prefix))
+        self.assertEqual(launch_environment["STEAM_COMPAT_DATA_PATH"], str(self.prefix))
+
+    async def test_default_game_id_named_pfx_remains_the_umu_root(self):
+        identity = "gog:pfx"
+        entry = GamesMapEntry(identity, "/games/game.exe")
+        session = SessionIdentity(12, 22)
+        discovery = DiscoveryResult(
+            "session",
+            session=session,
+            environment={
+                "WINEPREFIX": "/home/deck/.local/share/unifideck/prefixes/pfx/pfx",
+                "STEAM_COMPAT_DATA_PATH": "/home/deck/.local/share/unifideck/prefixes/pfx",
+                "PROTONPATH": "/proton",
+                "GAMEID": "umu-0",
+                "STORE": "gog",
+            },
+        )
+        watcher = RelayWatcher(
+            {"schemaVersion": 1, "games": {identity: {"enabled": True, "trainerPath": str(self.trainer)}}},
+            games_map_path="/games.map",
+            map_loader=lambda _: GamesMapResult({identity: entry}),
+            process_discoverer=FakeDiscoverer(discovery),
+            umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            runner=self.runner,
+            home="/home/deck",
+            clock=lambda: self.clock_value,
+            diagnostics=self.recorder,
+        )
+
+        await watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(launch_environment["WINEPREFIX"], "/home/deck/.local/share/unifideck/prefixes/pfx")
+        self.assertEqual(
+            launch_environment["STEAM_COMPAT_DATA_PATH"], "/home/deck/.local/share/unifideck/prefixes/pfx"
+        )
+
+    async def test_prefix_override_preserves_posix_root(self):
+        watcher = RelayWatcher(
+            {
+                "schemaVersion": 1,
+                "games": {
+                    self.identity: {
+                        "enabled": True,
+                        "trainerPath": str(self.trainer),
+                        "prefixOverride": "/",
+                    }
+                },
+            },
+            games_map_path="/games.map",
+            map_loader=lambda _: self.map_result,
+            process_discoverer=FakeDiscoverer(self.discovery),
+            umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            runner=self.runner,
+            home="/home/deck",
+            clock=lambda: self.clock_value,
+            diagnostics=self.recorder,
+        )
+
+        await watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(launch_environment["WINEPREFIX"], "/")
+        self.assertEqual(launch_environment["STEAM_COMPAT_DATA_PATH"], "/")
+
+    async def test_spawn_diagnostic_records_effective_umu_environment_shape(self):
+        await self.watcher.poll_once()
+
+        spawned = next(call for call in self.recorder.calls if call["event"] == "trainer_spawned")
+        self.assertEqual(
+            {
+                "wineprefix": spawned["details"]["wineprefix"],
+                "steam_compat_data_path": spawned["details"]["steam_compat_data_path"],
+                "proton_verb": spawned["details"]["proton_verb"],
+            },
+            {
+                "wineprefix": "/home/deck/.local/share/unifideck/prefixes/game",
+                "steam_compat_data_path": "/home/deck/.local/share/unifideck/prefixes/game",
+                "proton_verb": "runinprefix",
+            },
+        )
+
     async def test_first_premature_exit_retries_once_after_two_seconds(self):
         await self.watcher.poll_once()
         self.runner.handles[0]["exit_code"] = 1
@@ -214,6 +358,30 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         events = [call["event"] for call in self.recorder.calls]
         self.assertIn("trainer_exited", events)
         self.assertIn("trainer_retry_scheduled", events)
+
+    async def test_exit_after_three_seconds_retries_when_never_observed_running(self):
+        await self.watcher.poll_once()
+        self.runner.handles[0]["exit_code"] = 1
+        self.clock_value = 3.248
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.watcher.status(self.identity)["state"], "retrying")
+        exited = next(call for call in self.recorder.calls if call["event"] == "trainer_exited")
+        self.assertEqual(exited["outcome"], "warning")
+        self.assertIn("trainer_retry_scheduled", [call["event"] for call in self.recorder.calls])
+
+    async def test_exit_after_observed_running_does_not_retry_automatically(self):
+        await self.watcher.poll_once()
+        self.clock_value = 3.0
+        await self.watcher.poll_once()
+        self.runner.handles[0]["exit_code"] = 1
+        self.clock_value = 4.0
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.watcher.status(self.identity)["state"], "failed")
+        self.assertNotIn("trainer_retry_scheduled", [call["event"] for call in self.recorder.calls])
 
     async def test_second_premature_exit_fails_until_manual_retry(self):
         await self.watcher.poll_once()

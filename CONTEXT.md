@@ -12,7 +12,7 @@ The unique matching Windows process identified by its PID and `/proc/<pid>/stat`
 
 ## Prefix Anchor
 
-The Wine prefix selected for a launch identity: its configured absolute override, or `~/.local/share/unifideck/prefixes/<game_id>` by default.
+The UniFiDeck compatdata root selected for a launch identity: its configured absolute override, or `~/.local/share/unifideck/prefixes/<game_id>` by default. Proton descendants expose `WINEPREFIX=<root>/pfx`; that transformed child value is valid discovery evidence but must not be passed back to a new `umu-run`. Trainer Relay launches the sidecar with both `WINEPREFIX` and `STEAM_COMPAT_DATA_PATH` set to the selected root. An advanced override that explicitly names the child `pfx` directory is normalized to its parent, while a default game ID literally named `pfx` remains unchanged.
 
 ## Owned Sidecar
 

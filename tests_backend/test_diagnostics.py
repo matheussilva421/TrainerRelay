@@ -73,6 +73,34 @@ class DiagnosticRecorderTests(unittest.TestCase):
         self.assertEqual(events[0]["session"], {"pid": 123, "startTime": 456})
         self.assertEqual(events[0]["details"]["reason"], "prefix_mismatch")
 
+    def test_writes_only_effective_umu_shape_for_trainer_spawn(self):
+        recorder = self.recorder()
+        recorder.record(
+            "trainer",
+            "trainer_spawned",
+            "accepted",
+            identity="gog:game",
+            session=DiagnosticSession(123, 456),
+            details={
+                "trainer_path": "/games/trainer.exe",
+                "process_group_id": 789,
+                "wineprefix": "/prefix",
+                "steam_compat_data_path": "/prefix",
+                "proton_verb": "runinprefix",
+            },
+        )
+
+        self.assertEqual(
+            self.read_events()[0]["details"],
+            {
+                "trainer_path": "/games/trainer.exe",
+                "process_group_id": 789,
+                "wineprefix": "/prefix",
+                "steam_compat_data_path": "/prefix",
+                "proton_verb": "runinprefix",
+            },
+        )
+
     def test_rejects_unknown_or_forbidden_details_without_writing(self):
         recorder = self.recorder()
         invalid_calls = (

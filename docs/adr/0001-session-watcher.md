@@ -33,6 +33,15 @@ The v1 compatibility boundary is the same Wine prefix. It does not promise
 that the game and trainer share one pressure-vessel container. The watcher
 does not alter the game process, its process group, or its launch lifecycle.
 
+The process scanner may observe `WINEPREFIX=<anchor>/pfx` because Proton
+rewrites the variable for Windows descendants. A fresh `umu-run` instead
+expects the compatdata anchor. The owned sidecar therefore receives
+`WINEPREFIX=<anchor>`, `STEAM_COMPAT_DATA_PATH=<anchor>`, and finally
+`PROTON_VERB=runinprefix`. It also omits the descendant's
+`STEAM_COMPAT_CLIENT_INSTALL_PATH`, which UMU derives for the new invocation.
+The scanner still accepts either anchor shape as evidence, but the launch
+boundary never feeds transformed child values back into UMU.
+
 ## Alternatives considered
 
 ### Launch-time coupling
@@ -70,5 +79,8 @@ prefix anchor is the intentionally narrower and portable v1 boundary.
   fail-closed behavior.
 - The plugin must retain the observed PID/start-time pair and revalidate the
   game session before retries and shutdown.
+- Automatic retry is based on whether `running` was actually observed, not on
+  whether the next one-second poll happened just before or after a fixed
+  three-second timestamp.
 - Future event integration may optimize wakeups, but it must preserve the
   same process, prefix, and ownership checks.

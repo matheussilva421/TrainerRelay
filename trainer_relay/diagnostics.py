@@ -90,7 +90,15 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     ),
     "umu_resolved": frozenset({"source", "umu_path"}),
     "umu_rejected": frozenset({"reason"}),
-    "trainer_spawned": frozenset({"trainer_path", "process_group_id"}),
+    "trainer_spawned": frozenset(
+        {
+            "trainer_path",
+            "process_group_id",
+            "wineprefix",
+            "steam_compat_data_path",
+            "proton_verb",
+        }
+    ),
     "trainer_spawn_failed": frozenset({"trainer_path", "reason"}),
     "trainer_running": frozenset({"trainer_path", "elapsed_ms"}),
     "trainer_exited": frozenset({"trainer_path", "exit_code", "elapsed_ms"}),

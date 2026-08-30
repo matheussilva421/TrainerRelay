@@ -46,7 +46,11 @@ def _is_secret(key: str) -> bool:
     return any(part in folded for part in SECRET_PARTS)
 
 
-def build_sanitized_environment(source: Mapping[str, str]) -> dict[str, str]:
+def _umu_prefix_root(prefix_anchor: str) -> str:
+    return prefix_anchor.rstrip("/\\") or prefix_anchor
+
+
+def build_sanitized_environment(source: Mapping[str, str], prefix_anchor: str | None = None) -> dict[str, str]:
     result: dict[str, str] = {}
     for key, value in source.items():
         if not isinstance(key, str) or not isinstance(value, str):
@@ -56,5 +60,12 @@ def build_sanitized_environment(source: Mapping[str, str]) -> dict[str, str]:
         if key in EXACT_KEYS or key.startswith(ALLOWED_PREFIXES):
             result[key] = value
     result.pop("PROTON_REMOTE_DEBUG_CMD", None)
+    # This is derived by umu-run. Replaying the Proton child's value can pin a
+    # symlinked Steam root and make pressure-vessel fail before Wine starts.
+    result.pop("STEAM_COMPAT_CLIENT_INSTALL_PATH", None)
+    if prefix_anchor is not None:
+        umu_prefix = _umu_prefix_root(prefix_anchor)
+        result["WINEPREFIX"] = umu_prefix
+        result["STEAM_COMPAT_DATA_PATH"] = umu_prefix
     result["PROTON_VERB"] = "runinprefix"
     return result

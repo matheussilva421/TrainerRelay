@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import ntpath
 import os
+import posixpath
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,6 +79,15 @@ class RelayWatcher:
     @staticmethod
     def _diagnostic(code: str | None) -> dict[str, str] | None:
         return {"code": code} if code else None
+
+    @staticmethod
+    def _prefix_anchor(prefix: str, *, override: bool) -> str:
+        normalized = prefix.rstrip("/\\") or prefix
+        if not override:
+            return normalized
+        path_module = ntpath if "\\" in normalized else posixpath
+        parent, basename = path_module.split(normalized)
+        return parent if basename.casefold() == "pfx" and parent else normalized
 
     def status(self, identity: str) -> dict[str, Any]:
         state = self._states.get(identity, _RelayState())
@@ -205,7 +216,15 @@ class RelayWatcher:
             details=details,
         )
 
-    async def _spawn(self, state: _RelayState, identity: str, game: Mapping[str, Any], session: SessionIdentity, environment: Mapping[str, str]) -> None:
+    async def _spawn(
+        self,
+        state: _RelayState,
+        identity: str,
+        game: Mapping[str, Any],
+        session: SessionIdentity,
+        environment: Mapping[str, str],
+        prefix: str,
+    ) -> None:
         try:
             resolution = self._umu_resolver()
             if not resolution:
@@ -221,7 +240,7 @@ class RelayWatcher:
                 details={"source": str(umu_source), "umu_path": str(umu_path)},
             )
             trainer_path = str(game["trainerPath"])
-            safe_environment = build_sanitized_environment(environment)
+            safe_environment = build_sanitized_environment(environment, prefix)
             state.handle = await self._maybe_await(self._runner.spawn(session, trainer_path, safe_environment))
         except Exception as error:
             candidate_code = str(error)
@@ -241,7 +260,12 @@ class RelayWatcher:
             state.launched_at = None
             self._set_state(state, RelayStatus.INVALID_CONFIG, code)
             return
-        spawn_details: dict[str, Any] = {"trainer_path": str(game["trainerPath"])}
+        spawn_details: dict[str, Any] = {
+            "trainer_path": str(game["trainerPath"]),
+            "wineprefix": safe_environment["WINEPREFIX"],
+            "steam_compat_data_path": safe_environment["STEAM_COMPAT_DATA_PATH"],
+            "proton_verb": safe_environment["PROTON_VERB"],
+        }
         process_group_id = self._process_group_id(state.handle)
         if process_group_id is not None:
             spawn_details["process_group_id"] = process_group_id
@@ -326,14 +350,18 @@ class RelayWatcher:
             },
         )
 
-        prefix = validated_game.get("prefixOverride") or default_prefix_for(identity, self._home)
+        prefix_override = validated_game.get("prefixOverride")
+        prefix = self._prefix_anchor(
+            prefix_override or default_prefix_for(identity, self._home),
+            override=bool(prefix_override),
+        )
         self._record(
             "config",
             "prefix_selected",
             "info",
             identity=identity,
             details={
-                "source": "override" if validated_game.get("prefixOverride") else "unifideck_default",
+                "source": "override" if prefix_override else "unifideck_default",
                 "expected_prefix": prefix,
             },
         )
@@ -425,6 +453,7 @@ class RelayWatcher:
                 else:
                     self._set_state(state, RelayStatus.LAUNCHING)
                 return
+            was_running = state.state == RelayStatus.RUNNING
             handle = state.handle
             launched_at = state.launched_at
             state.handle = None
@@ -434,7 +463,7 @@ class RelayWatcher:
             self._record(
                 "trainer",
                 "trainer_exited",
-                "warning" if elapsed < 3.0 else "info",
+                "warning" if not was_running else "info",
                 identity=identity,
                 session=state.session,
                 details={
@@ -443,7 +472,7 @@ class RelayWatcher:
                     "elapsed_ms": int(elapsed * 1000),
                 },
             )
-            if elapsed < 3.0 and state.automatic_retries < 1:
+            if not was_running and state.automatic_retries < 1:
                 state.automatic_retries += 1
                 state.retry_at = now + 2.0
                 self._record(
@@ -471,7 +500,7 @@ class RelayWatcher:
                 details={"retry_count": state.automatic_retries + 1},
             )
             state.automatic_retries = 0
-        await self._spawn(state, identity, validated_game, discovery.session, discovery.environment or {})
+        await self._spawn(state, identity, validated_game, discovery.session, discovery.environment or {}, prefix)
 
     async def poll_once(self) -> None:
         identities = set(self._states) | set(self._games())
