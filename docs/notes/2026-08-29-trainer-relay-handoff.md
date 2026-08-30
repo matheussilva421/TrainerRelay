@@ -764,3 +764,22 @@ GOG/Epic validation remains explicitly pending.
   `get_relay_config`, an enabled trainer action, and Decky's file browser
   opening with `A`. Trainer launch/lifecycle and one Epic title remain after
   the GOG selector check. Do not promote to stable yet.
+
+### Experimental.12 publication checkpoint
+
+- Fix commit `b6e9133f72b9466a35700e31b80a292b542df6ed` was pushed to
+  `origin/feat/trainer-relay` and `origin/main`; tag
+  `v0.1.0-experimental.12` points to that commit.
+- Branch run `33306954118`, main run `33306963741`, and tag/release run
+  `33306981842` all passed. The tag workflow published the prerelease and its
+  installation asset.
+- Release:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.12`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.12/TrainerRelay.zip`.
+- GitHub reports 177,892 bytes and digest
+  `sha256:695b53d47a2269cb29816f8cc8a77f22d1e7c04fd4c000fb21d87a8c5ab1b260`.
+  A fresh independent download matched the local deterministic ZIP exactly.
+- Remaining acceptance gate: install `.12` on the physical Deck and confirm
+  that the journal no longer contains the `trainer_relay` import error, the
+  configuration RPC reaches `ready`, and pressing `A` opens the file browser.

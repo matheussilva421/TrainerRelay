@@ -104,9 +104,9 @@ O caminho selecionado no plugin deve ser absoluto, por exemplo:
    - GOG deve mostrar `gog:<game_id>`.
 4. Se aparecer **Unsupported shortcut**, não force a configuração. Confirme que
    o atalho veio do UniFiDeck e contém somente uma identidade literal.
-5. Em **Trainer executable**, pressione o botão compacto com ícone de pasta.
-   Navegue pelas pastas do Deck, selecione o trainer `.exe` e confirme. O campo
-   ao lado é somente leitura e mostrará o caminho selecionado.
+5. Em **Trainer executable**, pressione `A` na linha com o ícone de pasta.
+   Navegue pelas pastas do Deck, selecione o trainer `.exe` e confirme. A linha
+   mostrará o caminho absoluto selecionado.
 6. Deixe **Prefix override** vazio no primeiro teste. Assim será usado o prefixo
    padrão do UniFiDeck.
 7. Se não houver migração legada, ative manualmente **Enabled**.
@@ -184,7 +184,7 @@ O log completo inclui outros plugins. Revise-o antes de compartilhar.
 
 ### Log frontend do Steam/CEF
 
-Na versão `.11`, abra o Console do DevTools CEF, escolha **Default levels** no
+Na versão `.12`, abra o Console do DevTools CEF, escolha **Default levels** no
 filtro de nível e informe este texto no campo **Filter**:
 
 ```text
@@ -291,7 +291,7 @@ Só envie o log completo após revisar o conteúdo.
 
 - Plugin não aparece: recarregue o Decky ou reinicie o Steam Deck.
 - O botão de pasta não abre o navegador: confirme que a versão instalada é a
-  `.11`, filtre `[TrainerRelay:picker]` no Console e pressione o botão uma vez.
+  `.12`, filtre `[TrainerRelay:picker]` no Console e pressione o botão uma vez.
 - `Unsupported shortcut`: recrie/sincronize o atalho pelo UniFiDeck.
 - `waiting_for_game`: aguarde o processo real do jogo; não pressione Retry
   repetidamente durante o carregamento.
