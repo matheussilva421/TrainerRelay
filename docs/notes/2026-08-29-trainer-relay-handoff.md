@@ -831,3 +831,20 @@ GOG/Epic validation remains explicitly pending.
 - Delivery target is `v0.1.0-experimental.13`. Next action: obtain approval of
   the written specification, then create the detailed TDD implementation plan.
   No production implementation has started.
+
+### Persistent diagnostic mode implementation plan
+
+- The user approved the written design and explicitly authorized
+  implementation.
+- The detailed ten-task TDD plan is saved at
+  `docs/superpowers/plans/2026-08-30-trainer-relay-diagnostic-mode-implementation-plan.md`.
+- Tasks cover persistent settings; sanitized journal and exact 50 MiB rotation;
+  cursor/export/clear/failure isolation; structured `/proc` decisions;
+  watcher/UMU/trainer events; backend RPC wiring; TypeScript contracts; the
+  persistent DevTools bridge; the separate Diagnostics page; privacy,
+  packaging, documentation, and `v0.1.0-experimental.13` delivery.
+- The plan was checked against the design for scope, placeholders, and type
+  consistency. Integration privacy testing was moved before watcher event
+  implementation so it participates in a genuine RED/GREEN cycle.
+- Next action: commit and push the plan checkpoint, then execute Task 1 through
+  Task 10 inline with focused RED/GREEN evidence and small commits.
