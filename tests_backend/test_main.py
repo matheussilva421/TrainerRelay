@@ -3,6 +3,8 @@ import importlib
 import sys
 import types
 import unittest
+from pathlib import Path
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 
@@ -33,6 +35,7 @@ class FakeWatcher:
         self.config = config
         self.stop_calls = 0
         self.run_calls = 0
+        self.kwargs = kwargs
 
     async def run(self):
         self.run_calls += 1
@@ -51,6 +54,28 @@ class FakeWatcher:
         return self.status(identity)
 
 
+class FakeDiagnostics:
+    def __init__(self, enabled=False):
+        self.enabled = enabled
+        self.flush_calls = 0
+        self.record_calls = []
+
+    def flush(self):
+        self.flush_calls += 1
+
+    def record(self, *args, **kwargs):
+        self.record_calls.append((args, kwargs))
+
+
+class FakeDiagnosticRpc:
+    def __init__(self):
+        self.get_diagnostic_settings = AsyncMock(return_value={"settings": {"schemaVersion": 1, "enabled": True}})
+        self.set_diagnostics_enabled = AsyncMock(return_value={"settings": {"schemaVersion": 1, "enabled": True}})
+        self.get_diagnostic_events = AsyncMock(return_value={"generation": 1, "events": []})
+        self.export_diagnostics = AsyncMock(return_value={"path": "/downloads/export.txt", "bytesWritten": 1})
+        self.clear_diagnostics = AsyncMock(return_value={"generation": 2})
+
+
 class MainWiringTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.settings = FakeSettings()
@@ -58,6 +83,7 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         decky.DECKY_PLUGIN_SETTINGS_DIR = "/settings"
         decky.DECKY_PLUGIN_LOG_DIR = "/logs"
         decky.DECKY_PLUGIN_DIR = "/plugin"
+        decky.HOME = "/home/deck"
         decky.logger = types.SimpleNamespace(setLevel=lambda *_: None, info=lambda *_: None)
         settings_module = types.ModuleType("settings")
         settings_module.SettingsManager = lambda **_: self.settings
@@ -110,6 +136,54 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
             await self.main.Plugin._unload()
             self.assertEqual(watcher.stop_calls, 1)
             self.assertIsNone(self.main._watcher_task)
+
+    async def test_main_owns_one_persisted_recorder_shared_by_watcher_and_rpc(self):
+        self.settings.values["diagnostic_settings_v1"] = {"schemaVersion": 1, "enabled": True}
+        diagnostics = FakeDiagnostics(enabled=True)
+        watcher = FakeWatcher({})
+        rpc = FakeDiagnosticRpc()
+        with (
+            patch.object(self.main, "DiagnosticRecorder", return_value=diagnostics) as recorder_factory,
+            patch.object(self.main, "RelayWatcher", return_value=watcher) as watcher_factory,
+            patch.object(self.main, "RelayRpc", return_value=rpc) as rpc_factory,
+            patch.object(self.main, "OwnedTrainerRunner", return_value=object()),
+        ):
+            await self.main.Plugin._main()
+            self.main._service()
+
+        recorder_factory.assert_called_once_with(Path("/settings") / "diagnostics", enabled=True)
+        self.assertIs(watcher_factory.call_args.kwargs["diagnostics"], diagnostics)
+        self.assertIs(rpc_factory.call_args.args[2], diagnostics)
+        self.assertEqual(rpc_factory.call_args.kwargs["downloads_dir"], Path("/home/deck") / "Downloads")
+        self.assertEqual(len(diagnostics.record_calls), 1)
+
+    async def test_unload_flushes_once_even_when_watcher_stop_fails(self):
+        diagnostics = FakeDiagnostics(enabled=True)
+        watcher = FakeWatcher({})
+        watcher.stop = AsyncMock(side_effect=OSError("private stop failure"))
+        self.main._diagnostics = diagnostics
+        self.main._watcher = watcher
+
+        await self.main.Plugin._unload()
+
+        self.assertEqual(diagnostics.flush_calls, 1)
+        self.assertIsNone(self.main._diagnostics)
+
+    async def test_plugin_delegates_all_five_diagnostic_rpcs(self):
+        rpc = FakeDiagnosticRpc()
+        self.main._rpc = rpc
+
+        await self.main.Plugin.get_diagnostic_settings()
+        await self.main.Plugin.set_diagnostics_enabled({"enabled": True})
+        await self.main.Plugin.get_diagnostic_events({"limit": 20})
+        await self.main.Plugin.export_diagnostics()
+        await self.main.Plugin.clear_diagnostics()
+
+        rpc.get_diagnostic_settings.assert_awaited_once_with()
+        rpc.set_diagnostics_enabled.assert_awaited_once_with({"enabled": True})
+        rpc.get_diagnostic_events.assert_awaited_once_with({"limit": 20})
+        rpc.export_diagnostics.assert_awaited_once_with()
+        rpc.clear_diagnostics.assert_awaited_once_with()
 
 
 if __name__ == "__main__":

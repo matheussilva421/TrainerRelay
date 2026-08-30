@@ -398,7 +398,7 @@ git commit -m "feat: record relay lifecycle diagnostics"
 - Main owns `_diagnostics`, initializes it from `diagnostic_settings_v1`, and passes the same instance to watcher and RPC.
 - Main unload flushes diagnostics after watcher shutdown and does not delete history.
 
-- [ ] **Step 1: Write RPC contract tests RED**
+- [x] **Step 1: Write RPC contract tests RED**
 
 Test settings response exact fields, strict boolean input, cursor/limit decoding, bounded RPC error codes, export path/bytes, clear generation, settings commit before enabling recorder, and no raw exception text.
 
@@ -409,19 +409,19 @@ self.assertEqual(settings.set_calls[-1][0], "diagnostic_settings_v1")
 self.assertTrue(diagnostics.enabled)
 ```
 
-- [ ] **Step 2: Run RPC tests RED, implement adapter, run GREEN**
+- [x] **Step 2: Run RPC tests RED, implement adapter, run GREEN**
 
 Run: `python -m unittest tests_backend.test_rpc -v`
 
-- [ ] **Step 3: Write main wiring tests RED**
+- [x] **Step 3: Write main wiring tests RED**
 
 Patch `DiagnosticRecorder` and assert one recorder under `/settings/diagnostics`, persisted enabled state, same instance passed to watcher/RPC, all five Plugin classmethods delegated, and unload flushes once even after watcher failure.
 
-- [ ] **Step 4: Implement main wiring and Plugin RPC methods GREEN**
+- [x] **Step 4: Implement main wiring and Plugin RPC methods GREEN**
 
 Use `decky.DECKY_PLUGIN_SETTINGS_DIR` and `Path(decky.HOME or HOME) / "Downloads"`. Read package version from a fixed Python constant or injected main value that packaging tests can verify; do not parse package.json at runtime on every export.
 
-- [ ] **Step 5: Run backend and compile gates, commit**
+- [x] **Step 5: Run backend and compile gates, commit**
 
 ```bash
 python -m unittest tests_backend.test_rpc tests_backend.test_main -v

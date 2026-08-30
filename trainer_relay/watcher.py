@@ -494,7 +494,3 @@ class RelayWatcher:
         self._stopped = True
         for identity, state in self._states.items():
             await self._stop_owned(state, identity)
-        try:
-            self._diagnostics.flush()
-        except (OSError, ValueError):
-            pass
