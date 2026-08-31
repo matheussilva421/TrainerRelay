@@ -38,3 +38,22 @@ Trabalhar somente nesta worktree/branch. Antes de editar, revisar o diagnóstico
 em `docs/notes/2026-08-29-trainer-relay-handoff.md`, criar testes vermelhos
 para a resolução do D-Bus host e o latch de preflight, e preservar a fronteira
 fail-closed: falhas do trainer nunca encerram o jogo.
+
+## Handoff para o terceiro modelo (Claude)
+
+Claude deve criar uma terceira worktree antes de editar qualquer arquivo:
+
+```powershell
+$repo = 'C:\Users\slvma\Downloads\Github\Mods\.worktrees\trainer-relay-second'
+$third = 'C:\Users\slvma\Downloads\Github\Mods\.worktrees\trainer-relay-third'
+git -C $repo worktree add -b codex/trainer-relay-third-model $third HEAD
+```
+
+Depois, deve confirmar que está em `codex/trainer-relay-third-model`, que a
+worktree está limpa e que `origin` é `https://github.com/matheussilva421/TrainerRelay.git`.
+Não deve usar `Mods/main`, `trainer-relay-source` ou `trainer-relay`, não deve
+executar `reset`, `checkout` destrutivo ou `clean`, e não deve editar as outras
+worktrees. O objetivo é investigar e corrigir o mesmo erro físico `.17`
+(`container_reentry_probe_failed`) seguindo TDD, começando pelo diagnóstico em
+`docs/notes/2026-08-29-trainer-relay-handoff.md`, e publicar apenas sua branch
+isolada se houver alterações.
