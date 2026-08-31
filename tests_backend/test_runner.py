@@ -21,6 +21,84 @@ class FakeProcess:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_confirms_only_the_exact_expected_umu_reentry_line_across_pipe_chunks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "import sys, time\n"
+                "sys.stderr.write(\"INFO: Re-entering container through bus 'com.steam\")\n"
+                "sys.stderr.flush()\n"
+                "time.sleep(0.02)\n"
+                "sys.stderr.write(\"powered.Appabc123'\\n\")\n"
+                "sys.stderr.flush()\n"
+                "time.sleep(0.1)\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable)
+            handle = runner.spawn(
+                SessionIdentity(7, 99),
+                str(script),
+                dict(os.environ),
+                expected_reentry_bus="com.steampowered.Appabc123",
+            )
+
+            deadline = time.monotonic() + 2.0
+
+            self.assertEqual(runner.reentry_status(handle, wait_seconds=0.2), "confirmed")
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            runner.forget(handle)
+
+    def test_reports_the_exact_expected_umu_reentry_failure_without_accepting_another_bus(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "import sys, time\n"
+                "print(\"INFO: Re-entering container through bus 'com.steampowered.Appwrong'\", file=sys.stderr, flush=True)\n"
+                "print('INFO: Failed to find bus name com.steampowered.Appexpected (retry 1)', file=sys.stderr, flush=True)\n"
+                "time.sleep(0.1)\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable)
+            handle = runner.spawn(
+                SessionIdentity(7, 99),
+                str(script),
+                dict(os.environ),
+                expected_reentry_bus="com.steampowered.Appexpected",
+            )
+
+            deadline = time.monotonic() + 2.0
+            while runner.reentry_status(handle) == "pending" and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            self.assertEqual(runner.reentry_status(handle), "retrying")
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            runner.forget(handle)
+
+    def test_does_not_confirm_the_expected_text_when_it_is_not_the_exact_umu_info_line(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake-umu.py"
+            script.write_text(
+                "import sys\n"
+                "print(\"noise INFO: Re-entering container through bus 'com.steampowered.Appabc123' suffix\", file=sys.stderr)\n",
+                encoding="utf-8",
+            )
+            runner = OwnedTrainerRunner(sys.executable)
+            handle = runner.spawn(
+                SessionIdentity(7, 99),
+                str(script),
+                dict(os.environ),
+                expected_reentry_bus="com.steampowered.Appabc123",
+            )
+
+            deadline = time.monotonic() + 2.0
+            while runner.poll(handle) is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            self.assertEqual(runner.reentry_status(handle), "pending")
+            runner.forget(handle)
+
     def test_spawns_exact_umu_argv_in_trainer_parent_and_new_session(self):
         calls = []
         process = FakeProcess()

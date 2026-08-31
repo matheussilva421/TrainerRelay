@@ -51,7 +51,9 @@ class ContainerReentryResolution:
     runtime_variant: str
     attempts: int
     bus_source: str
+    app_id_source: str
     session_environment: Mapping[str, str]
+    launch_environment: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,36 @@ class ContainerReentryProbe:
         result.update(session_environment)
         return result
 
+    def _runtime_context(self) -> tuple[Path, dict[str, str]]:
+        folders_value = self._host_environment.get("UMU_FOLDERS_PATH")
+        if folders_value is not None:
+            folders_root = Path(folders_value)
+            if not folders_value or not folders_root.is_absolute():
+                raise ContainerReentryError("container_reentry_unsupported")
+            return folders_root / "umu", {"UMU_FOLDERS_PATH": folders_value}
+
+        data_value = self._host_environment.get("XDG_DATA_HOME")
+        if data_value is not None:
+            data_home = Path(data_value)
+            if not data_value or not data_home.is_absolute():
+                raise ContainerReentryError("container_reentry_unsupported")
+            return data_home / "umu", {"XDG_DATA_HOME": data_value}
+
+        return self._home / ".local" / "share" / "umu", {}
+
+    def _launch_environment(
+        self,
+        runtime_environment: Mapping[str, str],
+        session_environment: Mapping[str, str],
+    ) -> Mapping[str, str]:
+        result = {
+            "HOME": str(self._home),
+            "PATH": self._host_environment.get("PATH") or os.defpath,
+        }
+        result.update(runtime_environment)
+        result.update(session_environment)
+        return MappingProxyType(result)
+
     @staticmethod
     def _failure_class(error: BaseException | None, returncode: int | None, stderr: str) -> str:
         if isinstance(error, subprocess.TimeoutExpired):
@@ -204,16 +236,7 @@ class ContainerReentryProbe:
             raise ContainerReentryError("container_reentry_unsupported") from error
 
         variant = self._runtime_variant(proton_path)
-        if "UMU_FOLDERS_PATH" in environment:
-            folders_root = Path(environment["UMU_FOLDERS_PATH"])
-            if not environment["UMU_FOLDERS_PATH"] or not folders_root.is_absolute():
-                raise ContainerReentryError("container_reentry_unsupported")
-            umu_root = folders_root / "umu"
-        else:
-            data_home = Path(environment.get("XDG_DATA_HOME", self._home / ".local" / "share"))
-            if not data_home.is_absolute():
-                raise ContainerReentryError("container_reentry_unsupported")
-            umu_root = data_home / "umu"
+        umu_root, runtime_environment = self._runtime_context()
         launch_client = umu_root / variant / "pressure-vessel" / "bin" / "steam-runtime-launch-client"
         try:
             launch_client = launch_client.resolve(strict=True)
@@ -223,6 +246,14 @@ class ContainerReentryProbe:
             raise ContainerReentryError("container_reentry_unsupported")
 
         digest = hashlib.md5(str(prefix).encode("utf-8"), usedforsecurity=False).hexdigest()
+        captured_app_id = environment.get("STEAM_COMPAT_APP_ID")
+        if captured_app_id is not None and captured_app_id.casefold() != digest:
+            raise ContainerReentryError(
+                "container_reentry_identity_mismatch",
+                failure_class="app_id_mismatch",
+                attempts=0,
+            )
+        app_id_source = "computed_and_captured" if captured_app_id is not None else "computed"
         bus_name = f"com.steampowered.App{digest}"
         expected = f"--bus-name={bus_name}"
         candidates = self._session_bus_candidates()
@@ -286,7 +317,9 @@ class ContainerReentryProbe:
                         variant,
                         invocation,
                         candidate.source,
+                        app_id_source,
                         MappingProxyType(dict(candidate.environment)),
+                        self._launch_environment(runtime_environment, candidate.environment),
                     )
             if invocation < self._attempts:
                 self._sleep(self._delay_seconds)

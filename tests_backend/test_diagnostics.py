@@ -135,11 +135,36 @@ class DiagnosticRecorderTests(unittest.TestCase):
             "probe_exit_code": 1,
             "bus_source": "home_owner_runtime",
             "attempt_count": 5,
+            "service_marker_present": True,
         }
 
         recorder.record("umu", "container_reentry_rejected", "rejected", details=details)
 
         self.assertEqual(self.read_events()[0]["details"], details)
+
+    def test_accepts_bounded_container_reentry_confirmation_events(self):
+        recorder = self.recorder()
+        verified = {
+            "bus_name": "com.steampowered.Appabc",
+            "runtime_variant": "steamrt3",
+            "attempt_count": 1,
+            "bus_source": "home_owner_runtime",
+            "app_id_source": "computed_and_captured",
+            "service_marker_present": True,
+        }
+        confirmed = {"bus_name": "com.steampowered.Appabc", "elapsed_ms": 125}
+        failed = {
+            "bus_name": "com.steampowered.Appabc",
+            "elapsed_ms": 3000,
+            "failure_observed": True,
+            "service_marker_present": True,
+        }
+
+        recorder.record("umu", "container_reentry_verified", "accepted", details=verified)
+        recorder.record("umu", "container_reentry_confirmed", "accepted", details=confirmed)
+        recorder.record("umu", "container_reentry_confirmation_failed", "rejected", details=failed)
+
+        self.assertEqual([event["details"] for event in self.read_events()], [verified, confirmed, failed])
 
     def test_rejects_umu_output_tail_larger_than_the_runner_retention_limit(self):
         recorder = self.recorder()

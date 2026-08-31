@@ -1,7 +1,7 @@
 {
   "name": "trainer-relay",
   "type": "module",
-  "version": "0.1.0-experimental.18",
+  "version": "0.1.0-experimental.19",
   "description": "A Decky Loader plugin for trainer sidecars on supported UniFiDeck shortcuts.",
   "scripts": {
     "build": "rollup -c",

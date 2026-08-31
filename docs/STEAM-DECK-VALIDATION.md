@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.18
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.19
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -41,8 +41,9 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Confirm the game reaches its main menu before the trainer window appears.
 - [ ] Confirm the Trainer Relay status progresses through `waiting_for_game` and `launching` to `running`.
 - [ ] Confirm `trainer_spawned` reports `container_reentry=enabled` and the UMU
-  output contains `Re-entering container through bus`, not five
-  `Failed to find bus name` attempts.
+  diagnostics report `container_reentry_confirmed` before `trainer_running`.
+  A `container_reentry_confirmation_failed` result must stop only the trainer
+  group and must never leave UMU's independent-container fallback running.
 - [ ] Confirm `container_reentry_verified` reports `bus_source` as the Deck
   user's host/session context. It must not use the game's pressure-vessel bus.
 - [ ] Confirm exactly one trainer instance is present.
@@ -78,6 +79,9 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Force one preflight failure and confirm only one
   `container_reentry_rejected` event is emitted for the same PID/start-time;
   pressing **Retry** performs exactly one new bounded attempt.
+- [ ] Simulate a live re-entry confirmation timeout and confirm the state is
+  `failed`, only the owned process group is stopped, and a manual Retry is
+  required for the same PID/start-time session.
 - [ ] Start a duplicate candidate and confirm the state becomes `ambiguous` without starting a trainer.
 - [ ] Confirm stopping Trainer Relay does not stop the game, `wineserver`, global UMU, or another trainer.
 - [ ] Review the plugin log for status/diagnostic codes only; confirm no environment dump, credential, cookie, or token is present.

@@ -63,6 +63,7 @@ class ContainerReentryProbeTests(unittest.TestCase):
             self.assertEqual(result.runtime_variant, "steamrt3")
             self.assertEqual(result.attempts, 1)
             self.assertEqual(result.bus_source, "host_environment")
+            self.assertEqual(result.app_id_source, "computed")
             self.assertEqual(
                 result.session_environment,
                 {
@@ -76,6 +77,128 @@ class ContainerReentryProbeTests(unittest.TestCase):
             self.assertNotIn("WINEPREFIX", calls[0][1]["env"])
             with self.assertRaises(TypeError):
                 result.session_environment["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/tampered"
+
+    def test_rejects_a_captured_app_id_that_disagrees_with_the_prefix_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proton, _ = self._layout(root)
+            prefix = root / "prefix"
+            prefix.mkdir()
+            probe = ContainerReentryProbe(
+                root,
+                run=lambda *_args, **_kwargs: self.fail("launch client must not run for an identity mismatch"),
+                host_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"},
+                target_uid=1000,
+                getuid=lambda: 1000,
+            )
+
+            with self.assertRaises(ContainerReentryError) as captured:
+                asyncio.run(
+                    probe.verify(
+                        {
+                            "WINEPREFIX": str(prefix),
+                            "PROTONPATH": str(proton),
+                            "STEAM_COMPAT_APP_ID": "0" * 32,
+                        }
+                    )
+                )
+
+            self.assertEqual(str(captured.exception), "container_reentry_identity_mismatch")
+            self.assertEqual(captured.exception.failure_class, "app_id_mismatch")
+            self.assertEqual(captured.exception.attempts, 0)
+
+    def test_records_when_the_captured_app_id_confirms_the_prefix_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proton, _ = self._layout(root)
+            prefix = root / "prefix"
+            prefix.mkdir()
+            digest = hashlib.md5(str(prefix.resolve()).encode(), usedforsecurity=False).hexdigest()
+            bus = f"com.steampowered.App{digest}"
+
+            result = asyncio.run(
+                ContainerReentryProbe(
+                    root,
+                    run=lambda *_args, **_kwargs: SimpleNamespace(
+                        returncode=0,
+                        stdout=f"--bus-name={bus}\n",
+                        stderr="",
+                    ),
+                    host_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"},
+                    target_uid=1000,
+                    getuid=lambda: 1000,
+                ).verify(
+                    {
+                        "WINEPREFIX": str(prefix),
+                        "PROTONPATH": str(proton),
+                        "STEAM_COMPAT_APP_ID": digest.upper(),
+                    }
+                )
+            )
+
+            self.assertEqual(result.app_id_source, "computed_and_captured")
+
+    def test_uses_one_host_runtime_environment_for_probe_and_sidecar(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proton, _ = self._layout(root)
+            prefix = root / "prefix"
+            prefix.mkdir()
+            host_data = root / "host-data"
+            private_data = root / "private-game-data"
+            relative_client = Path("umu/steamrt3/pressure-vessel/bin/steam-runtime-launch-client")
+            host_client = host_data / relative_client
+            private_client = private_data / relative_client
+            for client in (host_client, private_client):
+                client.parent.mkdir(parents=True)
+                client.write_text("client", encoding="utf-8")
+                client.chmod(client.stat().st_mode | stat.S_IXUSR)
+            bus = "com.steampowered.App" + hashlib.md5(
+                str(prefix.resolve()).encode(), usedforsecurity=False
+            ).hexdigest()
+            host_bus = "unix:path=/run/user/1000/bus"
+
+            result = asyncio.run(
+                ContainerReentryProbe(
+                    root,
+                    run=lambda *_args, **_kwargs: SimpleNamespace(
+                        returncode=0,
+                        stdout=f"--bus-name={bus}\n",
+                        stderr="",
+                    ),
+                    host_environment={
+                        "HOME": str(root),
+                        "PATH": "/host/bin:/usr/bin",
+                        "XDG_DATA_HOME": str(host_data),
+                        "DBUS_SESSION_BUS_ADDRESS": host_bus,
+                        "XDG_RUNTIME_DIR": "/run/user/1000",
+                    },
+                    target_uid=1000,
+                    getuid=lambda: 1000,
+                ).verify(
+                    {
+                        "WINEPREFIX": str(prefix),
+                        "PROTONPATH": str(proton),
+                        "HOME": "/run/pressure-vessel/private-home",
+                        "PATH": "/run/pressure-vessel/bin",
+                        "XDG_DATA_HOME": str(private_data),
+                    }
+                )
+            )
+
+            self.assertEqual(result.launch_client, host_client.resolve())
+            self.assertEqual(
+                result.launch_environment,
+                {
+                    "HOME": str(root),
+                    "PATH": "/host/bin:/usr/bin",
+                    "XDG_DATA_HOME": str(host_data),
+                    "DBUS_SESSION_BUS_ADDRESS": host_bus,
+                    "XDG_RUNTIME_DIR": "/run/user/1000",
+                },
+            )
+            with self.assertRaises(TypeError):
+                result.launch_environment["HOME"] = "/tampered"
 
     def test_falls_back_from_an_unusable_host_address_to_the_uid_runtime_bus(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -283,7 +406,7 @@ class ContainerReentryProbeTests(unittest.TestCase):
             self.assertEqual(len(calls), 5)
             self.assertEqual(captured.exception.attempts, 5)
 
-    def test_uses_the_game_session_xdg_data_home_for_the_umu_runtime(self):
+    def test_uses_the_host_xdg_data_home_for_the_umu_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             proton, default_client = self._layout(root)
@@ -312,13 +435,15 @@ class ContainerReentryProbeTests(unittest.TestCase):
                 ContainerReentryProbe(
                     root,
                     run=run,
-                    host_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"},
+                    host_environment={
+                        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                        "XDG_DATA_HOME": str(data_home),
+                    },
                     getuid=lambda: 1000,
                 ).verify(
                     {
                         "WINEPREFIX": str(prefix),
                         "PROTONPATH": str(proton),
-                        "XDG_DATA_HOME": str(data_home),
                     }
                 )
             )
@@ -354,19 +479,64 @@ class ContainerReentryProbeTests(unittest.TestCase):
                         stdout=f"--bus-name={bus}\n",
                         stderr="",
                     ),
-                    host_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"},
+                    host_environment={
+                        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                        "UMU_FOLDERS_PATH": str(folders_root),
+                    },
                     getuid=lambda: 1000,
                 ).verify(
                     {
                         "WINEPREFIX": str(prefix),
                         "PROTONPATH": str(proton),
-                        "UMU_FOLDERS_PATH": str(folders_root),
                         "XDG_DATA_HOME": str(root / "wrong-data-home"),
                     }
                 )
             )
 
             self.assertEqual(result.launch_client, custom_client.resolve())
+
+    def test_ignores_a_private_game_umu_folders_path_when_resolving_the_host_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proton, default_client = self._layout(root)
+            private_root = root / "pressure-vessel-private"
+            private_client = (
+                private_root
+                / "umu"
+                / "steamrt3"
+                / "pressure-vessel"
+                / "bin"
+                / "steam-runtime-launch-client"
+            )
+            private_client.parent.mkdir(parents=True)
+            private_client.write_text("private", encoding="utf-8")
+            private_client.chmod(private_client.stat().st_mode | stat.S_IXUSR)
+            prefix = root / "prefix"
+            bus = "com.steampowered.App" + hashlib.md5(
+                str(prefix.resolve()).encode(), usedforsecurity=False
+            ).hexdigest()
+
+            result = asyncio.run(
+                ContainerReentryProbe(
+                    root,
+                    run=lambda *_args, **_kwargs: SimpleNamespace(
+                        returncode=0,
+                        stdout=f"--bus-name={bus}\n",
+                        stderr="",
+                    ),
+                    host_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"},
+                    getuid=lambda: 1000,
+                ).verify(
+                    {
+                        "WINEPREFIX": str(prefix),
+                        "PROTONPATH": str(proton),
+                        "UMU_FOLDERS_PATH": str(private_root),
+                    }
+                )
+            )
+
+            self.assertEqual(result.launch_client, default_client.resolve())
+            self.assertNotIn("UMU_FOLDERS_PATH", result.launch_environment)
 
     def test_rejects_unknown_or_ambiguous_proton_runtime_manifests(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -457,17 +627,20 @@ class ContainerReentryProbeTests(unittest.TestCase):
             root = Path(directory)
             proton, _ = self._layout(root)
 
-            for environment in (
-                {"UMU_FOLDERS_PATH": ""},
-                {"UMU_FOLDERS_PATH": "relative"},
-                {"XDG_DATA_HOME": "relative"},
+            for environment, host_environment in (
+                ({}, {"UMU_FOLDERS_PATH": ""}),
+                ({}, {"UMU_FOLDERS_PATH": "relative"}),
+                ({}, {"XDG_DATA_HOME": "relative"}),
             ):
-                with self.subTest(environment=environment):
+                with self.subTest(environment=environment, host_environment=host_environment):
                     with self.assertRaisesRegex(ContainerReentryError, "container_reentry_unsupported"):
                         asyncio.run(
                             ContainerReentryProbe(
                                 root,
-                                host_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"},
+                                host_environment={
+                                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                                    **host_environment,
+                                },
                                 getuid=lambda: 1000,
                             ).verify(
                                 {

@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-The current release is `v0.1.0-experimental.18`. Its branch and tag workflows passed, and the published ZIP matches the locally validated package byte for byte. It remains experimental pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4.
+The current release candidate is `v0.1.0-experimental.19`. It remains experimental pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4. This build also requires UMU's exact re-entry confirmation before reporting the trainer as running.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.18).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.19).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.

@@ -34,6 +34,17 @@ _DIAGNOSTIC_RUNTIME_FLAGS = frozenset(
     }
 )
 
+_HOST_RUNTIME_ENVIRONMENT_KEYS = frozenset(
+    {
+        "HOME",
+        "PATH",
+        "XDG_DATA_HOME",
+        "UMU_FOLDERS_PATH",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XDG_RUNTIME_DIR",
+    }
+)
+
 
 @dataclass
 class _RelayState:
@@ -45,6 +56,9 @@ class _RelayState:
     retry_at: float | None = None
     automatic_retries: int = 0
     rejected_preflight_session: SessionIdentity | None = None
+    expected_reentry_bus: str | None = None
+    reentry_confirmed: bool = False
+    service_marker_present: bool = False
 
 
 class RelayWatcher:
@@ -146,14 +160,22 @@ class RelayWatcher:
             value = getattr(handle, "process_group_id", None)
         return value if type(value) is int and value > 0 else None
 
+    @staticmethod
+    def _reset_launch_state(state: _RelayState) -> None:
+        state.handle = None
+        state.launched_at = None
+        state.expected_reentry_bus = None
+        state.reentry_confirmed = False
+        state.service_marker_present = False
+
     async def _stop_owned(self, state: _RelayState, identity: str | None = None) -> None:
         if state.handle is None:
+            self._reset_launch_state(state)
             return
         handle = state.handle
         session = state.session
         process_group_id = self._process_group_id(handle)
-        state.handle = None
-        state.launched_at = None
+        self._reset_launch_state(state)
         stop_result = None
         try:
             stop_result = await self._maybe_await(self._runner.stop(handle))
@@ -256,6 +278,7 @@ class RelayWatcher:
         environment: Mapping[str, str],
         prefix: str,
     ) -> None:
+        service_marker_present = bool(environment.get("STEAM_COMPAT_LAUNCHER_SERVICE"))
         try:
             resolution = self._umu_resolver()
             if not resolution:
@@ -272,24 +295,32 @@ class RelayWatcher:
             )
             trainer_path = str(game["trainerPath"])
             source_environment = dict(environment)
-            if getattr(self._diagnostics, "enabled", False):
-                # UMU_LOG=1 enables DEBUG and logs the complete derived UMU
-                # environment. INFO retains re-entry/failure messages without
-                # emitting that privacy-sensitive dump.
-                source_environment["UMU_LOG"] = "info"
+            # The exact INFO re-entry line is part of the fail-closed launch
+            # contract. DEBUG would expose UMU's complete derived environment.
+            source_environment["UMU_LOG"] = "info"
             safe_environment = build_sanitized_environment(source_environment, prefix)
             reentry = await self._maybe_await(self._container_probe.verify(safe_environment))
-            session_bus = reentry.session_environment.get("DBUS_SESSION_BUS_ADDRESS")
-            runtime_dir = reentry.session_environment.get("XDG_RUNTIME_DIR")
-            if not isinstance(session_bus, str) or not session_bus or not isinstance(runtime_dir, str) or not runtime_dir:
+            launch_environment = reentry.launch_environment
+            required_launch_values = {
+                key: launch_environment.get(key)
+                for key in ("HOME", "PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
+            }
+            if any(not isinstance(value, str) or not value for value in required_launch_values.values()):
                 raise ContainerReentryError(
                     "container_reentry_probe_failed",
                     failure_class="host_session_bus_unavailable",
                     bus_source=str(reentry.bus_source),
                     attempts=int(reentry.attempts),
                 )
-            safe_environment["DBUS_SESSION_BUS_ADDRESS"] = session_bus
-            safe_environment["XDG_RUNTIME_DIR"] = runtime_dir
+            for key in _HOST_RUNTIME_ENVIRONMENT_KEYS:
+                safe_environment.pop(key, None)
+            safe_environment.update(
+                {
+                    key: value
+                    for key, value in launch_environment.items()
+                    if key in _HOST_RUNTIME_ENVIRONMENT_KEYS and isinstance(value, str) and value
+                }
+            )
             proton_verb = safe_environment.pop("PROTON_VERB")
             safe_environment["PROTON_VERB"] = proton_verb
             self._record(
@@ -303,9 +334,22 @@ class RelayWatcher:
                     "runtime_variant": str(reentry.runtime_variant),
                     "attempt_count": int(reentry.attempts),
                     "bus_source": str(reentry.bus_source),
+                    "app_id_source": str(reentry.app_id_source),
+                    "service_marker_present": service_marker_present,
                 },
             )
-            state.handle = await self._maybe_await(self._runner.spawn(session, trainer_path, safe_environment))
+            launch_started_at = self._clock()
+            state.handle = await self._maybe_await(
+                self._runner.spawn(
+                    session,
+                    trainer_path,
+                    safe_environment,
+                    expected_reentry_bus=str(reentry.bus_name),
+                )
+            )
+            state.expected_reentry_bus = str(reentry.bus_name)
+            state.reentry_confirmed = False
+            state.service_marker_present = service_marker_present
         except Exception as error:
             candidate_code = str(error)
             bounded_codes = {
@@ -314,6 +358,7 @@ class RelayWatcher:
                 "container_reentry_unsupported",
                 "container_reentry_probe_failed",
                 "container_reentry_bus_missing",
+                "container_reentry_identity_mismatch",
             }
             code = candidate_code if candidate_code in bounded_codes else "trainer_spawn_failed"
             event = (
@@ -324,6 +369,8 @@ class RelayWatcher:
                 else "trainer_spawn_failed"
             )
             rejection_details: dict[str, Any] = {"reason": code}
+            if event == "container_reentry_rejected":
+                rejection_details["service_marker_present"] = service_marker_present
             for attribute, detail_key in (
                 ("failure_class", "failure_class"),
                 ("exit_code", "probe_exit_code"),
@@ -343,8 +390,7 @@ class RelayWatcher:
                 if event in {"umu_rejected", "container_reentry_rejected"}
                 else {"trainer_path": str(game["trainerPath"]), "reason": code},
             )
-            state.handle = None
-            state.launched_at = None
+            self._reset_launch_state(state)
             state.rejected_preflight_session = session if code.startswith("container_reentry_") else None
             self._set_state(state, RelayStatus.INVALID_CONFIG, code)
             return
@@ -368,7 +414,7 @@ class RelayWatcher:
             session=session,
             details=spawn_details,
         )
-        state.launched_at = self._clock()
+        state.launched_at = launch_started_at
         state.retry_at = None
         state.rejected_preflight_session = None
         self._set_state(state, RelayStatus.LAUNCHING)
@@ -535,7 +581,75 @@ class RelayWatcher:
             except Exception:
                 exit_code = 1
             if exit_code is None:
-                if state.launched_at is not None and now - state.launched_at >= 3.0:
+                elapsed = now - state.launched_at if state.launched_at is not None else 0.0
+                reentry_status = "pending"
+                reentry_observed_at: float | None = None
+                reentry_status_getter = getattr(self._runner, "reentry_status", None)
+                if reentry_status_getter is not None:
+                    try:
+                        try:
+                            observed = await self._maybe_await(
+                                reentry_status_getter(
+                                    state.handle,
+                                    wait_seconds=0.05 if elapsed >= 3.0 else 0.0,
+                                )
+                            )
+                        except TypeError:
+                            observed = await self._maybe_await(reentry_status_getter(state.handle))
+                        if observed in {"pending", "retrying", "confirmed"}:
+                            reentry_status = observed
+                    except (OSError, ValueError):
+                        pass
+                observation_getter = getattr(self._runner, "reentry_observed_at", None)
+                if reentry_status in {"confirmed", "retrying"} and observation_getter is not None:
+                    try:
+                        candidate_observed_at = await self._maybe_await(
+                            observation_getter(state.handle, reentry_status)
+                        )
+                        if isinstance(candidate_observed_at, (int, float)):
+                            reentry_observed_at = float(candidate_observed_at)
+                    except (OSError, TypeError, ValueError):
+                        pass
+                confirmed_within_deadline = (
+                    reentry_status == "confirmed"
+                    and reentry_observed_at is not None
+                    and state.launched_at is not None
+                    and reentry_observed_at - state.launched_at <= 3.0
+                )
+                if confirmed_within_deadline and not state.reentry_confirmed:
+                    state.reentry_confirmed = True
+                    confirmation_elapsed = max(0.0, reentry_observed_at - state.launched_at)
+                    self._record(
+                        "umu",
+                        "container_reentry_confirmed",
+                        "accepted",
+                        identity=identity,
+                        session=state.session,
+                        details={
+                            "bus_name": state.expected_reentry_bus or "unknown",
+                            "elapsed_ms": int(confirmation_elapsed * 1000),
+                        },
+                    )
+                if elapsed >= 3.0 and not state.reentry_confirmed:
+                    expected_reentry_bus = state.expected_reentry_bus or "unknown"
+                    service_marker_present = state.service_marker_present
+                    self._record(
+                        "umu",
+                        "container_reentry_confirmation_failed",
+                        "rejected",
+                        identity=identity,
+                        session=state.session,
+                        details={
+                            "bus_name": expected_reentry_bus,
+                            "elapsed_ms": int(elapsed * 1000),
+                            "failure_observed": reentry_status == "retrying",
+                            "service_marker_present": service_marker_present,
+                        },
+                    )
+                    await self._stop_owned(state, identity)
+                    self._set_state(state, RelayStatus.FAILED, "container_reentry_confirmation_failed")
+                    return
+                if state.reentry_confirmed and elapsed >= 3.0:
                     if state.state != RelayStatus.RUNNING:
                         self._record(
                             "trainer",
@@ -545,7 +659,7 @@ class RelayWatcher:
                             session=state.session,
                             details={
                                 "trainer_path": str(validated_game["trainerPath"]),
-                                "elapsed_ms": int((now - state.launched_at) * 1000),
+                                "elapsed_ms": int(elapsed * 1000),
                             },
                         )
                     self._set_state(state, RelayStatus.RUNNING)
@@ -555,8 +669,7 @@ class RelayWatcher:
             was_running = state.state == RelayStatus.RUNNING
             handle = state.handle
             launched_at = state.launched_at
-            state.handle = None
-            state.launched_at = None
+            self._reset_launch_state(state)
             exit_diagnostics = await self._exit_diagnostics(handle)
             if exit_diagnostics is not None:
                 self._record(

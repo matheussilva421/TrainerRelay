@@ -1431,3 +1431,70 @@ GOG/Epic validation remains explicitly pending.
   `trainer_running`. A failed preflight should appear once for the same stable
   session and launch no trainer. Epic remains a separate gate; do not promote
   this build to stable until both stores pass.
+
+### Experimental.19 container re-entry confirmation hardening
+
+- The Claude root-cause report in the independent `trainer-relay-third`
+  worktree was reviewed against the final `.18` implementation and the local
+  UniFiDeck/UMU sources. The useful residual findings were host runtime-root
+  consistency and the lack of proof that the spawned UMU process actually
+  re-entered the verified launcher service. The inherited launcher-service
+  marker remains diagnostic only; it is never a launch authority.
+- TDD now forces one verified host launch context for both the preflight and
+  sidecar. The watcher removes pressure-vessel `HOME`, `PATH`,
+  `XDG_DATA_HOME`, `UMU_FOLDERS_PATH`, D-Bus, and runtime-dir values before
+  applying the immutable host context returned by the successful probe.
+- The prefix MD5 remains authoritative for the expected bus. If a captured
+  `STEAM_COMPAT_APP_ID` exists, it is accepted only as a matching cross-check;
+  disagreement fails before invoking the launch client with
+  `container_reentry_identity_mismatch`.
+- The runner drains stdout/stderr continuously and recognizes the exact UMU
+  INFO line `Re-entering container through bus '<expected-bus>'`, including a
+  line split across pipe reads. Another bus never confirms the launch. The
+  exact expected `Failed to find bus name` line is recorded as a bounded
+  failure observation.
+- `UMU_LOG=info` is now always set because that INFO line is part of the
+  fail-closed correctness contract; DEBUG remains prohibited because it emits
+  the full derived environment. `running` requires both exact re-entry
+  confirmation and three seconds of process activity.
+- If confirmation is absent after three seconds, Trainer Relay records
+  `container_reentry_confirmation_failed`, terminates only its owned process
+  group, leaves the game intact, latches the same PID/start-time session in
+  `failed`, and requires manual Retry. This deadline precedes UMU 1.4.4's
+  normal independent-container fallback window.
+- New bounded diagnostics include `app_id_source`,
+  `service_marker_present`, `container_reentry_confirmed`, and
+  `container_reentry_confirmation_failed`; they expose neither D-Bus addresses
+  nor complete environments. Current focused gate: 149/149 backend tests pass.
+- The mandatory two-axis review initially reported six actionable items. All
+  were corrected before publication: game-private `UMU_FOLDERS_PATH` fallback
+  was removed; success is now the exact stderr line
+  `INFO: Re-entering container through bus '<expected-bus>'`; failure requires
+  the exact INFO prefix plus a numeric `(retry N)` suffix; a bounded 50 ms
+  condition wait reduces pipe-drain scheduling races; the observation's own
+  monotonic timestamp must be within the three-second deadline; repeated launch
+  state cleanup moved to one helper; and the stale `.18` hash was removed from
+  the `.19` guide pending final packaging. The official UMU source and formatter
+  were consulted directly to confirm `SIMPLE_FORMAT = "%(levelname)s: %(message)s"`.
+- Version target is `0.1.0-experimental.19`. Full frontend/package gates,
+  deterministic ZIP review, commit/push, tag/release, public-asset comparison,
+  installation kit, and physical GOG/Epic validation remain pending at this
+  checkpoint. Stable promotion is still prohibited until both stores pass.
+
+### Experimental.19 final local verification
+
+- Direct post-review verification is clean. Backend: 149/149. Packaging:
+  2/2. Frontend: 191/191 in 25 files. Biome: 63 files. Both TypeScript
+  typechecks, `compileall`, Rollup build, and `git diff --check` passed.
+- The requested `pnpm` entrypoints were attempted first, but the local package
+  manager refused its registry-mediated pnpm 11.5.0 switch because the registry
+  signature could not be verified in the restricted environment. No override
+  was used. The exact project-local Biome, TypeScript, Vitest, and Rollup
+  binaries then passed through `npm exec --offline`.
+- Two final package generations are byte-identical. The ZIP uses stored entries
+  only, contains 22 entries, passes `ZipFile.testzip()`, has 307,848 bytes, and
+  SHA-256
+  `316C1D172CA3FF806D54ED6B831E92DA242D3354CB8149F1E9991C4A55FD16B1`.
+- Commit/push, annotated tag, GitHub prerelease workflow, public-asset byte
+  comparison, and installation-kit creation are the remaining publication
+  steps. Physical GOG and Epic checks remain mandatory after installation.

@@ -91,9 +91,29 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     ),
     "umu_resolved": frozenset({"source", "umu_path"}),
     "umu_rejected": frozenset({"reason"}),
-    "container_reentry_verified": frozenset({"bus_name", "runtime_variant", "attempt_count", "bus_source"}),
+    "container_reentry_verified": frozenset(
+        {
+            "bus_name",
+            "runtime_variant",
+            "attempt_count",
+            "bus_source",
+            "app_id_source",
+            "service_marker_present",
+        }
+    ),
     "container_reentry_rejected": frozenset(
-        {"reason", "failure_class", "probe_exit_code", "bus_source", "attempt_count"}
+        {
+            "reason",
+            "failure_class",
+            "probe_exit_code",
+            "bus_source",
+            "attempt_count",
+            "service_marker_present",
+        }
+    ),
+    "container_reentry_confirmed": frozenset({"bus_name", "elapsed_ms"}),
+    "container_reentry_confirmation_failed": frozenset(
+        {"bus_name", "elapsed_ms", "failure_observed", "service_marker_present"}
     ),
     "umu_exit_diagnostics": frozenset(
         {

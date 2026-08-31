@@ -22,11 +22,24 @@ _DIAGNOSTIC_TAIL_CHARACTERS = 1024
 
 
 class _BoundedPipeCapture:
-    def __init__(self, stream: BinaryIO) -> None:
+    def __init__(
+        self,
+        stream: BinaryIO,
+        exact_lines: Sequence[bytes] = (),
+        retry_prefixes: Sequence[bytes] = (),
+        *,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._stream = stream
         self._tail = bytearray()
+        self._line_buffer = bytearray()
         self._total = 0
+        self._exact_lines = tuple(exact_lines)
+        self._retry_prefixes = tuple(retry_prefixes)
+        self._seen_markers: dict[bytes, float] = {}
+        self._monotonic = monotonic
         self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
         self._thread = threading.Thread(target=self._drain, name="trainer-relay-umu-output", daemon=True)
         self._thread.start()
 
@@ -38,14 +51,24 @@ class _BoundedPipeCapture:
                     break
                 if isinstance(chunk, str):
                     chunk = chunk.encode("utf-8", errors="replace")
-                with self._lock:
+                with self._condition:
                     self._total += len(chunk)
                     self._tail.extend(chunk)
+                    self._line_buffer.extend(chunk)
+                    while b"\n" in self._line_buffer:
+                        line, _, remainder = self._line_buffer.partition(b"\n")
+                        self._line_buffer = bytearray(remainder)
+                        self._observe_line(line.rstrip(b"\r"))
                     if len(self._tail) > _CAPTURE_BYTES:
                         del self._tail[: len(self._tail) - _CAPTURE_BYTES]
         except (OSError, ValueError):
             pass
         finally:
+            with self._condition:
+                if self._line_buffer:
+                    self._observe_line(bytes(self._line_buffer).rstrip(b"\r"))
+                    self._line_buffer.clear()
+                self._condition.notify_all()
             try:
                 self._stream.close()
             except (OSError, ValueError):
@@ -55,6 +78,30 @@ class _BoundedPipeCapture:
         self._thread.join(timeout=0.25)
         with self._lock:
             return self._total, bytes(self._tail)
+
+    def _observe_line(self, line: bytes) -> None:
+        observed_at = self._monotonic()
+        for marker in self._exact_lines:
+            if line == marker:
+                self._seen_markers.setdefault(marker, observed_at)
+        for marker in self._retry_prefixes:
+            suffix = line.removeprefix(marker)
+            if line.startswith(marker) and re.fullmatch(rb" \(retry [1-9][0-9]*\)", suffix):
+                self._seen_markers.setdefault(marker, observed_at)
+        self._condition.notify_all()
+
+    def observed_at(self, marker: bytes) -> float | None:
+        with self._lock:
+            return self._seen_markers.get(marker)
+
+    def wait_for_any(self, markers: Sequence[bytes], timeout: float) -> None:
+        deadline = self._monotonic() + max(0.0, timeout)
+        with self._condition:
+            while not any(marker in self._seen_markers for marker in markers):
+                remaining = deadline - self._monotonic()
+                if remaining <= 0:
+                    return
+                self._condition.wait(remaining)
 
 
 def _sanitize_output(value: bytes, *, leading_fragment: bool) -> str:
@@ -159,6 +206,8 @@ class RunnerHandle:
     stdout_capture: _BoundedPipeCapture | None = None
     stderr_capture: _BoundedPipeCapture | None = None
     observed_descendant_names: set[str] | None = None
+    reentry_success_marker: bytes | None = None
+    reentry_failure_marker: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -229,8 +278,25 @@ class OwnedTrainerRunner:
     def owned(self) -> tuple[RunnerHandle, ...]:
         return tuple(self._owned)
 
-    def spawn(self, session: SessionIdentity, trainer_executable: str, environment: Mapping[str, str]) -> RunnerHandle:
+    def spawn(
+        self,
+        session: SessionIdentity,
+        trainer_executable: str,
+        environment: Mapping[str, str],
+        *,
+        expected_reentry_bus: str | None = None,
+    ) -> RunnerHandle:
         spawn_environment = dict(environment)
+        success_marker = (
+            f"INFO: Re-entering container through bus '{expected_reentry_bus}'".encode("utf-8")
+            if expected_reentry_bus
+            else None
+        )
+        failure_marker = (
+            f"INFO: Failed to find bus name {expected_reentry_bus}".encode("utf-8")
+            if expected_reentry_bus
+            else None
+        )
         umu_run = self.umu_run() if callable(self.umu_run) else self.umu_run
         process = self._popen(
             [str(umu_run), trainer_executable],
@@ -249,12 +315,45 @@ class OwnedTrainerRunner:
             process,
             int(process.pid),
             spawn_environment,
-            _BoundedPipeCapture(stdout) if hasattr(stdout, "read") else None,
-            _BoundedPipeCapture(stderr) if hasattr(stderr, "read") else None,
+            _BoundedPipeCapture(stdout, monotonic=self._monotonic) if hasattr(stdout, "read") else None,
+            _BoundedPipeCapture(
+                stderr,
+                (success_marker,) if success_marker is not None else (),
+                (failure_marker,) if failure_marker is not None else (),
+                monotonic=self._monotonic,
+            )
+            if hasattr(stderr, "read")
+            else None,
             set(),
+            success_marker,
+            failure_marker,
         )
         self._owned.append(handle)
         return handle
+
+    @staticmethod
+    def reentry_status(handle: RunnerHandle, *, wait_seconds: float = 0.0) -> str:
+        capture = handle.stderr_capture
+        if capture is None:
+            return "pending"
+        success_marker = handle.reentry_success_marker
+        failure_marker = handle.reentry_failure_marker
+        markers = tuple(marker for marker in (success_marker, failure_marker) if marker is not None)
+        if markers and wait_seconds > 0:
+            capture.wait_for_any(markers, wait_seconds)
+        if success_marker is not None and capture.observed_at(success_marker) is not None:
+            return "confirmed"
+        if failure_marker is not None and capture.observed_at(failure_marker) is not None:
+            return "retrying"
+        return "pending"
+
+    @staticmethod
+    def reentry_observed_at(handle: RunnerHandle, status: str) -> float | None:
+        capture = handle.stderr_capture
+        if capture is None:
+            return None
+        marker = handle.reentry_success_marker if status == "confirmed" else handle.reentry_failure_marker
+        return capture.observed_at(marker) if marker is not None else None
 
     def poll(self, handle: RunnerHandle) -> int | None:
         if handle.observed_descendant_names is not None:

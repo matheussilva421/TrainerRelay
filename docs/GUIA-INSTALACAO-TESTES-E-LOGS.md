@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.18`
+Versão deste guia: `v0.1.0-experimental.19`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay-v0.1.0-experimental.18.zip`.
+- O arquivo `TrainerRelay-v0.1.0-experimental.19.zip`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -18,20 +18,19 @@ mais de uma sessão do mesmo jogo. Esses casos não fazem parte desta versão.
 
 ## 1. Conferir o ZIP
 
-O ZIP público e o pacote local determinístico da `.18` são idênticos, têm
-296.194 bytes e SHA-256:
+O pacote local determinístico candidato à `.19` tem 307.848 bytes e SHA-256:
 
 ```text
-BF1DFB6C873C506404333679701AC3DE9E60AAE1FB327F993E5358FBE767584B
+316C1D172CA3FF806D54ED6B831E92DA242D3354CB8149F1E9991C4A55FD16B1
 ```
 
-O `SHA256SUMS.txt` do kit final e o asset publicado no GitHub repetem
-exatamente esse valor.
+Depois da publicação, o `SHA256SUMS.txt` do kit e o asset do GitHub devem
+repetir exatamente esse valor. Se divergirem, não instale o arquivo.
 
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 
 ```bash
-sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.18.zip"
+sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.19.zip"
 ```
 
 O valor mostrado precisa ser exatamente o SHA-256 do kit. Não instale o arquivo
@@ -47,7 +46,7 @@ O valor mostrado precisa ser exatamente o SHA-256 do kit. Não instale o arquivo
 4. Abra o Decky Loader e suas configurações.
 5. Ative as opções de desenvolvedor, se a instalação local não estiver visível.
 6. Escolha **Install Plugin from ZIP** ou o nome equivalente da sua versão.
-7. Selecione `TrainerRelay-v0.1.0-experimental.18.zip` em Downloads.
+7. Selecione `TrainerRelay-v0.1.0-experimental.19.zip` em Downloads.
 8. Recarregue o Decky ou reinicie o Steam Deck se o plugin não aparecer.
 
 Os nomes exatos das opções podem variar entre versões do Decky. Sempre use o
@@ -58,7 +57,7 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.18/TrainerRelay.zip
+https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.19/TrainerRelay.zip
 ```
 
 Não use URLs de outras versões. A `experimental.3` falha ao abrir a tela no
@@ -168,8 +167,8 @@ meio da migração.
 | --- | --- | --- |
 | `disabled` | Configuração desligada | Selecione o `.exe` e habilite |
 | `waiting_for_game` | Ainda não encontrou uma sessão exata | Aguarde o jogo abrir |
-| `launching` | Trainer iniciado, ainda no período de confirmação | Aguarde pelo menos 3 segundos |
-| `running` | Trainer permaneceu ativo e foi aceito | Teste uma função simples |
+| `launching` | Trainer iniciado; o plugin aguarda a confirmação exata de reentrada do UMU e três segundos de atividade | Aguarde pelo menos 3 segundos |
+| `running` | A reentrada no container foi confirmada e o trainer permaneceu ativo | Teste uma função simples |
 | `retrying` | Primeira execução terminou cedo | Aguarde a única repetição automática |
 | `failed` | Trainer falhou sem afetar o jogo | Corrija o trainer e use Retry |
 | `ambiguous` | Mais de uma sessão candidata | Feche instâncias duplicadas |
@@ -187,6 +186,15 @@ gere um TXT. `container_reentry_unsupported` indica que o runtime/Proton ativo
 não pôde ser identificado com segurança; `container_reentry_probe_failed`
 indica falha ao consultar o serviço. Nesses três casos, nenhum trainer é
 iniciado e o jogo fica intacto.
+
+`container_reentry_identity_mismatch` significa que o App ID capturado não
+confere com a identidade derivada do prefixo. `container_reentry_confirmation_failed`
+significa que o serviço existia no preflight, mas o processo UMU não confirmou
+a reentrada em até três segundos. Nesse segundo caso, o plugin encerra somente
+o grupo de processos que ele próprio criou, deixa o jogo intacto e exige Retry
+manual para a mesma sessão. No TXT, a sequência saudável é
+`container_reentry_verified`, `trainer_spawned`,
+`container_reentry_confirmed`, `trainer_running`.
 
 ## 6. Teste mínimo obrigatório
 
@@ -342,7 +350,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.18
+Trainer Relay: v0.1.0-experimental.19
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -405,6 +413,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.18
+- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.19
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

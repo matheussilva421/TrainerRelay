@@ -17,15 +17,29 @@ class FakeRunner:
         self.handles = []
         self.spawn_calls = []
         self.stop_calls = []
+        self.expected_reentry_buses = []
 
-    def spawn(self, session, trainer_executable, environment):
-        handle = {"session": session, "exit_code": None, "process_group_id": 999}
+    def spawn(self, session, trainer_executable, environment, *, expected_reentry_bus=None):
+        handle = {
+            "session": session,
+            "exit_code": None,
+            "process_group_id": 999,
+            "reentry_status": "confirmed",
+            "reentry_observed_at": 0.0,
+        }
         self.handles.append(handle)
         self.spawn_calls.append((session, trainer_executable, environment))
+        self.expected_reentry_buses.append(expected_reentry_bus)
         return handle
 
     def poll(self, handle):
         return handle["exit_code"]
+
+    def reentry_status(self, handle, *, wait_seconds=0.0):
+        return handle["reentry_status"]
+
+    def reentry_observed_at(self, handle, status):
+        return handle["reentry_observed_at"]
 
     def stop(self, handle):
         self.stop_calls.append(handle)
@@ -61,12 +75,17 @@ class FakeDiscoverer:
 
 
 class FakeContainerProbe:
-    def __init__(self, error=None, session_environment=None):
+    def __init__(self, error=None, session_environment=None, launch_environment=None):
         self.error = error
         self.calls = []
         self.session_environment = session_environment or {
             "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
             "XDG_RUNTIME_DIR": "/run/user/1000",
+        }
+        self.launch_environment = launch_environment or {
+            "HOME": "/home/deck",
+            "PATH": "/usr/bin:/bin",
+            **self.session_environment,
         }
 
     async def verify(self, environment):
@@ -78,7 +97,9 @@ class FakeContainerProbe:
             runtime_variant="steamrt3",
             attempts=1,
             bus_source="home_owner_runtime",
+            app_id_source="computed",
             session_environment=self.session_environment,
+            launch_environment=self.launch_environment,
         )
 
 
@@ -152,6 +173,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         await self.watcher.poll_once()
         self.assertEqual(self.watcher.status(self.identity)["state"], "running")
         self.assertEqual(len(self.runner.spawn_calls), 1)
+        self.assertEqual(self.runner.expected_reentry_buses, ["com.steampowered.Appabc"])
         self.assertEqual(
             [call["event"] for call in self.recorder.calls],
             [
@@ -166,11 +188,37 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
                 "prefix_selected",
                 "process_scan_summary",
                 "candidate_accepted",
+                "container_reentry_confirmed",
                 "trainer_running",
             ],
         )
         self.assertEqual(self.recorder.calls[3]["session"].to_wire(), {"pid": 10, "startTime": 20})
         self.assertEqual(self.discoverer.expected_sessions, [None, self.session])
+
+    async def test_spawn_replaces_private_game_runtime_roots_with_the_verified_host_context(self):
+        self.discovery.environment.update(
+            {
+                "HOME": "/run/pressure-vessel/private-home",
+                "PATH": "/run/pressure-vessel/bin",
+                "XDG_DATA_HOME": "/run/pressure-vessel/private-data",
+                "UMU_FOLDERS_PATH": "/run/pressure-vessel/private-folders",
+            }
+        )
+        self.container_probe.launch_environment = {
+            "HOME": "/home/deck",
+            "PATH": "/usr/bin:/bin",
+            "XDG_DATA_HOME": "/home/deck/.local/share",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+        }
+
+        await self.watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(launch_environment["HOME"], "/home/deck")
+        self.assertEqual(launch_environment["PATH"], "/usr/bin:/bin")
+        self.assertEqual(launch_environment["XDG_DATA_HOME"], "/home/deck/.local/share")
+        self.assertNotIn("UMU_FOLDERS_PATH", launch_environment)
 
     async def test_real_proc_session_survives_main_thread_rename_until_running(self):
         root = Path(self.directory.name)
@@ -412,6 +460,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
                 "probe_exit_code": 0,
                 "bus_source": "home_owner_runtime",
                 "attempt_count": 5,
+                "service_marker_present": False,
             },
         )
 
@@ -489,12 +538,67 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("private-value", repr(spawned))
 
-    async def test_disabled_diagnostic_mode_does_not_force_umu_logging(self):
+    async def test_umu_info_logging_remains_enabled_when_diagnostic_recording_is_disabled(self):
         self.watcher._diagnostics = FakeRecorder(enabled=False)
 
         await self.watcher.poll_once()
 
-        self.assertNotIn("UMU_LOG", self.runner.spawn_calls[0][2])
+        self.assertEqual(self.runner.spawn_calls[0][2]["UMU_LOG"], "info")
+
+    async def test_does_not_mark_running_until_exact_container_reentry_is_confirmed(self):
+        await self.watcher.poll_once()
+        self.runner.handles[0]["reentry_status"] = "pending"
+        self.clock_value = 2.9
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.watcher.status(self.identity)["state"], "launching")
+        self.assertNotIn("container_reentry_confirmed", [call["event"] for call in self.recorder.calls])
+        self.runner.handles[0]["reentry_status"] = "confirmed"
+        self.runner.handles[0]["reentry_observed_at"] = 2.9
+        await self.watcher.poll_once()
+        self.assertIn("container_reentry_confirmed", [call["event"] for call in self.recorder.calls])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "launching")
+        self.clock_value = 3.0
+        await self.watcher.poll_once()
+        self.assertEqual(self.watcher.status(self.identity)["state"], "running")
+
+    async def test_reentry_confirmation_timeout_stops_only_the_owned_group_and_requires_manual_retry(self):
+        await self.watcher.poll_once()
+        first_handle = self.runner.handles[0]
+        first_handle["reentry_status"] = "retrying"
+        self.clock_value = 3.0
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.runner.stop_calls, [first_handle])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "failed")
+        self.assertEqual(
+            self.watcher.status(self.identity)["diagnostic"],
+            {"code": "container_reentry_confirmation_failed"},
+        )
+        await self.watcher.poll_once()
+        self.assertEqual(len(self.runner.spawn_calls), 1)
+
+        await self.watcher.retry(self.identity)
+
+        self.assertEqual(len(self.runner.spawn_calls), 2)
+
+    async def test_reentry_first_observed_after_the_three_second_deadline_is_rejected(self):
+        await self.watcher.poll_once()
+        handle = self.runner.handles[0]
+        handle["reentry_status"] = "confirmed"
+        handle["reentry_observed_at"] = 3.001
+        self.clock_value = 3.001
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.runner.stop_calls, [handle])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "failed")
+        self.assertEqual(
+            self.watcher.status(self.identity)["diagnostic"],
+            {"code": "container_reentry_confirmation_failed"},
+        )
 
     async def test_first_premature_exit_retries_once_after_two_seconds(self):
         await self.watcher.poll_once()
