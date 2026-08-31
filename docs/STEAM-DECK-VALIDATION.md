@@ -121,13 +121,13 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 
 | Check | Epic | GOG | Notes |
 | --- | --- | --- | --- |
-| Game starts before trainer | PENDING | PENDING | |
-| Same prefix anchor | PENDING | PENDING | |
-| One trainer instance | PENDING | PENDING | |
-| Trainer exits with game | PENDING | PENDING | |
-| Failure leaves game intact | PENDING | PENDING | |
+| Game starts before trainer | PENDING | PASS | BioShock 2 Remastered GOG, experimental.19 |
+| Same prefix anchor | PENDING | PASS | Game and trainer used `/prefixes/1482265668` |
+| One trainer instance | PENDING | PASS | One `trainer_spawned`; user confirmed trainer operation |
+| Trainer exits with game | PENDING | PASS | Session end followed by owned-group `SIGTERM` |
+| Failure leaves game intact | PENDING | PASS | Confirmed by the earlier physical failed-start diagnostics |
 | Force Sync preserves config | PENDING | PENDING | |
-| Logs contain no sensitive dump | PENDING | PENDING | |
+| Logs contain no sensitive dump | PENDING | PASS | Bounded export reviewed; no environment or credential dump |
 | Diagnostics persist/export/clear safely | PENDING | PENDING | |
 
 ## Promotion gate

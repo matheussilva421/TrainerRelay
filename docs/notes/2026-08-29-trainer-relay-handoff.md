@@ -62,23 +62,24 @@ repository.
 
 ## Next action
 
-The plain UniFiDeck launch-option migration blocker is fixed locally in
-experimental.5. Next: publish and independently verify `.5`, replace `.4` on
-the physical Steam Deck, repeat the photographed GOG launch, then run the
-complete checklist for one GOG and one Epic title. Keep the release
-experimental until both pass.
+Experimental.19 has a physical functional GOG PASS: BioShock 2 Remastered and
+its trainer opened in the verified UMU context, an in-game trainer function
+worked, and shutdown targeted only the owned trainer process group. Next:
+verify Force Sync persistence and diagnostic clear behavior for GOG, then run
+the complete physical checklist for one Epic title. Keep the release
+experimental until every required row passes for both stores.
 
 ## GitHub
 
-The formal fork contains the runtime hotfix commit
-`9e6e9837d5d41c41b6584dcc89212419a4b8c586` on both
-`feat/trainer-relay` and `main`. The earlier tags and assets remain preserved.
-`v0.1.0-experimental.3` is explicitly marked superseded, and
-`v0.1.0-experimental.4` is the recommended prerelease. Branch/main runs
-`33275180521` and `33275182249`, plus tag/release run `33275289569`, all
-passed. Documentation follow-up runs `33275665417` (feature branch) and
-`33275681132` (`main`) also passed. No upstream PR was opened. Physical
-GOG/Epic validation remains explicitly pending.
+The formal fork contains experimental.19 implementation commit `f89f476` on
+both `feat/trainer-relay` and `main`. The earlier tags and assets remain
+preserved. `v0.1.0-experimental.3` is explicitly marked superseded, and
+`v0.1.0-experimental.19` is the recommended prerelease. Implementation runs
+`33360558539` (feature branch), `33360558446` (`main`), and tag/release run
+`33360577462` passed. Documentation runs `33360874832` (feature branch) and
+`33360875103` (`main`) also passed. No upstream PR was opened. GOG has a
+physical functional PASS with two checklist items still pending; Epic remains
+untested.
 
 ## Task 5 local checkpoint — package and gates complete
 
@@ -1530,3 +1531,24 @@ GOG/Epic validation remains explicitly pending.
   order: `container_reentry_verified`, `trainer_spawned`,
   `container_reentry_confirmed`, `trainer_running`. GOG and Epic must both pass
   before any stable promotion.
+
+### Experimental.19 physical GOG functional PASS
+
+- The physical Steam Deck export
+  `TrainerRelay-diagnostics-20260831-181847.txt` records one complete healthy
+  BioShock 2 Remastered GOG session for identity `gog:1482265668`.
+- The runtime verified container re-entry on the first attempt, spawned one
+  trainer process group, confirmed the expected UMU bus after 1,221 ms, and
+  reached `trainer_running` after 3,289 ms. The game and trainer both used
+  `/home/deck/.local/share/unifideck/prefixes/1482265668`.
+- The user explicitly confirmed that an in-game trainer function worked. This
+  upgrades the GOG result from launch-only evidence to a functional PASS.
+- When the game session ended, Trainer Relay sent non-forced `SIGTERM` only to
+  its owned process group. The export contains no failure, retry, ambiguity,
+  premature trainer exit, or container-confirmation failure.
+- The repeated `candidate_rejected` events are expected fail-closed filtering
+  of trainer-side processes, but are diagnostically noisy; they did not create
+  another trainer instance or affect the successful run.
+- Remaining GOG checklist items are Force Sync persistence and diagnostic
+  clear behavior. Epic physical validation remains entirely pending. Do not
+  promote to stable until both store columns satisfy the promotion gate.
