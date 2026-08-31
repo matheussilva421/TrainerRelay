@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.17
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.18
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -43,6 +43,8 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Confirm `trainer_spawned` reports `container_reentry=enabled` and the UMU
   output contains `Re-entering container through bus`, not five
   `Failed to find bus name` attempts.
+- [ ] Confirm `container_reentry_verified` reports `bus_source` as the Deck
+  user's host/session context. It must not use the game's pressure-vessel bus.
 - [ ] Confirm exactly one trainer instance is present.
 - [ ] Confirm the trainer and game use the same prefix anchor.
 - [ ] In Diagnostics, confirm `trainer_spawned` reports equal `wineprefix` and
@@ -73,6 +75,9 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 
 - [ ] Make the trainer exit before `trainer_running` is observed and confirm one automatic retry occurs only while the same game session is active, including an exit detected just after the three-second boundary.
 - [ ] Confirm a later retry requires the manual Retry action.
+- [ ] Force one preflight failure and confirm only one
+  `container_reentry_rejected` event is emitted for the same PID/start-time;
+  pressing **Retry** performs exactly one new bounded attempt.
 - [ ] Start a duplicate candidate and confirm the state becomes `ambiguous` without starting a trainer.
 - [ ] Confirm stopping Trainer Relay does not stop the game, `wineserver`, global UMU, or another trainer.
 - [ ] Review the plugin log for status/diagnostic codes only; confirm no environment dump, credential, cookie, or token is present.

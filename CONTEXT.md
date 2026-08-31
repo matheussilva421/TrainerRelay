@@ -27,8 +27,13 @@ can call `steam-runtime-launch-client` and run the trainer through that service
 with `PROTON_VERB=runinprefix`. A session launched without the flag is rejected
 as `container_reentry_missing` and must be restarted after preparation.
 Before spawning, Trainer Relay resolves the launch client using UMU's runtime
-location precedence and requires the exact bus for that prefix to exist. A
-missing, unsupported, or unqueryable service fails closed without a sidecar.
+location precedence and queries it only through a host/session D-Bus candidate
+belonging to the Deck user. The game's inherited D-Bus/XDG values are nested
+runtime evidence and are never used for this control operation. Only the
+candidate that lists the exact prefix service is forwarded to the sidecar. A
+missing, unsupported, or unqueryable service fails closed without a sidecar;
+the rejection is latched to the PID/start-time session until manual Retry or a
+new session.
 
 ## Legacy Configuration
 

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .config import default_prefix_for, is_launch_identity, validate_game_config
-from .container_reentry import ContainerReentryProbe
+from .container_reentry import ContainerReentryError, ContainerReentryProbe
 from .diagnostics import (
     DiagnosticRecorder,
     DiagnosticSession,
@@ -44,6 +44,7 @@ class _RelayState:
     launched_at: float | None = None
     retry_at: float | None = None
     automatic_retries: int = 0
+    rejected_preflight_session: SessionIdentity | None = None
 
 
 class RelayWatcher:
@@ -278,6 +279,19 @@ class RelayWatcher:
                 source_environment["UMU_LOG"] = "info"
             safe_environment = build_sanitized_environment(source_environment, prefix)
             reentry = await self._maybe_await(self._container_probe.verify(safe_environment))
+            session_bus = reentry.session_environment.get("DBUS_SESSION_BUS_ADDRESS")
+            runtime_dir = reentry.session_environment.get("XDG_RUNTIME_DIR")
+            if not isinstance(session_bus, str) or not session_bus or not isinstance(runtime_dir, str) or not runtime_dir:
+                raise ContainerReentryError(
+                    "container_reentry_probe_failed",
+                    failure_class="host_session_bus_unavailable",
+                    bus_source=str(reentry.bus_source),
+                    attempts=int(reentry.attempts),
+                )
+            safe_environment["DBUS_SESSION_BUS_ADDRESS"] = session_bus
+            safe_environment["XDG_RUNTIME_DIR"] = runtime_dir
+            proton_verb = safe_environment.pop("PROTON_VERB")
+            safe_environment["PROTON_VERB"] = proton_verb
             self._record(
                 "umu",
                 "container_reentry_verified",
@@ -288,6 +302,7 @@ class RelayWatcher:
                     "bus_name": str(reentry.bus_name),
                     "runtime_variant": str(reentry.runtime_variant),
                     "attempt_count": int(reentry.attempts),
+                    "bus_source": str(reentry.bus_source),
                 },
             )
             state.handle = await self._maybe_await(self._runner.spawn(session, trainer_path, safe_environment))
@@ -308,18 +323,29 @@ class RelayWatcher:
                 if code.startswith("umu_")
                 else "trainer_spawn_failed"
             )
+            rejection_details: dict[str, Any] = {"reason": code}
+            for attribute, detail_key in (
+                ("failure_class", "failure_class"),
+                ("exit_code", "probe_exit_code"),
+                ("bus_source", "bus_source"),
+                ("attempts", "attempt_count"),
+            ):
+                value = getattr(error, attribute, None)
+                if value is not None:
+                    rejection_details[detail_key] = value
             self._record(
                 "umu" if event in {"umu_rejected", "container_reentry_rejected"} else "trainer",
                 event,
                 "rejected" if event in {"umu_rejected", "container_reentry_rejected"} else "error",
                 identity=identity,
                 session=session,
-                details={"reason": code}
+                details=rejection_details
                 if event in {"umu_rejected", "container_reentry_rejected"}
                 else {"trainer_path": str(game["trainerPath"]), "reason": code},
             )
             state.handle = None
             state.launched_at = None
+            state.rejected_preflight_session = session if code.startswith("container_reentry_") else None
             self._set_state(state, RelayStatus.INVALID_CONFIG, code)
             return
         spawn_details: dict[str, Any] = {
@@ -344,6 +370,7 @@ class RelayWatcher:
         )
         state.launched_at = self._clock()
         state.retry_at = None
+        state.rejected_preflight_session = None
         self._set_state(state, RelayStatus.LAUNCHING)
 
     async def _poll_identity(self, identity: str, *, force_retry: bool = False) -> None:
@@ -358,12 +385,14 @@ class RelayWatcher:
             self._set_state(state, RelayStatus.DISABLED)
             state.session = None
             state.retry_at = None
+            state.rejected_preflight_session = None
             return
         if not isinstance(game, Mapping) or game.get("enabled") is not True:
             await self._stop_owned(state, identity)
             self._set_state(state, RelayStatus.DISABLED)
             state.session = None
             state.retry_at = None
+            state.rejected_preflight_session = None
             return
         validated_game = validate_game_config(game)
         if validated_game is None:
@@ -448,6 +477,7 @@ class RelayWatcher:
         if discovery.state == DiscoveryState.INVALID_CONFIG:
             await self._stop_owned(state, identity)
             state.session = None
+            state.rejected_preflight_session = None
             self._set_state(state, RelayStatus.INVALID_CONFIG, discovery.diagnostic or "invalid_process_environment")
             return
         if discovery.state != DiscoveryState.SESSION or discovery.session is None:
@@ -462,6 +492,7 @@ class RelayWatcher:
                 )
             await self._stop_owned(state, identity)
             state.session = None
+            state.rejected_preflight_session = None
             self._set_state(state, RelayStatus.WAITING_FOR_GAME, discovery.diagnostic)
             return
 
@@ -472,6 +503,7 @@ class RelayWatcher:
             state.session = discovery.session
             state.retry_at = None
             state.automatic_retries = 0
+            state.rejected_preflight_session = None
             state.diagnostic = None
             if previous_session is not None:
                 self._record(
@@ -493,6 +525,8 @@ class RelayWatcher:
             }:
                 state.state = RelayStatus.WAITING_FOR_GAME
         if state.handle is None and state.state == RelayStatus.FAILED and not force_retry:
+            return
+        if state.rejected_preflight_session == discovery.session and not force_retry:
             return
         now = self._clock()
         if state.handle is not None:
@@ -575,6 +609,7 @@ class RelayWatcher:
                 details={"retry_count": state.automatic_retries + 1},
             )
             state.automatic_retries = 0
+            state.rejected_preflight_session = None
         await self._spawn(state, identity, validated_game, discovery.session, discovery.environment or {}, prefix)
 
     async def poll_once(self) -> None:

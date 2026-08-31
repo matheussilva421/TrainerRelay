@@ -1363,3 +1363,44 @@ GOG/Epic validation remains explicitly pending.
   D-Bus context; and an unchanged invalid session must execute one preflight,
   not one per watcher tick. No production file was changed in this diagnostic
   checkpoint.
+
+### Experimental.18 host-session D-Bus correction
+
+- The user explicitly approved extensive analysis and correction after the
+  `.17` GOG export. The 6,214,132-byte source report reproduced the exact
+  boundary: stable session PID `79033` plus start time `4885149`, repeated
+  `container_reentry_probe_failed`, and no `trainer_spawned`.
+- Primary-source research is recorded in
+  `docs/research/2026-08-30-trainer-relay-dbus-host-context.md`. Decky with
+  `flags=[]` drops the backend to `HOST_USER`; UMU 1.4.4 invokes
+  `steam-runtime-launch-client --list` in its current process environment and
+  silently falls back to an independent launch when the exact prefix service
+  is absent. Trainer Relay must therefore enforce its own host-session
+  preflight and fail closed.
+- TDD corrections now isolate the control operation from the Wine descendant:
+  use Decky's host-user home, build a bounded host D-Bus/XDG pair, require the
+  exact MD5 prefix service, forward only the verified immutable pair to UMU,
+  and restore `PROTON_VERB=runinprefix` as the final assignment. The game
+  process's nested D-Bus/XDG values are never reused.
+- A rejected preflight is latched to the stable PID/start-time pair. The same
+  session no longer probes once per watcher tick; explicit Retry performs one
+  new bounded preflight, and a new game session clears the latch. The global
+  cap is five launch-client invocations across all candidates, not five rounds
+  per candidate.
+- Bounded diagnostics add failure class, launch-client exit code, bus-source
+  category, and invocation count. Raw D-Bus addresses, stderr, and complete
+  environments are not retained. Failure-class priority prevents a specific
+  permission/timeout result from being overwritten by a later generic error.
+- Two-axis review found and this block corrected: wrong Decky/root home
+  assumption, partial nested `XDG_RUNTIME_DIR` leakage, mutable verified
+  environment, last-candidate diagnostic overwrite, and a nominal five-probe
+  limit that could execute ten subprocesses.
+- Version target is `0.1.0-experimental.18`. Fresh final local gates after the
+  clean second review: backend 137/137; frontend 191/191 in 25 files; Biome 63
+  files; both TypeScript typechecks; compileall; Rollup; package layout/import
+  2/2. Two post-review packages are byte-identical: 22 entries, 296,194 bytes,
+  SHA-256 `BF1DFB6C873C506404333679701AC3DE9E60AAE1FB327F993E5358FBE767584B`.
+- Publication remains pending until the second review is clean, all fresh gates
+  are rerun, deterministic ZIP/hash is updated, commit/push/tag workflows pass,
+  and the public asset is byte-identical. Physical GOG and Epic validation still
+  block stable promotion.

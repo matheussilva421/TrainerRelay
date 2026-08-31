@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import posixpath
 import re
 import subprocess
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 
@@ -26,6 +28,21 @@ _APP_ID_PATTERN = re.compile(r'"require_tool_appid"\s*"([0-9]+)"')
 class ContainerReentryError(RuntimeError):
     """A bounded code describing why same-container re-entry is unavailable."""
 
+    def __init__(
+        self,
+        code: str,
+        *,
+        failure_class: str | None = None,
+        exit_code: int | None = None,
+        bus_source: str | None = None,
+        attempts: int | None = None,
+    ) -> None:
+        super().__init__(code)
+        self.failure_class = failure_class
+        self.exit_code = exit_code
+        self.bus_source = bus_source
+        self.attempts = attempts
+
 
 @dataclass(frozen=True)
 class ContainerReentryResolution:
@@ -33,6 +50,14 @@ class ContainerReentryResolution:
     bus_name: str
     runtime_variant: str
     attempts: int
+    bus_source: str
+    session_environment: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class _SessionBusCandidate:
+    source: str
+    environment: Mapping[str, str]
 
 
 class ContainerReentryProbe:
@@ -44,6 +69,9 @@ class ContainerReentryProbe:
         sleep: Callable[[float], None] = time.sleep,
         attempts: int = 5,
         delay_seconds: float = 1.0,
+        host_environment: Mapping[str, str] | None = None,
+        target_uid: int | None = None,
+        getuid: Callable[[], int] | None = None,
     ) -> None:
         if attempts < 1:
             raise ValueError("invalid_container_probe")
@@ -52,6 +80,104 @@ class ContainerReentryProbe:
         self._sleep = sleep
         self._attempts = attempts
         self._delay_seconds = delay_seconds
+        self._host_environment = {
+            key: value
+            for key, value in (os.environ if host_environment is None else host_environment).items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+        default_getuid = getattr(os, "getuid", lambda: -1)
+        self._getuid = getuid or default_getuid
+        if target_uid is None:
+            try:
+                process_uid = int(self._getuid())
+            except (OSError, TypeError, ValueError):
+                process_uid = -1
+            if process_uid > 0:
+                target_uid = process_uid
+            else:
+                try:
+                    target_uid = int(self._home.stat().st_uid)
+                except (OSError, TypeError, ValueError):
+                    target_uid = -1
+        self._target_uid = target_uid
+
+    @staticmethod
+    def _absolute_runtime_dir(value: str | None) -> str | None:
+        if not value:
+            return None
+        path = Path(value)
+        return value if path.is_absolute() or posixpath.isabs(value) else None
+
+    def _session_bus_candidates(self) -> tuple[_SessionBusCandidate, ...]:
+        candidates: list[_SessionBusCandidate] = []
+        seen_addresses: set[str] = set()
+        host_address = self._host_environment.get("DBUS_SESSION_BUS_ADDRESS", "")
+        host_runtime = self._absolute_runtime_dir(self._host_environment.get("XDG_RUNTIME_DIR"))
+
+        try:
+            process_uid = int(self._getuid())
+        except (TypeError, ValueError, OSError):
+            process_uid = -1
+        try:
+            target_uid = int(self._target_uid)
+        except (TypeError, ValueError, OSError):
+            target_uid = -1
+        target_runtime = f"/run/user/{target_uid}" if target_uid >= 0 else None
+
+        def add(source: str, address: str, runtime_dir: str | None) -> None:
+            if not address or address in seen_addresses:
+                return
+            environment = {"DBUS_SESSION_BUS_ADDRESS": address}
+            if runtime_dir is not None:
+                environment["XDG_RUNTIME_DIR"] = runtime_dir
+            candidates.append(_SessionBusCandidate(source, environment))
+            seen_addresses.add(address)
+
+        host_matches_target = (
+            target_runtime is None
+            or process_uid == target_uid
+            or host_runtime == target_runtime
+        )
+        if host_matches_target:
+            add("host_environment", host_address, host_runtime or target_runtime)
+        if host_runtime is not None and host_matches_target:
+            add("host_runtime_dir", f"unix:path={host_runtime}/bus", host_runtime)
+        if target_uid > 0:
+            runtime_dir = target_runtime
+            assert runtime_dir is not None
+            add("home_owner_runtime", f"unix:path={runtime_dir}/bus", runtime_dir)
+        return tuple(candidates)
+
+    def _probe_environment(self, session_environment: Mapping[str, str]) -> dict[str, str]:
+        result = {
+            key: value
+            for key, value in self._host_environment.items()
+            if key in {"HOME", "PATH", "LANG", "LANGUAGE"} or key.startswith("LC_")
+        }
+        result.update(session_environment)
+        return result
+
+    @staticmethod
+    def _failure_class(error: BaseException | None, returncode: int | None, stderr: str) -> str:
+        if isinstance(error, subprocess.TimeoutExpired):
+            return "launch_client_timeout"
+        if error is not None:
+            return "launch_client_unavailable"
+        folded = stderr.casefold()
+        if any(value in folded for value in ("permission denied", "access denied", "authentication failed")):
+            return "dbus_access_denied"
+        if any(
+            value in folded
+            for value in (
+                "connection refused",
+                "failed to connect",
+                "cannot connect",
+                "no such file",
+                "dbus",
+            )
+        ):
+            return "dbus_unavailable"
+        return "launch_client_failed" if returncode else "probe_failed"
 
     @staticmethod
     def _runtime_variant(proton_path: Path) -> str:
@@ -99,32 +225,86 @@ class ContainerReentryProbe:
         digest = hashlib.md5(str(prefix).encode("utf-8"), usedforsecurity=False).hexdigest()
         bus_name = f"com.steampowered.App{digest}"
         expected = f"--bus-name={bus_name}"
-        probe_environment = {
-            key: value
-            for key, value in environment.items()
-            if isinstance(key, str) and isinstance(value, str)
+        candidates = self._session_bus_candidates()
+        if not candidates:
+            raise ContainerReentryError(
+                "container_reentry_probe_failed",
+                failure_class="host_session_bus_unavailable",
+                attempts=0,
+            )
+        saw_successful_listing = False
+        successful_source: str | None = None
+        last_exit_code: int | None = None
+        last_source: str | None = None
+        last_failure_class = "probe_failed"
+        failure_priority = {
+            "probe_failed": 0,
+            "launch_client_failed": 1,
+            "dbus_unavailable": 2,
+            "launch_client_unavailable": 3,
+            "launch_client_timeout": 4,
+            "dbus_access_denied": 5,
         }
-
-        for attempt in range(1, self._attempts + 1):
-            try:
-                result = self._run(
-                    [str(launch_client), "--list"],
-                    env=probe_environment,
-                    shell=False,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=2.0,
-                )
-            except (OSError, subprocess.SubprocessError) as error:
-                raise ContainerReentryError("container_reentry_probe_failed") from error
-            if result.returncode != 0:
-                raise ContainerReentryError("container_reentry_probe_failed")
-            if expected in str(result.stdout).splitlines():
-                return ContainerReentryResolution(launch_client, bus_name, variant, attempt)
-            if attempt < self._attempts:
+        invocation = 0
+        while invocation < self._attempts:
+            for candidate in candidates:
+                if invocation >= self._attempts:
+                    break
+                invocation += 1
+                probe_environment = self._probe_environment(candidate.environment)
+                try:
+                    result = self._run(
+                        [str(launch_client), "--list"],
+                        env=probe_environment,
+                        shell=False,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=2.0,
+                    )
+                except (OSError, subprocess.SubprocessError) as error:
+                    failure_class = self._failure_class(error, None, "")
+                    if failure_priority[failure_class] >= failure_priority[last_failure_class]:
+                        last_exit_code = None
+                        last_source = candidate.source
+                        last_failure_class = failure_class
+                    continue
+                returncode = int(result.returncode)
+                if returncode != 0:
+                    failure_class = self._failure_class(None, returncode, str(result.stderr))
+                    if failure_priority[failure_class] >= failure_priority[last_failure_class]:
+                        last_exit_code = returncode
+                        last_source = candidate.source
+                        last_failure_class = failure_class
+                    continue
+                saw_successful_listing = True
+                successful_source = candidate.source
+                if expected in str(result.stdout).splitlines():
+                    return ContainerReentryResolution(
+                        launch_client,
+                        bus_name,
+                        variant,
+                        invocation,
+                        candidate.source,
+                        MappingProxyType(dict(candidate.environment)),
+                    )
+            if invocation < self._attempts:
                 self._sleep(self._delay_seconds)
-        raise ContainerReentryError("container_reentry_bus_missing")
+        if saw_successful_listing:
+            raise ContainerReentryError(
+                "container_reentry_bus_missing",
+                failure_class="bus_missing",
+                exit_code=0,
+                bus_source=successful_source,
+                attempts=self._attempts,
+            )
+        raise ContainerReentryError(
+            "container_reentry_probe_failed",
+            failure_class=last_failure_class,
+            exit_code=last_exit_code,
+            bus_source=last_source,
+            attempts=self._attempts,
+        )
 
     async def verify(self, environment: Mapping[str, str]) -> ContainerReentryResolution:
         return await asyncio.to_thread(self._verify_sync, dict(environment))

@@ -160,6 +160,13 @@ Primary sources:
 11. Before spawning, resolve the runtime launch client with the same UMU 1.4.4
     precedence (`UMU_FOLDERS_PATH`, then `XDG_DATA_HOME`, then
     `~/.local/share`) and require the exact same-prefix bus to be listed.
+12. Run that listing through the Deck/Steam host-session D-Bus context. Do not
+    copy `DBUS_SESSION_BUS_ADDRESS` or `XDG_RUNTIME_DIR` from the accepted Wine
+    process; those values can name pressure-vessel-internal endpoints. Admit a
+    host-session pair to the sidecar only after the exact prefix bus verifies.
+13. Latch a failed preflight to the stable PID/start-time session. Re-probe only
+    after explicit Retry or discovery of a new game session, while recording
+    bounded failure metadata instead of raw launch-client output.
 
 These are narrow corrections to session revalidation and UMU's supported
 same-prefix re-entry path. They do not loosen initial wrapper filtering or

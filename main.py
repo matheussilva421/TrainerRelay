@@ -34,7 +34,15 @@ _watcher_task: asyncio.Task[Any] | None = None
 _rpc: RelayRpc | None = None
 _diagnostics: DiagnosticRecorder | None = None
 
-PLUGIN_VERSION = "0.1.0-experimental.17"
+PLUGIN_VERSION = "0.1.0-experimental.18"
+
+
+def _host_user_home() -> str:
+    return getattr(
+        decky,
+        "DECKY_USER_HOME",
+        getattr(decky, "HOME", os.environ.get("HOME", "/home/deck")),
+    )
 
 
 def _current_config() -> dict[str, Any]:
@@ -56,7 +64,7 @@ def _ensure_diagnostics() -> DiagnosticRecorder:
 
 
 def _build_watcher() -> RelayWatcher:
-    home = getattr(decky, "HOME", os.environ.get("HOME", "/home/deck"))
+    home = _host_user_home()
     umu_path = lambda: resolve_umu_run(home)
     runner = OwnedTrainerRunner(umu_path)
     return RelayWatcher(
@@ -75,7 +83,7 @@ def _service() -> RelayRpc:
     if _watcher is None:
         _watcher = _build_watcher()
     if _rpc is None:
-        home = getattr(decky, "HOME", os.environ.get("HOME", "/home/deck"))
+        home = _host_user_home()
         _rpc = RelayRpc(
             settings,
             _watcher,

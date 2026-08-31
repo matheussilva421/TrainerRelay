@@ -51,6 +51,15 @@ then uses `steam-runtime-launch-client` to re-enter that service and applies
 configuration, because a sidecar cannot retroactively create the service for
 an already-running game.
 
+The service is owned by the Steam user's session bus, not by the accepted Wine
+process's nested pressure-vessel environment. The preflight therefore uses the
+Decky host-user D-Bus/XDG pair when it matches the target user, with a bounded
+`/run/user/<target uid>/bus` fallback. It does not copy these variables from the
+game. A candidate becomes sidecar input only after it lists the exact hashed
+prefix service. Failed preflight is latched to the stable PID/start-time pair,
+preventing a one-second retry storm while preserving explicit Retry and new
+session recovery.
+
 ## Alternatives considered
 
 ### Launch-time coupling
@@ -88,6 +97,8 @@ launcher-service re-entry path is now required instead.
   fail-closed behavior.
 - The plugin must retain the observed PID/start-time pair and revalidate the
   game session before retries and shutdown.
+- Container preflight failure produces one bounded diagnostic per game session,
+  with no raw D-Bus address, stderr, or environment dump retained.
 - Automatic retry is based on whether `running` was actually observed, not on
   whether the next one-second poll happened just before or after a fixed
   three-second timestamp.

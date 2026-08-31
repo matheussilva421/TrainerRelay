@@ -11,6 +11,15 @@ trainer attempts still made a fresh `umu-run` exit with code 1. Copying the
 same trainer beside the game executable produced the same result, refuting the
 install-path hypothesis.
 
+The `.17` physical export narrowed the next boundary further. PID `79033` plus
+start time `4885149` remained accepted, but every preflight invocation exited
+nonzero before `trainer_spawned`. The watcher repeated
+`container_reentry_probe_failed` once per polling cycle. UMU's reference path
+invokes `steam-runtime-launch-client --list` from the caller's host session;
+Trainer Relay instead supplied the sanitized environment copied from the game,
+including its nested pressure-vessel D-Bus address. The launch client therefore
+could not query the Steam user session that owns the same-prefix service.
+
 UniFiDeck bundles UMU 1.4.4. That version implements an explicit re-entry path:
 `UMU_CONTAINER_NSENTER=1` makes the initial container expose a launcher
 service, hashes `WINEPREFIX` into its app bus identity, and lets a later
@@ -37,6 +46,13 @@ The owned sidecar receives the validated compatdata root as `WINEPREFIX` and
 `PROTON_VERB=runinprefix` last. It continues using structured argv and its own
 process group. Trainer failure never changes or terminates the game.
 
+The preflight and sidecar use a separately resolved host-session context. A
+non-root Decky backend may use its own matching `DBUS_SESSION_BUS_ADDRESS` and
+`XDG_RUNTIME_DIR`; otherwise the plugin derives `/run/user/<uid>/bus` from the
+host user/home owner. It never reuses those values from the game process. The
+exact expected `com.steampowered.App<md5(prefix)>` service must be present
+before the validated D-Bus/XDG pair is admitted to the sidecar environment.
+
 Persistent diagnostics force `UMU_LOG=info`, not `1`. UMU's debug mode logs
 the complete derived environment. INFO still exposes the decisive
 `Re-entering container through bus` or `Failed to find bus name` messages.
@@ -48,9 +64,12 @@ Only bounded, sanitized output tails are journaled after process exit.
 - Unsafe or unparseable options: preparation blocked.
 - Write or AppDetails mismatch: configuration remains disabled.
 - Game missing re-entry flag: `invalid_config`, no trainer.
-- UMU bus unavailable after five bounded probes: `invalid_config`, no trainer;
-  game remains active. A trainer that actually spawned and exits early receives
-  one automatic retry, then `failed`.
+- UMU bus unavailable after at most five total launch-client invocations across
+  all session candidates: `invalid_config`, no trainer;
+  game remains active. The failure is latched for the same PID/start-time to
+  prevent one probe per watcher tick; manual Retry or a new game session clears
+  the latch. A trainer that actually spawned and exits early receives one
+  automatic retry, then `failed`.
 - Plugin unload or game exit: only the Trainer Relay-owned group is signaled.
 
 ## Acceptance

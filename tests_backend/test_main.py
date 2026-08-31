@@ -83,7 +83,8 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         decky.DECKY_PLUGIN_SETTINGS_DIR = "/settings"
         decky.DECKY_PLUGIN_LOG_DIR = "/logs"
         decky.DECKY_PLUGIN_DIR = "/plugin"
-        decky.HOME = "/home/deck"
+        decky.HOME = "/root"
+        decky.DECKY_USER_HOME = "/home/deck"
         decky.logger = types.SimpleNamespace(setLevel=lambda *_: None, info=lambda *_: None)
         settings_module = types.ModuleType("settings")
         settings_module.SettingsManager = lambda **_: self.settings
@@ -126,6 +127,19 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
                 "state": "invalid_config",
                 "diagnostic": {"code": "status_unavailable"},
             })
+
+    async def test_watcher_uses_the_decky_host_user_home_not_the_backend_home(self):
+        with (
+            patch.object(self.main, "RelayWatcher") as watcher_factory,
+            patch.object(self.main, "OwnedTrainerRunner", return_value=object()),
+        ):
+            self.main._build_watcher()
+
+        self.assertEqual(watcher_factory.call_args.kwargs["home"], "/home/deck")
+        self.assertEqual(
+            watcher_factory.call_args.kwargs["games_map_path"],
+            self.main.os.path.join("/home/deck", ".local", "share", "unifideck", "games.map"),
+        )
 
     async def test_unload_cancels_task_and_stops_owned_watcher(self):
         watcher = FakeWatcher({})

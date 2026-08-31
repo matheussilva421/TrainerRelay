@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-This repository publishes `v0.1.0-experimental.17`. It is an experimental release pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4.
+The current release target is `v0.1.0-experimental.18`. It remains experimental pending publication checks and validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.17).
+2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.18).
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -76,8 +76,10 @@ The watcher is deliberately fail-closed:
 - the accepted game process must contain `UMU_CONTAINER_NSENTER=1`; otherwise
   the plugin reports `container_reentry_missing` and launches nothing;
 - before spawn, the plugin resolves the matching UMU runtime launch client and
-  requires the exact same-prefix bus to be listed; otherwise it reports a
-  bounded `container_reentry_*` code and launches nothing;
+  queries it through the Steam/Deck user session bus, never the game's nested
+  pressure-vessel bus, and requires the exact same-prefix service to be listed;
+  otherwise it reports one bounded `container_reentry_*` result for that game
+  session and launches nothing until manual Retry or a new session;
 - the `umu-run` sidecar receives the selected UniFiDeck compatdata root, not the
   child process's Proton-expanded `<root>/pfx` value;
 - a trainer is considered running only after it remains alive for three seconds;
@@ -112,15 +114,18 @@ To roll back, disable the per-game Trainer Relay configuration or uninstall the 
 - **`invalid_config (container_reentry_missing)`:** complete UMU container
   preparation, close the currently running game, and launch it again.
 - **`invalid_config (container_reentry_bus_missing)`:** the prepared game did
-  not expose the exact same-prefix service after five probes; restart it and
+  not expose the exact same-prefix service after at most five launch-client
+  invocations across all host-session candidates; restart it and
   export Diagnostics. `container_reentry_unsupported` or
   `container_reentry_probe_failed` means the runtime/client could not be
-  identified or queried safely.
+  identified or queried safely. `.18` records a bounded failure class, probe
+  exit code, attempt count, and bus source without retaining stderr or a full
+  environment.
 - **Other `invalid_config`:** remove the legacy variables, or complete the migration prompt and verify the resulting launch options.
 - **`failed`:** confirm the `.exe` is absolute and readable, the prefix exists, and the trainer supports the game's Wine environment.
 - **Trainer window not visible:** switch between open windows with the Steam button; this plugin does not force window focus.
 
-Please include the exported `.13` diagnostic TXT, status, and diagnostic code when reporting a bug. Do not attach complete `/proc` environments, credentials, or private launch options.
+Please include the exported diagnostic TXT, status, and diagnostic code when reporting a bug. Do not attach complete `/proc` environments, credentials, or private launch options.
 
 ## Acknowledgments
 

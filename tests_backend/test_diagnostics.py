@@ -127,6 +127,20 @@ class DiagnosticRecorderTests(unittest.TestCase):
 
         self.assertEqual(self.read_events()[0]["details"], details)
 
+    def test_accepts_bounded_container_probe_failure_metadata(self):
+        recorder = self.recorder()
+        details = {
+            "reason": "container_reentry_probe_failed",
+            "failure_class": "dbus_unavailable",
+            "probe_exit_code": 1,
+            "bus_source": "home_owner_runtime",
+            "attempt_count": 5,
+        }
+
+        recorder.record("umu", "container_reentry_rejected", "rejected", details=details)
+
+        self.assertEqual(self.read_events()[0]["details"], details)
+
     def test_rejects_umu_output_tail_larger_than_the_runner_retention_limit(self):
         recorder = self.recorder()
         details = {

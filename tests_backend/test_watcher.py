@@ -61,9 +61,13 @@ class FakeDiscoverer:
 
 
 class FakeContainerProbe:
-    def __init__(self, error=None):
+    def __init__(self, error=None, session_environment=None):
         self.error = error
         self.calls = []
+        self.session_environment = session_environment or {
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+        }
 
     async def verify(self, environment):
         self.calls.append(environment)
@@ -73,6 +77,8 @@ class FakeContainerProbe:
             bus_name="com.steampowered.Appabc",
             runtime_variant="steamrt3",
             attempts=1,
+            bus_source="home_owner_runtime",
+            session_environment=self.session_environment,
         )
 
 
@@ -379,7 +385,15 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_fails_closed_before_spawn_when_container_bus_is_missing(self):
-        self.watcher._container_probe = FakeContainerProbe(ContainerReentryError("container_reentry_bus_missing"))
+        self.watcher._container_probe = FakeContainerProbe(
+            ContainerReentryError(
+                "container_reentry_bus_missing",
+                failure_class="bus_missing",
+                exit_code=0,
+                bus_source="home_owner_runtime",
+                attempts=5,
+            )
+        )
 
         await self.watcher.poll_once()
 
@@ -389,7 +403,69 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             self.watcher.status(self.identity)["diagnostic"],
             {"code": "container_reentry_bus_missing"},
         )
-        self.assertIn("container_reentry_rejected", [call["event"] for call in self.recorder.calls])
+        rejected = next(call for call in self.recorder.calls if call["event"] == "container_reentry_rejected")
+        self.assertEqual(
+            rejected["details"],
+            {
+                "reason": "container_reentry_bus_missing",
+                "failure_class": "bus_missing",
+                "probe_exit_code": 0,
+                "bus_source": "home_owner_runtime",
+                "attempt_count": 5,
+            },
+        )
+
+    async def test_validated_host_session_bus_replaces_the_game_container_bus_for_umu(self):
+        self.discovery.environment.update(
+            {
+                "DBUS_SESSION_BUS_ADDRESS": "unix:path=/inside-pressure-vessel/bus",
+                "XDG_RUNTIME_DIR": "/inside-pressure-vessel",
+            }
+        )
+
+        await self.watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(
+            launch_environment["DBUS_SESSION_BUS_ADDRESS"],
+            "unix:path=/run/user/1000/bus",
+        )
+        self.assertEqual(launch_environment["XDG_RUNTIME_DIR"], "/run/user/1000")
+
+    async def test_validated_bus_without_xdg_fails_closed_instead_of_reusing_the_game_runtime_dir(self):
+        self.discovery.environment.update(
+            {
+                "DBUS_SESSION_BUS_ADDRESS": "unix:path=/inside-pressure-vessel/bus",
+                "XDG_RUNTIME_DIR": "/inside-pressure-vessel",
+            }
+        )
+        self.watcher._container_probe = FakeContainerProbe(
+            session_environment={"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"}
+        )
+
+        await self.watcher.poll_once()
+
+        self.assertEqual(self.runner.spawn_calls, [])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "invalid_config")
+        self.assertEqual(
+            self.watcher.status(self.identity)["diagnostic"],
+            {"code": "container_reentry_probe_failed"},
+        )
+
+    async def test_failed_preflight_is_latched_for_the_same_session_until_manual_retry(self):
+        probe = FakeContainerProbe(ContainerReentryError("container_reentry_probe_failed"))
+        self.watcher._container_probe = probe
+
+        await self.watcher.poll_once()
+        await self.watcher.poll_once()
+
+        self.assertEqual(len(probe.calls), 1)
+        self.assertEqual(self.runner.spawn_calls, [])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "invalid_config")
+
+        await self.watcher.retry(self.identity)
+
+        self.assertEqual(len(probe.calls), 2)
 
     async def test_diagnostic_mode_uses_info_logging_and_records_only_known_runtime_flag_names(self):
         self.discovery.environment.update(
