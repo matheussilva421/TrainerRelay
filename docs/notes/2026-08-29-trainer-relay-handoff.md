@@ -1552,3 +1552,30 @@ untested.
 - Remaining GOG checklist items are Force Sync persistence and diagnostic
   clear behavior. Epic physical validation remains entirely pending. Do not
   promote to stable until both store columns satisfy the promotion gate.
+
+### Cheat catalog and live-state feasibility research
+
+- The user requested Decky controls that automatically discover every cheat,
+  hotkey, and current state, with priority for FLiNG trainers and the custom
+  trainers in the parent `Mods` repository.
+- Research is recorded in
+  `docs/research/2026-08-31-trainer-relay-cheat-introspection.md`. No trainer
+  executable was launched and no production code was changed.
+- Two local FLiNG builds were identified by SHA-256: BioShock 2 Remastered +15
+  (`313CE3E3...7401`) and BioShock Infinite +15 (`4AED63DB...2474`). The
+  existing `Tools/FlingDeckWrapper` already has hash-bound 15-option catalogs
+  and key chords for both, but explicitly states that cheat state is not
+  observable.
+- The static FLiNG extractor currently fails in `parse_imports` with
+  `NameError: thunk_rva`; its historical report is evidence only and is not a
+  production discovery mechanism.
+- The editable custom trainers expose 9 source JSON profiles with 61 declared
+  entries. Names and hotkeys are directly available, while live state remains
+  internal in `CheatRuntime.IsEnabled` and trainer-owned memory verification;
+  there is no IPC/state RPC today.
+- Architectural recommendation awaiting user approval: a capability-based
+  adapter model. Custom trainers gain a cooperative manifest plus acknowledged
+  state/control protocol. Exact FLiNG hashes use curated static adapters and
+  key dispatch, with state shown as `requested`/`unknown`, never falsely as an
+  authoritative enabled/disabled toggle. Unknown hashes fail closed.
+- No implementation may start until the user approves this design boundary.
