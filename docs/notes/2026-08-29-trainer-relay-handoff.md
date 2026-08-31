@@ -1327,3 +1327,39 @@ GOG/Epic validation remains explicitly pending.
   preflight fails, send the bounded `container_reentry_*` code and TXT; no
   trainer should have been launched. Epic remains a separate gate and stable
   promotion remains prohibited until both stores pass.
+
+### Experimental.17 physical GOG preflight failure
+
+- `TrainerRelay-diagnostics-20260830-233641.txt` confirms the physical Deck
+  installed `0.1.0-experimental.17`. The real BioShock process was accepted as
+  PID `79033`, start time `4885149`, with the expected executable, GOG store,
+  GE-Proton 11-6, compatdata root, and inherited re-entry flag.
+- A deterministic replay check over the captured export is red for the exact
+  symptom: 462 accepted/revalidated observations, 462
+  `container_reentry_probe_failed` rejections, zero `trainer_spawned`, and zero
+  `trainer_running`. The game stayed isolated and eventually emitted
+  `session_ended`.
+- Failure occurs before runner spawn. `steam-runtime-launch-client --list`
+  returns nonzero in about 10 ms, but `.17` discards its return code, bounded
+  stderr, and D-Bus source classification. The watcher then repeats the same
+  preflight once per second for the unchanged session, producing 7.5 MiB of
+  diagnostics in about eight minutes.
+- Root boundary: the preflight is a host-side D-Bus control operation, while
+  `.17` executes it with the sanitized environment copied from a Windows
+  descendant inside pressure-vessel. Decky runs this non-root plugin as the
+  host user, so escalating the plugin is neither necessary nor an appropriate
+  correction. The probe must resolve a host-visible user-session bus
+  independently of game-runtime variables and pass the same resolved context
+  to the later UMU invocation.
+- Proposed bounded correction, awaiting the post-diagnosis approval gate:
+  resolve and validate host D-Bus candidates fail-closed; accept only the
+  candidate whose `--list` output contains the exact prefix bus; return that
+  context to the sidecar environment; preserve structured argv and ownership;
+  record bounded probe return code/error classification; and latch an invalid
+  preflight for the same PID/start-time until manual retry or a new session.
+- TDD seams: a game-internal/unreachable bus plus a valid host bus must select
+  the host context; zero valid buses must remain fail-closed with sanitized
+  evidence; a successful resolution must reach the runner with the selected
+  D-Bus context; and an unchanged invalid session must execute one preflight,
+  not one per watcher tick. No production file was changed in this diagnostic
+  checkpoint.
