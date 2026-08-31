@@ -391,6 +391,81 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("container_reentry_rejected", [call["event"] for call in self.recorder.calls])
 
+    async def test_container_reentry_failure_latches_one_preflight_per_session(self):
+        self.watcher._container_probe = FakeContainerProbe(
+            ContainerReentryError("container_reentry_probe_failed")
+        )
+
+        await self.watcher.poll_once()
+        self.clock_value = 1.0
+        await self.watcher.poll_once()
+        self.clock_value = 2.0
+        await self.watcher.poll_once()
+
+        # The invalid preflight is latched for the unchanged PID/start-time, so
+        # it must run exactly once instead of once per watcher tick.
+        self.assertEqual(len(self.watcher._container_probe.calls), 1)
+        self.assertEqual(self.runner.spawn_calls, [])
+        self.assertEqual(self.watcher.status(self.identity)["state"], "invalid_config")
+        self.assertEqual(
+            self.watcher.status(self.identity)["diagnostic"],
+            {"code": "container_reentry_probe_failed"},
+        )
+        rejections = [call for call in self.recorder.calls if call["event"] == "container_reentry_rejected"]
+        self.assertEqual(len(rejections), 1)
+
+    async def test_manual_retry_reattempts_a_latched_preflight(self):
+        self.watcher._container_probe = FakeContainerProbe(
+            ContainerReentryError("container_reentry_probe_failed")
+        )
+
+        await self.watcher.poll_once()
+        self.clock_value = 1.0
+        await self.watcher.retry(self.identity)
+
+        self.assertEqual(len(self.watcher._container_probe.calls), 2)
+
+    async def test_new_session_rearms_a_latched_preflight(self):
+        self.watcher._container_probe = FakeContainerProbe(
+            ContainerReentryError("container_reentry_probe_failed")
+        )
+
+        await self.watcher.poll_once()
+        self.discoverer.result = DiscoveryResult(
+            "session",
+            session=SessionIdentity(11, 21),
+            environment=dict(self.discovery.environment),
+            decisions=self.discovery.decisions,
+        )
+        self.clock_value = 1.0
+        await self.watcher.poll_once()
+
+        self.assertEqual(len(self.watcher._container_probe.calls), 2)
+
+    async def test_resolved_dbus_context_reaches_the_runner_environment(self):
+        class HostBusProbe:
+            def __init__(self):
+                self.calls = []
+
+            async def verify(self, environment):
+                self.calls.append(environment)
+                return SimpleNamespace(
+                    bus_name="com.steampowered.Appabc",
+                    runtime_variant="steamrt3",
+                    attempts=1,
+                    dbus_address="unix:path=/run/user/1000/bus",
+                    dbus_source="uid_default",
+                )
+
+        self.watcher._container_probe = HostBusProbe()
+
+        await self.watcher.poll_once()
+
+        launch_environment = self.runner.spawn_calls[0][2]
+        self.assertEqual(
+            launch_environment["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/user/1000/bus"
+        )
+
     async def test_diagnostic_mode_uses_info_logging_and_records_only_known_runtime_flag_names(self):
         self.discovery.environment.update(
             {

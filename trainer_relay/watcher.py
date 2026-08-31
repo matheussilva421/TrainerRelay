@@ -44,6 +44,7 @@ class _RelayState:
     launched_at: float | None = None
     retry_at: float | None = None
     automatic_retries: int = 0
+    reentry_latch: SessionIdentity | None = None
 
 
 class RelayWatcher:
@@ -278,17 +279,25 @@ class RelayWatcher:
                 source_environment["UMU_LOG"] = "info"
             safe_environment = build_sanitized_environment(source_environment, prefix)
             reentry = await self._maybe_await(self._container_probe.verify(safe_environment))
+            reentry_details: dict[str, Any] = {
+                "bus_name": str(reentry.bus_name),
+                "runtime_variant": str(reentry.runtime_variant),
+                "attempt_count": int(reentry.attempts),
+            }
+            # The host-resolved session bus must reach the sidecar so its own
+            # steam-runtime-launch-client re-entry targets the same launcher
+            # service instead of the unreachable in-container game bus.
+            dbus_address = getattr(reentry, "dbus_address", None)
+            if isinstance(dbus_address, str) and dbus_address:
+                safe_environment["DBUS_SESSION_BUS_ADDRESS"] = dbus_address
+                reentry_details["dbus_source"] = str(getattr(reentry, "dbus_source", "resolved"))
             self._record(
                 "umu",
                 "container_reentry_verified",
                 "accepted",
                 identity=identity,
                 session=session,
-                details={
-                    "bus_name": str(reentry.bus_name),
-                    "runtime_variant": str(reentry.runtime_variant),
-                    "attempt_count": int(reentry.attempts),
-                },
+                details=reentry_details,
             )
             state.handle = await self._maybe_await(self._runner.spawn(session, trainer_path, safe_environment))
         except Exception as error:
@@ -308,15 +317,30 @@ class RelayWatcher:
                 if code.startswith("umu_")
                 else "trainer_spawn_failed"
             )
+            if event in {"umu_rejected", "container_reentry_rejected"}:
+                details: dict[str, Any] = {"reason": code}
+            else:
+                details = {"trainer_path": str(game["trainerPath"]), "reason": code}
+            if code.startswith("container_reentry_"):
+                # Latch this invalid preflight to the current session so the
+                # watcher does not re-run the host D-Bus probe once per tick
+                # for an unchanged game process.
+                state.reentry_latch = session
+                evidence = getattr(error, "evidence", None)
+                if isinstance(evidence, Mapping):
+                    returncode = evidence.get("returncode")
+                    if isinstance(returncode, int):
+                        details["probe_returncode"] = returncode
+                    detail = evidence.get("detail")
+                    if isinstance(detail, str) and detail:
+                        details["probe_detail"] = detail[:160]
             self._record(
                 "umu" if event in {"umu_rejected", "container_reentry_rejected"} else "trainer",
                 event,
                 "rejected" if event in {"umu_rejected", "container_reentry_rejected"} else "error",
                 identity=identity,
                 session=session,
-                details={"reason": code}
-                if event in {"umu_rejected", "container_reentry_rejected"}
-                else {"trainer_path": str(game["trainerPath"]), "reason": code},
+                details=details,
             )
             state.handle = None
             state.launched_at = None
@@ -473,6 +497,7 @@ class RelayWatcher:
             state.retry_at = None
             state.automatic_retries = 0
             state.diagnostic = None
+            state.reentry_latch = None
             if previous_session is not None:
                 self._record(
                     "lifecycle",
@@ -575,6 +600,12 @@ class RelayWatcher:
                 details={"retry_count": state.automatic_retries + 1},
             )
             state.automatic_retries = 0
+            state.reentry_latch = None
+        elif state.reentry_latch is not None and state.reentry_latch == discovery.session:
+            # A previous preflight already failed fail-closed for this exact
+            # session. Do not repeat it every tick; wait for a new session or a
+            # manual retry.
+            return
         await self._spawn(state, identity, validated_game, discovery.session, discovery.environment or {}, prefix)
 
     async def poll_once(self) -> None:
