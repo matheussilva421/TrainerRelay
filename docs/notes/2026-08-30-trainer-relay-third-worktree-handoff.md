@@ -100,3 +100,50 @@ Arquivos alterados:
 `git checkout main -- trainer_relay/container_reentry.py trainer_relay/watcher.py`
 e remover os testes adicionados; ou descartar a branch
 `codex/trainer-relay-third-model`. As outras worktrees não são afetadas.
+
+## Checkpoint — takeover e relatório de causa raiz (Claude, 2026-08-30)
+
+O writer anterior desta branch ficou sem heartbeat; o usuário autorizou takeover
+explícito. Nesta sessão o escopo foi **somente análise**: nenhum arquivo de
+código foi criado ou alterado.
+
+### Arquivo criado
+
+- `docs/notes/2026-08-30-trainer-relay-container-reentry-root-cause.md`
+
+### O que ficou provado (fonte primária, não inferência)
+
+- `steam-runtime-launch-client --list` retorna não-zero **apenas** quando não
+  alcança o barramento de sessão. Lista vazia retorna 0
+  (`bin/launch-client.c`, `list_servers`).
+- O pressure-vessel reescreve `DBUS_SESSION_BUS_ADDRESS` para
+  `unix:path=/run/pressure-vessel/bus` e faz `--ro-bind` do socket real da
+  sessão do host nesse caminho (`pressure-vessel/flatpak-run.c`,
+  `flatpak_run_add_session_dbus_args`). O caminho não existe no host.
+- Cadeia do `.17` fechada: ambiente copiado de dentro do container → endereço
+  inexistente no host → falha imediata de `connect()` → ~10 ms → `probe_failed`.
+- Como o serviço vive no **mesmo** daemon D-Bus, o nome
+  `com.steampowered.App<md5>` é visível a partir do host. A direção de
+  `8e6b6fd` está certa.
+
+### Achado que muda o risco da correção atual
+
+No Decky, o backend do plugin não recebe `XDG_RUNTIME_DIR` nem
+`DBUS_SESSION_BUS_ADDRESS` (`decky-loader/.../sandboxed_plugin.py`: só define
+`HOME`, `USER` e `DECKY_*`, após `setuid(HOST_USER)`; `plugin.json` tem
+`flags: []`). Portanto os candidatos `host_env` e `xdg_runtime_dir` **não
+existem no aparelho** e tudo depende do terceiro, `uid_default`
+(`/run/user/1000/bus`).
+
+### Pendências (ordem recomendada, todas por TDD)
+
+- **P1** eliminar assimetria de `HOME`/`XDG_DATA_HOME`/`PATH` entre preflight e
+  sidecar (risco de preflight verde com container novo — repetiria o `.16`);
+- **P2** ler `STEAM_COMPAT_APP_ID` do ambiente do jogo em vez de recalcular MD5;
+- **P3** código próprio e acionável para serviço não publicado;
+- **P4** instrumentar a resolução do barramento (existe/é socket/uid);
+- **P5** confirmar o re-entry pela saída do próprio umu
+  (`Re-entering container through bus`), não por suposição.
+
+Detalhamento completo, riscos ranqueados, matriz de diagnóstico e roteiro de
+validação física estão no relatório citado acima.
