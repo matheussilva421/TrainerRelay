@@ -1498,3 +1498,35 @@ GOG/Epic validation remains explicitly pending.
 - Commit/push, annotated tag, GitHub prerelease workflow, public-asset byte
   comparison, and installation-kit creation are the remaining publication
   steps. Physical GOG and Epic checks remain mandatory after installation.
+
+### Experimental.19 publication and installation kit
+
+- Commit `f89f476` (`fix: confirm UMU container re-entry`) was pushed to both
+  `feat/trainer-relay` and `main`. Annotated tag
+  `v0.1.0-experimental.19` points to that implementation commit.
+- GitHub Actions passed for the feature branch (`33360558539`), main
+  (`33360558446`), and tag/release (`33360577462`). The tag workflow completed
+  backend, frontend, package-layout/build, artifact, and release-publication
+  jobs. Its only annotations concern GitHub's Node.js 20 action deprecation;
+  no Trainer Relay gate failed.
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.19`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.19/TrainerRelay.zip`.
+- The public asset is 307,848 bytes with SHA-256
+  `316C1D172CA3FF806D54ED6B831E92DA242D3354CB8149F1E9991C4A55FD16B1`.
+  A fresh download is byte-identical to the final local deterministic package,
+  and GitHub reports the same digest.
+- Created and verified
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.19-kit` with the
+  versioned public ZIP, Portuguese guide, validation checklist, README,
+  context, `LEIA-ME.txt`, and `SHA256SUMS.txt`. All six manifest entries pass.
+  Also created standalone installation ZIP
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.19.zip` and kit
+  archive
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.19-kit.zip`.
+- Physical validation remains the runtime gate. Install `.19`, keep diagnostic
+  mode enabled, relaunch the GOG title, and export a TXT. Expected healthy
+  order: `container_reentry_verified`, `trainer_spawned`,
+  `container_reentry_confirmed`, `trainer_running`. GOG and Epic must both pass
+  before any stable promotion.
