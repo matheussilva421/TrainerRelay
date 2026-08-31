@@ -18,13 +18,14 @@ mais de uma sessão do mesmo jogo. Esses casos não fazem parte desta versão.
 
 ## 1. Conferir o ZIP
 
-O ZIP local determinístico da `.18` tem 296.194 bytes e SHA-256:
+O ZIP público e o pacote local determinístico da `.18` são idênticos, têm
+296.194 bytes e SHA-256:
 
 ```text
 BF1DFB6C873C506404333679701AC3DE9E60AAE1FB327F993E5358FBE767584B
 ```
 
-O `SHA256SUMS.txt` do kit final e o asset publicado no GitHub devem repetir
+O `SHA256SUMS.txt` do kit final e o asset publicado no GitHub repetem
 exatamente esse valor.
 
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:

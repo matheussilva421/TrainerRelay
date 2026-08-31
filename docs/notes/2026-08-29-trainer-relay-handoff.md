@@ -1400,7 +1400,34 @@ GOG/Epic validation remains explicitly pending.
   files; both TypeScript typechecks; compileall; Rollup; package layout/import
   2/2. Two post-review packages are byte-identical: 22 entries, 296,194 bytes,
   SHA-256 `BF1DFB6C873C506404333679701AC3DE9E60AAE1FB327F993E5358FBE767584B`.
-- Publication remains pending until the second review is clean, all fresh gates
-  are rerun, deterministic ZIP/hash is updated, commit/push/tag workflows pass,
-  and the public asset is byte-identical. Physical GOG and Epic validation still
-  block stable promotion.
+- Publication remained gated on the clean second review and fresh local gates;
+  the following publication block records their completed GitHub verification.
+  Physical GOG and Epic validation still block stable promotion.
+
+### Experimental.18 publication and installation kit
+
+- Commit `9477c5a` (`fix: use host session bus for UMU re-entry`) was pushed to
+  both `feat/trainer-relay` and `main`. Annotated tag
+  `v0.1.0-experimental.18` points to that implementation commit.
+- GitHub Actions passed for the feature branch (`33346234146`), main
+  (`33346236984`), and tag/release (`33346349508`). The tag workflow completed
+  frontend, backend, package-layout/build, and release-publication jobs.
+- Prerelease:
+  `https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.18`.
+  Direct asset:
+  `https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.18/TrainerRelay.zip`.
+- The public asset is 296,194 bytes with SHA-256
+  `BF1DFB6C873C506404333679701AC3DE9E60AAE1FB327F993E5358FBE767584B`.
+  A fresh download is byte-identical to the final local deterministic package.
+- Created and verified
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.18-kit` with the
+  versioned public ZIP, Portuguese guide, validation checklist, README,
+  context, `LEIA-ME.txt`, and `SHA256SUMS.txt`. All six manifest entries passed
+  after the copy. A standalone installation ZIP was also copied to
+  `C:\Users\slvma\Downloads\TrainerRelay-v0.1.0-experimental.18.zip`.
+- Physical validation remains the only runtime blocker. Install `.18`, keep
+  diagnostic mode enabled, relaunch the same GOG game, and export a TXT.
+  Expected order: `container_reentry_verified`, `trainer_spawned`, then
+  `trainer_running`. A failed preflight should appear once for the same stable
+  session and launch no trainer. Epic remains a separate gate; do not promote
+  this build to stable until both stores pass.

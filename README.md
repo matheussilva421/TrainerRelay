@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-The current release target is `v0.1.0-experimental.18`. It remains experimental pending publication checks and validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4.
+The current release is `v0.1.0-experimental.18`. Its branch and tag workflows passed, and the published ZIP matches the locally validated package byte for byte. It remains experimental pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4.
 
 Supported:
 
