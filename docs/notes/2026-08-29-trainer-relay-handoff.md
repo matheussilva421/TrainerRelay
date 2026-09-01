@@ -1651,3 +1651,38 @@ untested.
   protocol; the plugin must show `unknown` until then. Cost if wrong: each
   custom trainer will need a follow-up source change, but no false state will
   be presented meanwhile.
+
+### Cheat controls Task 1 complete — domain, manual config and catalog
+
+- Implemented the finite symbolic hotkey domain in `trainer_relay/hotkeys.py`,
+  separate `CheatControlsConfigV1` persistence in
+  `trainer_relay/cheat_config.py`, and immutable all-or-nothing catalog loading
+  in `trainer_relay/cheat_catalog.py`.
+- Added exact-SHA-256 adapter data for the two locally evidenced x86 FLiNG
+  builds. BioShock 2 Remastered is additionally restricted to the physically
+  known `gog:1482265668` identity; Infinite has no invented identity binding.
+  Unknown hashes and disallowed identities resolve to no adapter.
+- The package now includes
+  `TrainerRelay/data/fling_adapters_v1.json` deterministically while continuing
+  to reject arbitrary non-Python runtime files.
+- TDD evidence: the focused Task 1 gate reached 20/20, then an independent
+  Luna review found non-text `peArchitecture` could raise an unbounded
+  `TypeError`. A RED regression reproduced list/dictionary inputs, the minimum
+  type guard fixed it, and the re-review was clean. Final focused gate: 21/21;
+  backend suite: 167/167.
+- Commits `3fa808f` and `4edac05` are pushed to
+  `origin/feat/trainer-relay`.
+- Deferred minor for final review: decoding scans only the first 64 stored
+  entries before invalid-entry filtering, so invalid leading entries can
+  reduce the number of valid controls retained. This does not broaden command
+  authority and is not load-bearing for Task 2.
+- The relocated frontend dependencies were repaired from the existing
+  `pnpm-lock.yaml` with pnpm 11.5.0; no lockfile changed. Frontend baseline is
+  restored at 25 files / 191 tests passing.
+- Toolchain correction: MSVC 14.50 x86/x64 and `vcvarsall.bat` are present
+  under Visual Studio Build Tools 18, although the incomplete installation is
+  not on `PATH`. Task 3 can therefore compile/test both helper architectures
+  locally by resolving the installation path directly, with CI as a second
+  build gate.
+- Next: Task 2 adds an immutable, revalidated command context and one-shot
+  process-group-owned runner. No helper binary or user-visible RPC exists yet.
