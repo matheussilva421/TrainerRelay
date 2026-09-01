@@ -49,6 +49,7 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertIn("TrainerRelay/py_modules/trainer_relay/container_reentry.py", names)
         self.assertIn("TrainerRelay/py_modules/trainer_relay/diagnostics.py", names)
         self.assertIn("TrainerRelay/py_modules/trainer_relay/diagnostic_settings.py", names)
+        self.assertIn("TrainerRelay/data/fling_adapters_v1.json", names)
         self.assertNotIn("TrainerRelay/trainer_relay/watcher.py", names)
         self.assertIn("TrainerRelay/docs/adr/0001-session-watcher.md", names)
         self.assertIn("TrainerRelay/docs/STEAM-DECK-VALIDATION.md", names)

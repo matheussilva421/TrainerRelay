@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "bioshock2-remastered-fling-plus-15",
+      "sha256": "313ce3e30029bc88a27113ed2224ab8f66a8d62c82670c3508bd60af07157401",
+      "peArchitecture": "x86",
+      "trainerLabel": "BioShock 2 Remastered v1.0-Update 2 Plus 15 Trainer",
+      "supportedIdentities": ["gog:1482265668"],
+      "disableAllHotkey": {"modifiers": [], "key": "HOME"},
+      "cheats": [
+        {"id": "infinite-health", "label": "Infinite Health", "hotkey": {"modifiers": [], "key": "NUMPAD1"}},
+        {"id": "infinite-eve", "label": "Infinite EVE", "hotkey": {"modifiers": [], "key": "NUMPAD2"}},
+        {"id": "infinite-items", "label": "Infinite Items/Ammo", "hotkey": {"modifiers": [], "key": "NUMPAD3"}},
+        {"id": "no-reload", "label": "No Reload", "hotkey": {"modifiers": [], "key": "NUMPAD4"}},
+        {"id": "infinite-money", "label": "Infinite Money", "hotkey": {"modifiers": [], "key": "NUMPAD5"}},
+        {"id": "infinite-adam", "label": "Infinite ADAM", "hotkey": {"modifiers": [], "key": "NUMPAD6"}},
+        {"id": "wallet-capacity", "label": "Max Wallet Capacity", "hotkey": {"modifiers": [], "key": "NUMPAD7"}},
+        {"id": "movement-speed", "label": "Super Speed (Movement)", "hotkey": {"modifiers": [], "key": "NUMPAD8"}},
+        {"id": "super-jump", "label": "Super Jump", "hotkey": {"modifiers": [], "key": "NUMPAD9"}},
+        {"id": "one-hit-kill", "label": "One Hit Kill", "hotkey": {"modifiers": [], "key": "NUMPAD0"}},
+        {"id": "end-alarm", "label": "End Alarm", "hotkey": {"modifiers": [], "key": "DECIMAL"}},
+        {
+          "id": "money-multiplier",
+          "label": "Money Multiplier",
+          "hotkeys": [
+            {"modifiers": ["alt"], "key": "NUMPAD1"},
+            {"modifiers": ["alt"], "key": "NUMPAD2"},
+            {"modifiers": ["alt"], "key": "NUMPAD3"},
+            {"modifiers": ["alt"], "key": "NUMPAD4"}
+          ]
+        },
+        {
+          "id": "adam-multiplier",
+          "label": "ADAM Multiplier",
+          "hotkeys": [
+            {"modifiers": ["alt"], "key": "NUMPAD5"},
+            {"modifiers": ["alt"], "key": "NUMPAD6"},
+            {"modifiers": ["alt"], "key": "NUMPAD7"},
+            {"modifiers": ["alt"], "key": "NUMPAD8"}
+          ]
+        },
+        {"id": "game-speed", "label": "Game Speed", "hotkey": {"modifiers": [], "key": "PAGEUP"}},
+        {"id": "slow-motion", "label": "Slow Motion", "hotkey": {"modifiers": [], "key": "PAGEDOWN"}}
+      ]
+    },
+    {
+      "id": "bioshock-infinite-fling-plus-15",
+      "sha256": "4aed63db45d25cc61acc94369f60c841c9f4252b86f88b4760b259f1ab552474",
+      "peArchitecture": "x86",
+      "trainerLabel": "Bioshock Infinite v1.1.25.5165 Plus 15 Trainer",
+      "disableAllHotkey": {"modifiers": [], "key": "HOME"},
+      "cheats": [
+        {"id": "infinite-health", "label": "Infinite Health", "hotkey": {"modifiers": [], "key": "NUMPAD1"}},
+        {"id": "infinite-salt", "label": "Infinite Salt", "hotkey": {"modifiers": [], "key": "NUMPAD2"}},
+        {"id": "infinite-shield", "label": "Infinite Shield", "hotkey": {"modifiers": [], "key": "NUMPAD3"}},
+        {"id": "infinite-ammo", "label": "Infinite Ammo", "hotkey": {"modifiers": [], "key": "NUMPAD4"}},
+        {"id": "no-reload", "label": "No Reload", "hotkey": {"modifiers": [], "key": "NUMPAD5"}},
+        {"id": "super-accuracy", "label": "Super Accuracy", "hotkey": {"modifiers": [], "key": "NUMPAD6"}},
+        {"id": "songbird-cooldown", "label": "Songbird Cooldown", "hotkey": {"modifiers": [], "key": "NUMPAD7"}},
+        {"id": "movement-speed", "label": "Movement Speed", "hotkey": {"modifiers": [], "key": "NUMPAD8"}},
+        {"id": "super-jump", "label": "Super Jump", "hotkey": {"modifiers": [], "key": "NUMPAD9"}},
+        {"id": "one-hit-kill", "label": "One-Hit Kill", "hotkey": {"modifiers": [], "key": "NUMPAD0"}},
+        {"id": "infinite-money", "label": "Infinite Money", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD1"}},
+        {"id": "infinite-lockpicks", "label": "Infinite Lockpicks", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD2"}},
+        {"id": "game-speed", "label": "Game Speed", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD3"}},
+        {"id": "slow-motion", "label": "Slow Motion", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD4"}},
+        {
+          "id": "money-multiplier",
+          "label": "Money Multiplier",
+          "hotkeys": [
+            {"modifiers": [], "key": "F1"},
+            {"modifiers": [], "key": "F2"},
+            {"modifiers": [], "key": "F3"},
+            {"modifiers": [], "key": "F4"}
+          ]
+        }
+      ]
+    }
+  ]
+}

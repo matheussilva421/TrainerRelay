@@ -22,12 +22,14 @@ REQUIRED_FILES = (
     "docs/STEAM-DECK-VALIDATION.md",
 )
 TEXT_SUFFIXES = {".js", ".md", ".py", ".json", ""}
+PACKAGE_DATA_FILES = ("trainer_relay/data/fling_adapters_v1.json",)
 
 
 def iter_package_files() -> list[Path]:
     files = [ROOT / relative_path for relative_path in REQUIRED_FILES]
     runtime_dir = ROOT / "trainer_relay"
     files.extend(sorted(runtime_dir.rglob("*.py")))
+    files.extend(ROOT / relative_path for relative_path in PACKAGE_DATA_FILES)
     return files
 
 
@@ -40,7 +42,12 @@ def validate_sources(files: list[Path]) -> None:
     invalid_runtime = [
         path.relative_to(ROOT).as_posix()
         for path in (ROOT / "trainer_relay").rglob("*")
-        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".py"
+        if (
+            path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix != ".py"
+            and path.relative_to(ROOT).as_posix() not in PACKAGE_DATA_FILES
+        )
     ]
     if invalid_runtime:
         invalid_text = ", ".join(invalid_runtime)
@@ -52,7 +59,9 @@ def write_archive(output: Path, files: list[Path]) -> None:
     with ZipFile(output, "w", compression=ZIP_STORED) as archive:
         for source in sorted(files, key=lambda path: path.relative_to(ROOT).as_posix()):
             source_relative = source.relative_to(ROOT)
-            if source_relative.parts[0] == "trainer_relay":
+            if source_relative.as_posix() in PACKAGE_DATA_FILES:
+                relative_path = Path("TrainerRelay") / Path(source_relative).relative_to("trainer_relay")
+            elif source_relative.parts[0] == "trainer_relay":
                 relative_path = Path("TrainerRelay") / "py_modules" / source_relative
             else:
                 relative_path = Path("TrainerRelay") / source_relative
