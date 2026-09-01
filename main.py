@@ -13,9 +13,11 @@ from typing import Any, Mapping
 import decky  # type: ignore
 from settings import SettingsManager  # type: ignore
 
+from trainer_relay.cheat_service import CheatControlService
 from trainer_relay.config import DEFAULT_CONFIG_KEY, decode_relay_config
 from trainer_relay.diagnostic_settings import DIAGNOSTIC_SETTINGS_KEY, decode_diagnostic_settings
 from trainer_relay.diagnostics import DiagnosticRecorder
+from trainer_relay.command_runner import OneShotCommandRunner
 from trainer_relay.process import ProcessDiscoverer
 from trainer_relay.rpc import RelayRpc
 from trainer_relay.runner import OwnedTrainerRunner
@@ -32,6 +34,7 @@ settings.read()
 _watcher: RelayWatcher | None = None
 _watcher_task: asyncio.Task[Any] | None = None
 _rpc: RelayRpc | None = None
+_cheat_service: CheatControlService | None = None
 _diagnostics: DiagnosticRecorder | None = None
 
 PLUGIN_VERSION = "0.1.0-experimental.19"
@@ -79,9 +82,23 @@ def _build_watcher() -> RelayWatcher:
 
 
 def _service() -> RelayRpc:
-    global _rpc, _watcher
+    global _rpc, _watcher, _cheat_service
     if _watcher is None:
         _watcher = _build_watcher()
+    if _cheat_service is None:
+        plugin_root = Path(getattr(decky, "DECKY_PLUGIN_DIR", Path(__file__).resolve().parent))
+        helper_root = plugin_root / "bin"
+        command_runner = OneShotCommandRunner(manifest=helper_root / "input-helper-manifest.json")
+        _cheat_service = CheatControlService(
+            settings,
+            _watcher,
+            command_runner,
+            helper_paths={
+                "x86": plugin_root / "bin" / "TrainerRelay.InputHelper.x86.exe",
+                "x64": plugin_root / "bin" / "TrainerRelay.InputHelper.x64.exe",
+            },
+            diagnostics=_ensure_diagnostics(),
+        )
     if _rpc is None:
         home = _host_user_home()
         _rpc = RelayRpc(
@@ -90,6 +107,7 @@ def _service() -> RelayRpc:
             _ensure_diagnostics(),
             downloads_dir=Path(home) / "Downloads",
             plugin_version=PLUGIN_VERSION,
+            cheat_service=_cheat_service,
         )
     return _rpc
 
@@ -111,12 +129,13 @@ class Plugin:
 
     @classmethod
     async def _unload(cls) -> None:
-        global _watcher, _watcher_task, _rpc, _diagnostics
+        global _watcher, _watcher_task, _rpc, _cheat_service, _diagnostics
         watcher = _watcher
         task = _watcher_task
         diagnostics = _diagnostics
         _watcher_task = None
         _rpc = None
+        _cheat_service = None
         if task is not None:
             task.cancel()
             try:
@@ -181,6 +200,22 @@ class Plugin:
     @classmethod
     async def clear_diagnostics(cls) -> dict[str, Any]:
         return await _service().clear_diagnostics()
+
+    @classmethod
+    async def get_cheat_controls(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        return await _service().get_cheat_controls(data)
+
+    @classmethod
+    async def add_manual_cheat_control(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        return await _service().add_manual_cheat_control(data)
+
+    @classmethod
+    async def remove_manual_cheat_control(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        return await _service().remove_manual_cheat_control(data)
+
+    @classmethod
+    async def send_cheat_command(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        return await _service().send_cheat_command(data)
 
     @classmethod
     async def get_env(cls, env: str) -> Any:

@@ -76,6 +76,15 @@ class FakeDiagnosticRpc:
         self.clear_diagnostics = AsyncMock(return_value={"generation": 2})
 
 
+class FakeCheatRpc(FakeDiagnosticRpc):
+    def __init__(self):
+        super().__init__()
+        self.get_cheat_controls = AsyncMock(return_value={"status": "unavailable"})
+        self.add_manual_cheat_control = AsyncMock(return_value={"saved": True})
+        self.remove_manual_cheat_control = AsyncMock(return_value={"removed": True})
+        self.send_cheat_command = AsyncMock(return_value={"outcome": "requested", "state": "unknown"})
+
+
 class MainWiringTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.settings = FakeSettings()
@@ -171,6 +180,24 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rpc_factory.call_args.kwargs["downloads_dir"], Path("/home/deck") / "Downloads")
         self.assertEqual(len(diagnostics.record_calls), 1)
 
+    async def test_service_wires_a_dedicated_manifest_checked_one_shot_runner(self):
+        watcher = FakeWatcher({})
+        diagnostics = FakeDiagnostics(enabled=True)
+        with (
+            patch.object(self.main, "DiagnosticRecorder", return_value=diagnostics),
+            patch.object(self.main, "RelayWatcher", return_value=watcher),
+            patch.object(self.main, "OwnedTrainerRunner", return_value=object()),
+            patch.object(self.main, "OneShotCommandRunner", return_value=object()) as runner_factory,
+            patch.object(self.main, "CheatControlService", return_value=object()) as service_factory,
+            patch.object(self.main, "RelayRpc", return_value=FakeDiagnosticRpc()),
+        ):
+            self.main._service()
+
+        runner_factory.assert_called_once_with(manifest=Path("/plugin") / "bin" / "input-helper-manifest.json")
+        self.assertEqual(service_factory.call_args.args[:2], (self.main.settings, watcher))
+        self.assertEqual(service_factory.call_args.kwargs["helper_paths"]["x86"], Path("/plugin") / "bin" / "TrainerRelay.InputHelper.x86.exe")
+        self.assertEqual(service_factory.call_args.kwargs["helper_paths"]["x64"], Path("/plugin") / "bin" / "TrainerRelay.InputHelper.x64.exe")
+
     async def test_unload_flushes_once_even_when_watcher_stop_fails(self):
         diagnostics = FakeDiagnostics(enabled=True)
         watcher = FakeWatcher({})
@@ -198,6 +225,20 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         rpc.get_diagnostic_events.assert_awaited_once_with({"limit": 20})
         rpc.export_diagnostics.assert_awaited_once_with()
         rpc.clear_diagnostics.assert_awaited_once_with()
+
+    async def test_plugin_delegates_all_four_cheat_rpcs(self):
+        rpc = FakeCheatRpc()
+        self.main._rpc = rpc
+
+        await self.main.Plugin.get_cheat_controls({"identity": "gog:game"})
+        await self.main.Plugin.add_manual_cheat_control({"identity": "gog:game"})
+        await self.main.Plugin.remove_manual_cheat_control({"identity": "gog:game"})
+        await self.main.Plugin.send_cheat_command({"identity": "gog:game"})
+
+        rpc.get_cheat_controls.assert_awaited_once_with({"identity": "gog:game"})
+        rpc.add_manual_cheat_control.assert_awaited_once_with({"identity": "gog:game"})
+        rpc.remove_manual_cheat_control.assert_awaited_once_with({"identity": "gog:game"})
+        rpc.send_cheat_command.assert_awaited_once_with({"identity": "gog:game"})
 
 
 if __name__ == "__main__":

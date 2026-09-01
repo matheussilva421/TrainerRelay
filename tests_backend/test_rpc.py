@@ -40,6 +40,58 @@ class FakeWatcher:
         return await self.status(identity)
 
 
+class FakeCheatService:
+    def __init__(self):
+        self.calls = []
+
+    async def get_cheat_controls(self, identity):
+        self.calls.append(("get", identity))
+        return {
+            "identity": identity,
+            "status": "ready",
+            "trainerSha256": "a" * 64,
+            "source": "manual",
+            "trainerLabel": "Manual controls",
+            "cheats": [
+                {
+                    "id": "11111111-1111-4111-8111-111111111111",
+                    "label": "Health",
+                    "hotkey": {"modifiers": ["ctrl"], "key": "F1"},
+                    "state": "unknown",
+                }
+            ],
+            "capabilities": {"commands": True, "authoritativeState": False, "toggles": False},
+            "diagnostic": None,
+        }
+
+    async def add_manual_cheat_control(self, request):
+        self.calls.append(("add", request))
+        return {
+            "identity": request["identity"],
+            "trainerSha256": request["trainerSha256"],
+            "cheat": {
+                "id": "11111111-1111-4111-8111-111111111111",
+                "label": request["label"].strip(),
+                "hotkey": {"modifiers": ["ctrl", "shift"], "key": "F1"},
+            },
+        }
+
+    async def remove_manual_cheat_control(self, request):
+        self.calls.append(("remove", request))
+        return {"identity": request["identity"], "cheatId": request["cheatId"], "removed": True}
+
+    async def send_cheat_command(self, request):
+        self.calls.append(("send", request))
+        return {
+            "commandId": "22222222-2222-4222-8222-222222222222",
+            "identity": request["identity"],
+            "cheatId": request["cheatId"],
+            "outcome": "requested",
+            "state": "unknown",
+            "diagnostic": None,
+        }
+
+
 class FakeDiagnostics:
     def __init__(self, enabled=False):
         self.enabled = enabled
@@ -192,6 +244,160 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RelayRpcError, "diagnostic_export_failed") as raised:
             await rpc.export_diagnostics()
         self.assertNotIn("private disk path", str(raised.exception))
+
+    async def test_cheat_rpcs_require_exact_requests_and_decode_safe_responses(self):
+        service = FakeCheatService()
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=service)
+
+        controls = await rpc.get_cheat_controls({"identity": "gog:game"})
+        self.assertEqual(controls["status"], "ready")
+        added = await rpc.add_manual_cheat_control(
+            {
+                "identity": "gog:game",
+                "trainerSha256": "a" * 64,
+                "label": " Health ",
+                "hotkey": {"modifiers": ["shift", "ctrl"], "key": "F1"},
+            }
+        )
+        self.assertEqual(added["cheat"]["label"], "Health")
+        self.assertEqual(
+            await rpc.remove_manual_cheat_control(
+                {"identity": "gog:game", "cheatId": "11111111-1111-4111-8111-111111111111"}
+            ),
+            {"identity": "gog:game", "cheatId": "11111111-1111-4111-8111-111111111111", "removed": True},
+        )
+        self.assertEqual(
+            (await rpc.send_cheat_command({"identity": "gog:game", "cheatId": "health"}))["state"],
+            "unknown",
+        )
+        for method, data in (
+            (rpc.get_cheat_controls, {"identity": "gog:game", "extra": 1}),
+            (
+                rpc.add_manual_cheat_control,
+                {
+                    "identity": "gog:game",
+                    "trainerSha256": "a" * 64,
+                    "label": "x",
+                    "hotkey": {"modifiers": [], "key": "F1"},
+                    "extra": 1,
+                },
+            ),
+            (rpc.remove_manual_cheat_control, {"identity": "gog:game", "cheatId": "health", "extra": 1}),
+            (rpc.send_cheat_command, {"identity": "gog:game", "cheatId": "health", "extra": 1}),
+        ):
+            with self.subTest(data=data):
+                with self.assertRaisesRegex(RelayRpcError, "invalid_request"):
+                    await method(data)
+
+    async def test_cheat_rpc_sanitizes_malformed_service_response_and_exception(self):
+        class Unsafe:
+            async def get_cheat_controls(self, _identity):
+                raise RuntimeError("/private/trainer.exe secret-token")
+
+            async def send_cheat_command(self, _request):
+                return {
+                    "commandId": "not-a-command",
+                    "identity": "gog:game",
+                    "cheatId": "health",
+                    "outcome": "requested",
+                    "state": "enabled",
+                    "diagnostic": None,
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with self.assertRaisesRegex(RelayRpcError, "cheat_service_failed") as raised:
+            await rpc.get_cheat_controls({"identity": "gog:game"})
+        self.assertNotIn("trainer.exe", str(raised.exception))
+        with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response") as raised:
+            await rpc.send_cheat_command({"identity": "gog:game", "cheatId": "health"})
+        self.assertNotIn("not-a-command", str(raised.exception))
+
+    async def test_cooperative_control_response_may_omit_a_hotkey(self):
+        class CooperativeService:
+            async def get_cheat_controls(self, identity):
+                return {
+                    "identity": identity,
+                    "status": "ready",
+                    "trainerSha256": "a" * 64,
+                    "source": "cooperative",
+                    "trainerLabel": "Owned trainer",
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "disabled", "authoritative": True}],
+                    "capabilities": {"commands": True, "authoritativeState": True, "toggles": True},
+                    "diagnostic": None,
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=CooperativeService())
+        response = await rpc.get_cheat_controls({"identity": "gog:game"})
+        self.assertEqual(response["cheats"][0]["state"], "disabled")
+
+    async def test_cheat_rpc_rejects_overlong_diagnostic_codes(self):
+        class Unsafe:
+            async def get_cheat_controls(self, identity):
+                return {
+                    "identity": identity,
+                    "status": "unavailable",
+                    "diagnostic": {"code": "a" * 65},
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response"):
+            await rpc.get_cheat_controls({"identity": "gog:game"})
+
+    async def test_cheat_rpc_rejects_authority_claims_outside_cooperative_state(self):
+        class Unsafe:
+            async def get_cheat_controls(self, identity):
+                return {
+                    "identity": identity,
+                    "status": "ready",
+                    "trainerSha256": "a" * 64,
+                    "source": "manual",
+                    "trainerLabel": "Manual controls",
+                    "cheats": [
+                        {
+                            "id": "manual",
+                            "label": "Manual",
+                            "hotkey": {"modifiers": [], "key": "F1"},
+                            "state": "unknown",
+                            "authoritative": True,
+                        }
+                    ],
+                    "capabilities": {"commands": True, "authoritativeState": False, "toggles": False},
+                    "diagnostic": None,
+                }
+
+            async def send_cheat_command(self, _request):
+                return {
+                    "commandId": "11111111-1111-4111-8111-111111111111",
+                    "identity": "gog:game",
+                    "cheatId": "health",
+                    "outcome": "failed",
+                    "state": "enabled",
+                    "diagnostic": {"code": "helper_exit_nonzero"},
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response"):
+            await rpc.get_cheat_controls({"identity": "gog:game"})
+        with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response"):
+            await rpc.send_cheat_command({"identity": "gog:game", "cheatId": "health"})
+
+    async def test_cooperative_enabled_state_requires_explicit_authority(self):
+        class Unsafe:
+            async def get_cheat_controls(self, identity):
+                return {
+                    "identity": identity,
+                    "status": "ready",
+                    "trainerSha256": "a" * 64,
+                    "source": "cooperative",
+                    "trainerLabel": "Owned trainer",
+                    "cheats": [{"id": "health", "label": "Health", "state": "enabled"}],
+                    "capabilities": {"commands": True, "authoritativeState": True, "toggles": True},
+                    "diagnostic": None,
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response"):
+            await rpc.get_cheat_controls({"identity": "gog:game"})
 
 
 if __name__ == "__main__":

@@ -392,6 +392,34 @@ class DiagnosticRecorderTests(unittest.TestCase):
         self.assertEqual(first["eventCount"], 1)
         self.assertEqual(second["eventCount"], 1)
 
+    def test_command_events_accept_only_allowlisted_bounded_details(self):
+        recorder = self.recorder()
+        recorder.record(
+            "command",
+            "helper_completed",
+            "accepted",
+            identity="gog:game",
+            details={
+                "command_id": "11111111-1111-4111-8111-111111111111",
+                "cheat_id": "health",
+                "source": "adapter",
+                "outcome": "requested",
+                "duration_ms": 12,
+            },
+        )
+        events = recorder.events_after(None, 20)["events"]
+        self.assertEqual(events[0]["category"], "command")
+        rejected = (
+            ("not_a_command_event", {}),
+            ("helper_completed", {"arbitrary": "value"}),
+            ("helper_completed", {"command_id": "/private/path"}),
+            ("helper_completed", {"command_id": "11111111-1111-4111-8111-111111111111", "outcome": "enabled"}),
+        )
+        for event, details in rejected:
+            with self.subTest(event=event, details=details):
+                with self.assertRaisesRegex(ValueError, "diagnostic_event_rejected"):
+                    recorder.record("command", event, "rejected", details=details)
+
 
 if __name__ == "__main__":
     unittest.main()

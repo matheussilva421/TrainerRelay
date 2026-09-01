@@ -19,7 +19,7 @@ MAX_DETAIL_STRING_LENGTH = 4096
 MAX_UMU_OUTPUT_TAIL_LENGTH = 1024
 DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_FILES = 5
-_CATEGORIES = {"config", "games_map", "process", "umu", "trainer", "lifecycle"}
+_CATEGORIES = {"config", "games_map", "process", "umu", "trainer", "lifecycle", "command"}
 _OUTCOMES = {"info", "accepted", "rejected", "warning", "error"}
 _FORBIDDEN_KEY_PARTS = ("token", "secret", "password", "cookie", "authorization", "credential")
 
@@ -151,6 +151,17 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "session_ended": frozenset(),
     "owned_group_signal": frozenset({"process_group_id", "signal", "forced"}),
     "event_repeated": frozenset({"repeated_event", "count", "elapsed_ms"}),
+    "catalog_loaded": frozenset({"adapter_count"}),
+    "catalog_rejected": frozenset({"reason"}),
+    "manual_control_added": frozenset({"cheat_id", "control_count"}),
+    "manual_control_removed": frozenset({"cheat_id", "control_count"}),
+    "command_rejected": frozenset({"command_id", "cheat_id", "reason"}),
+    "helper_spawned": frozenset({"command_id", "cheat_id", "source"}),
+    "helper_completed": frozenset({"command_id", "cheat_id", "source", "outcome", "duration_ms"}),
+    "helper_timeout": frozenset({"command_id", "cheat_id"}),
+    "cooperative_acknowledged": frozenset({"command_id", "cheat_id", "revision"}),
+    "cooperative_stale": frozenset({"command_id", "cheat_id", "revision", "reason"}),
+    "cooperative_descriptor_rejected": frozenset({"reason"}),
 }
 
 
@@ -229,7 +240,58 @@ def _safe_details(event: str, details: Mapping[str, Any] | None) -> dict[str, st
         else:
             raise DiagnosticValidationError("diagnostic_event_rejected")
         safe[key] = value
+    _validate_command_details(event, safe)
     return safe
+
+
+_COMMAND_ID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_COMMAND_CHEAT_ID_PATTERN = re.compile(
+    r"^(?:[a-z0-9][a-z0-9._-]{0,127}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+)
+_COMMAND_SOURCES = {"adapter", "manual", "cooperative"}
+_COMMAND_OUTCOMES = {"requested", "failed", "rejected"}
+_COMMAND_REASONS = re.compile(r"^[a-z0-9_]{1,64}$")
+
+
+def _validate_command_details(event: str, details: Mapping[str, str | int | bool | None]) -> None:
+    if event in {"catalog_loaded", "manual_control_added", "manual_control_removed"}:
+        count = details.get("adapter_count", details.get("control_count"))
+        if type(count) is not int or not 0 <= count <= 64:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+    if event in {"catalog_rejected"}:
+        reason = details.get("reason")
+        if not isinstance(reason, str) or _COMMAND_REASONS.fullmatch(reason) is None:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+    if event == "cooperative_descriptor_rejected":
+        reason = details.get("reason")
+        if not isinstance(reason, str) or _COMMAND_REASONS.fullmatch(reason) is None:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+    if event in {"command_rejected", "cooperative_stale"}:
+        reason = details.get("reason")
+        if reason is not None and (not isinstance(reason, str) or _COMMAND_REASONS.fullmatch(reason) is None):
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+        if event == "cooperative_stale" and "command_id" not in details:
+            return
+    if event in {"command_rejected", "helper_spawned", "helper_completed", "helper_timeout", "cooperative_acknowledged", "cooperative_stale"}:
+        command_id = details.get("command_id")
+        cheat_id = details.get("cheat_id")
+        if not isinstance(command_id, str) or _COMMAND_ID_PATTERN.fullmatch(command_id) is None:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+        if not isinstance(cheat_id, str) or _COMMAND_CHEAT_ID_PATTERN.fullmatch(cheat_id) is None:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+    if event == "helper_spawned":
+        if details.get("source") not in _COMMAND_SOURCES:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+    if event == "helper_completed":
+        if details.get("source") not in _COMMAND_SOURCES or details.get("outcome") not in _COMMAND_OUTCOMES:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+        duration = details.get("duration_ms")
+        if type(duration) is not int or not 0 <= duration <= 300_000:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+    if event in {"cooperative_acknowledged", "cooperative_stale"}:
+        revision = details.get("revision")
+        if type(revision) is not int or not 0 <= revision <= 2**63 - 1:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
 
 
 class DiagnosticRecorder:

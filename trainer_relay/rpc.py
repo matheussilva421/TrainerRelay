@@ -4,19 +4,22 @@ from __future__ import annotations
 
 import inspect
 import re
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .cheat_config import validate_label, validate_trainer_sha256
 from .config import DEFAULT_CONFIG_KEY, decode_relay_config, empty_relay_config, validate_game_config, validate_launch_identity
 from .diagnostic_settings import DIAGNOSTIC_SETTINGS_KEY, decode_diagnostic_settings
+from .hotkeys import normalize_hotkey
 
 
 class RelayRpcError(ValueError):
     pass
 
 
-_SAFE_CODE = re.compile(r"^[a-z0-9_]+$")
+_SAFE_CODE = re.compile(r"^[a-z0-9_]{1,64}$")
 _STATES = {
     "disabled",
     "waiting_for_game",
@@ -27,6 +30,12 @@ _STATES = {
     "ambiguous",
     "invalid_config",
 }
+_CHEAT_STATUSES = {"unavailable", "waiting", "ready"}
+_CHEAT_SOURCES = {"adapter", "manual", "cooperative"}
+_CHEAT_STATES = {"unknown", "enabled", "disabled"}
+_CHEAT_OPERATIONS = {"enable", "disable", "toggle"}
+_CHEAT_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 class RelayRpc:
@@ -38,12 +47,14 @@ class RelayRpc:
         *,
         downloads_dir: str | Path = "/home/deck/Downloads",
         plugin_version: str = "unknown",
+        cheat_service: Any | None = None,
     ) -> None:
         self._settings = settings
         self._watcher = watcher
         self._diagnostics = diagnostics
         self._downloads_dir = Path(downloads_dir)
         self._plugin_version = plugin_version
+        self._cheat_service = cheat_service
 
     def _load(self) -> dict[str, Any]:
         try:
@@ -228,6 +239,262 @@ class RelayRpc:
         except Exception as error:
             raise RelayRpcError("diagnostic_clear_failed") from error
         return {**self._diagnostic_response(), "generation": generation}
+
+    @staticmethod
+    def _strict_request(data: Any, fields: set[str]) -> Mapping[str, Any]:
+        if not isinstance(data, Mapping) or set(data) != fields:
+            raise RelayRpcError("invalid_request")
+        return data
+
+    def _require_cheat_service(self) -> Any:
+        if self._cheat_service is None:
+            raise RelayRpcError("cheat_service_unavailable")
+        return self._cheat_service
+
+    @staticmethod
+    def _safe_cheat_id(value: Any) -> str:
+        if not isinstance(value, str) or _CHEAT_ID.fullmatch(value) is None:
+            raise RelayRpcError("invalid_cheat_id")
+        return value
+
+    @staticmethod
+    def _safe_cheat_diagnostic(value: Any) -> dict[str, str] | None:
+        if value is None:
+            return None
+        if not isinstance(value, Mapping) or set(value) != {"code"}:
+            raise RelayRpcError("invalid_cheat_response")
+        code = value.get("code")
+        if not isinstance(code, str) or _SAFE_CODE.fullmatch(code) is None:
+            raise RelayRpcError("invalid_cheat_response")
+        return {"code": code}
+
+    @classmethod
+    def _safe_cheat_descriptor(cls, value: Any, *, source: str | None = None) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise RelayRpcError("invalid_cheat_response")
+        allowed = {"id", "label", "hotkey", "state", "hotkeys", "operations", "authoritative"}
+        if set(value) - allowed or not {"id", "label"}.issubset(value) or source != "cooperative" and "hotkey" not in value:
+            raise RelayRpcError("invalid_cheat_response")
+        cheat_id = cls._safe_cheat_id(value.get("id"))
+        try:
+            label = validate_label(value.get("label"))
+        except ValueError:
+            raise RelayRpcError("invalid_cheat_response") from None
+        hotkey = None
+        if "hotkey" in value:
+            try:
+                hotkey = normalize_hotkey(value.get("hotkey"))
+            except ValueError:
+                raise RelayRpcError("invalid_cheat_response") from None
+        state = value.get("state", "unknown")
+        if state not in _CHEAT_STATES:
+            raise RelayRpcError("invalid_cheat_response")
+        authoritative = value.get("authoritative", False)
+        if (
+            type(authoritative) is not bool
+            or source != "cooperative"
+            and authoritative
+            or state in {"enabled", "disabled"}
+            and (source != "cooperative" or value.get("authoritative") is not True)
+        ):
+            raise RelayRpcError("invalid_cheat_response")
+        result: dict[str, Any] = {
+            "id": cheat_id,
+            "label": label,
+            "state": state,
+        }
+        if hotkey is not None:
+            result["hotkey"] = hotkey
+        if "hotkeys" in value:
+            raw_hotkeys = value["hotkeys"]
+            if type(raw_hotkeys) is not list or not 1 <= len(raw_hotkeys) <= 8:
+                raise RelayRpcError("invalid_cheat_response")
+            try:
+                result["hotkeys"] = [normalize_hotkey(raw) for raw in raw_hotkeys]
+            except ValueError:
+                raise RelayRpcError("invalid_cheat_response") from None
+        if "operations" in value:
+            operations = value["operations"]
+            if type(operations) is not list or not operations or any(
+                not isinstance(operation, str) or operation not in _CHEAT_OPERATIONS for operation in operations
+            ) or len(set(operations)) != len(operations):
+                raise RelayRpcError("invalid_cheat_response")
+            result["operations"] = list(operations)
+        if "authoritative" in value:
+            result["authoritative"] = authoritative
+        return result
+
+    @classmethod
+    def _safe_cheat_controls(cls, identity: str, value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise RelayRpcError("invalid_cheat_response")
+        status = value.get("status")
+        if status not in _CHEAT_STATUSES or value.get("identity") != identity:
+            raise RelayRpcError("invalid_cheat_response")
+        if status != "ready":
+            if set(value) != {"identity", "status", "diagnostic"}:
+                raise RelayRpcError("invalid_cheat_response")
+            return {
+                "identity": identity,
+                "status": status,
+                "diagnostic": cls._safe_cheat_diagnostic(value.get("diagnostic")),
+            }
+        expected = {
+            "identity",
+            "status",
+            "trainerSha256",
+            "source",
+            "trainerLabel",
+            "cheats",
+            "capabilities",
+            "diagnostic",
+        }
+        if set(value) != expected or value.get("source") not in _CHEAT_SOURCES:
+            raise RelayRpcError("invalid_cheat_response")
+        try:
+            trainer_sha256 = validate_trainer_sha256(value.get("trainerSha256"))
+            trainer_label = validate_label(value.get("trainerLabel"))
+        except ValueError:
+            raise RelayRpcError("invalid_cheat_response") from None
+        cheats = value.get("cheats")
+        if type(cheats) is not list or not 1 <= len(cheats) <= 64:
+            raise RelayRpcError("invalid_cheat_response")
+        safe_cheats = [cls._safe_cheat_descriptor(cheat, source=value["source"]) for cheat in cheats]
+        if len({cheat["id"] for cheat in safe_cheats}) != len(safe_cheats):
+            raise RelayRpcError("invalid_cheat_response")
+        capabilities = value.get("capabilities")
+        if not isinstance(capabilities, Mapping) or set(capabilities) != {"commands", "authoritativeState", "toggles"} or any(
+            type(capabilities[key]) is not bool for key in capabilities
+        ):
+            raise RelayRpcError("invalid_cheat_response")
+        if value["source"] != "cooperative" and (capabilities["authoritativeState"] or capabilities["toggles"]):
+            raise RelayRpcError("invalid_cheat_response")
+        if value["source"] != "cooperative" and any(cheat.get("authoritative") is True for cheat in safe_cheats):
+            raise RelayRpcError("invalid_cheat_response")
+        if value["source"] == "cooperative" and not capabilities["authoritativeState"]:
+            if any(cheat["state"] in {"enabled", "disabled"} for cheat in safe_cheats):
+                raise RelayRpcError("invalid_cheat_response")
+        return {
+            "identity": identity,
+            "status": "ready",
+            "trainerSha256": trainer_sha256,
+            "source": value["source"],
+            "trainerLabel": trainer_label,
+            "cheats": safe_cheats,
+            "capabilities": dict(capabilities),
+            "diagnostic": cls._safe_cheat_diagnostic(value.get("diagnostic")),
+        }
+
+    @classmethod
+    def _safe_manual_mutation(cls, identity: str, value: Any, *, add: bool) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise RelayRpcError("invalid_cheat_response")
+        if add:
+            if set(value) != {"identity", "trainerSha256", "cheat"} or value.get("identity") != identity:
+                raise RelayRpcError("invalid_cheat_response")
+            try:
+                trainer_sha256 = validate_trainer_sha256(value.get("trainerSha256"))
+            except ValueError:
+                raise RelayRpcError("invalid_cheat_response") from None
+            cheat = cls._safe_cheat_descriptor(value.get("cheat"), source="manual")
+            if cheat["state"] != "unknown":
+                raise RelayRpcError("invalid_cheat_response")
+            return {"identity": identity, "trainerSha256": trainer_sha256, "cheat": cheat}
+        if set(value) != {"identity", "cheatId", "removed"} or value.get("identity") != identity or type(value.get("removed")) is not bool:
+            raise RelayRpcError("invalid_cheat_response")
+        return {"identity": identity, "cheatId": cls._safe_cheat_id(value.get("cheatId")), "removed": value["removed"]}
+
+    @classmethod
+    def _safe_command_result(cls, identity: str, cheat_id: str, value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping) or set(value) != {"commandId", "identity", "cheatId", "outcome", "state", "diagnostic"}:
+            raise RelayRpcError("invalid_cheat_response")
+        command_id = value.get("commandId")
+        if not isinstance(command_id, str) or _UUID.fullmatch(command_id) is None:
+            raise RelayRpcError("invalid_cheat_response")
+        try:
+            uuid.UUID(command_id)
+        except (AttributeError, ValueError):
+            raise RelayRpcError("invalid_cheat_response") from None
+        if value.get("identity") != identity or value.get("cheatId") != cheat_id:
+            raise RelayRpcError("invalid_cheat_response")
+        outcome = value.get("outcome")
+        state = value.get("state")
+        if outcome not in {"requested", "failed", "rejected"} or state not in _CHEAT_STATES:
+            raise RelayRpcError("invalid_cheat_response")
+        if outcome != "requested" and state != "unknown":
+            raise RelayRpcError("invalid_cheat_response")
+        diagnostic = cls._safe_cheat_diagnostic(value.get("diagnostic"))
+        if outcome == "requested" and diagnostic is not None or outcome != "requested" and diagnostic is None:
+            raise RelayRpcError("invalid_cheat_response")
+        return {
+            "commandId": command_id,
+            "identity": identity,
+            "cheatId": cheat_id,
+            "outcome": outcome,
+            "state": state,
+            "diagnostic": diagnostic,
+        }
+
+    async def _cheat_call(self, method: str, *args: Any) -> Any:
+        service = self._require_cheat_service()
+        function = getattr(service, method, None)
+        if function is None:
+            raise RelayRpcError("cheat_service_unavailable")
+        try:
+            value = function(*args)
+            if inspect.isawaitable(value):
+                value = await value
+            return value
+        except RelayRpcError:
+            raise
+        except Exception as error:
+            code = getattr(error, "code", None)
+            if not isinstance(code, str) or _SAFE_CODE.fullmatch(code) is None:
+                code = "cheat_service_failed"
+            raise RelayRpcError(code) from None
+
+    async def get_cheat_controls(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        request = self._strict_request(data, {"identity"})
+        identity = self._identity_from_request(request)
+        return self._safe_cheat_controls(identity, await self._cheat_call("get_cheat_controls", identity))
+
+    async def add_manual_cheat_control(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        request = self._strict_request(data, {"identity", "trainerSha256", "label", "hotkey"})
+        identity = self._identity_from_request({"identity": request["identity"]})
+        try:
+            normalized = {
+                "identity": identity,
+                "trainerSha256": validate_trainer_sha256(request["trainerSha256"]),
+                "label": validate_label(request["label"]),
+                "hotkey": normalize_hotkey(request["hotkey"]),
+            }
+        except ValueError as error:
+            raise RelayRpcError(str(error) if _SAFE_CODE.fullmatch(str(error)) else "invalid_manual_cheat") from None
+        return self._safe_manual_mutation(
+            identity,
+            await self._cheat_call("add_manual_cheat_control", normalized),
+            add=True,
+        )
+
+    async def remove_manual_cheat_control(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        request = self._strict_request(data, {"identity", "cheatId"})
+        identity = self._identity_from_request({"identity": request["identity"]})
+        normalized = {"identity": identity, "cheatId": self._safe_cheat_id(request["cheatId"])}
+        return self._safe_manual_mutation(
+            identity,
+            await self._cheat_call("remove_manual_cheat_control", normalized),
+            add=False,
+        )
+
+    async def send_cheat_command(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        request = self._strict_request(data, {"identity", "cheatId"})
+        identity = self._identity_from_request({"identity": request["identity"]})
+        cheat_id = self._safe_cheat_id(request["cheatId"])
+        return self._safe_command_result(
+            identity,
+            cheat_id,
+            await self._cheat_call("send_cheat_command", {"identity": identity, "cheatId": cheat_id}),
+        )
 
     @staticmethod
     def _identity_from_request(data: Mapping[str, Any]) -> str:
