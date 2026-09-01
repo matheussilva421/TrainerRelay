@@ -22,8 +22,9 @@ from .diagnostics import (
 )
 from .environment import build_sanitized_environment
 from .games_map import load_games_map
-from .process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity
-from .types import DiscoveryState, RelayStatus
+from .helper_manifest import read_pe_architecture, sha256_file
+from .process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity, normalize_wine_path
+from .types import CommandContext, CommandContextError, DiscoveryState, RelayStatus
 
 
 _DIAGNOSTIC_RUNTIME_FLAGS = frozenset(
@@ -59,6 +60,12 @@ class _RelayState:
     expected_reentry_bus: str | None = None
     reentry_confirmed: bool = False
     service_marker_present: bool = False
+    effective_environment: dict[str, str] | None = None
+    prefix: str | None = None
+    umu_run: str | None = None
+    trainer_path: str | None = None
+    trainer_sha256: str | None = None
+    session_prefix: str | None = None
 
 
 class RelayWatcher:
@@ -167,6 +174,12 @@ class RelayWatcher:
         state.expected_reentry_bus = None
         state.reentry_confirmed = False
         state.service_marker_present = False
+        state.effective_environment = None
+        state.prefix = None
+        state.umu_run = None
+        state.trainer_path = None
+        state.trainer_sha256 = None
+        state.session_prefix = None
 
     async def _stop_owned(self, state: _RelayState, identity: str | None = None) -> None:
         if state.handle is None:
@@ -294,6 +307,7 @@ class RelayWatcher:
                 details={"source": str(umu_source), "umu_path": str(umu_path)},
             )
             trainer_path = str(game["trainerPath"])
+            trainer_sha256 = sha256_file(trainer_path)
             source_environment = dict(environment)
             # The exact INFO re-entry line is part of the fail-closed launch
             # contract. DEBUG would expose UMU's complete derived environment.
@@ -350,6 +364,11 @@ class RelayWatcher:
             state.expected_reentry_bus = str(reentry.bus_name)
             state.reentry_confirmed = False
             state.service_marker_present = service_marker_present
+            state.effective_environment = dict(safe_environment)
+            state.prefix = prefix
+            state.umu_run = str(umu_path)
+            state.trainer_path = trainer_path
+            state.trainer_sha256 = trainer_sha256
         except Exception as error:
             candidate_code = str(error)
             bounded_codes = {
@@ -418,6 +437,109 @@ class RelayWatcher:
         state.retry_at = None
         state.rejected_preflight_session = None
         self._set_state(state, RelayStatus.LAUNCHING)
+
+    @staticmethod
+    def _raise_context(code: str) -> None:
+        raise CommandContextError(code)
+
+    @staticmethod
+    def _prefix_matches(expected: str, observed: str) -> bool:
+        expected_normalized = normalize_wine_path(expected).rstrip("/")
+        observed_normalized = normalize_wine_path(observed).rstrip("/")
+        return observed_normalized in {expected_normalized, expected_normalized + "/pfx"}
+
+    def command_context(self, identity: str) -> CommandContext:
+        """Return a fresh, immutable command snapshot only for a live relay session."""
+
+        if not is_launch_identity(identity):
+            self._raise_context("invalid_config_identity")
+        state = self._states.get(identity)
+        if state is None or state.state != RelayStatus.RUNNING:
+            self._raise_context("relay_not_running")
+        if state.session is None or state.handle is None:
+            self._raise_context("session_ended")
+        if (
+            state.effective_environment is None
+            or not state.umu_run
+            or not state.trainer_path
+            or not state.trainer_sha256
+        ):
+            self._raise_context("command_context_unavailable")
+        if not state.expected_reentry_bus or not state.reentry_confirmed:
+            self._raise_context("container_reentry_bus_missing")
+
+        owned_handles = getattr(self._runner, "owned", None)
+        if owned_handles is None or not any(candidate is state.handle for candidate in owned_handles):
+            self._raise_context("trainer_not_owned")
+        poll = getattr(self._runner, "poll", None)
+        if poll is not None:
+            try:
+                if poll(state.handle) is not None:
+                    self._raise_context("trainer_not_owned")
+            except CommandContextError:
+                raise
+            except (OSError, ProcessLookupError, TypeError, ValueError):
+                self._raise_context("trainer_not_owned")
+
+        game = self._games().get(identity)
+        validated_game = validate_game_config(game) if game is not None else None
+        if validated_game is None:
+            self._raise_context("relay_not_running")
+        if str(validated_game["trainerPath"]) != state.trainer_path:
+            self._raise_context("trainer_not_owned")
+
+        try:
+            map_result = self._map_loader(self._games_map_path)
+        except Exception:
+            map_result = None
+        if map_result is None or getattr(map_result, "diagnostic", None) is not None:
+            self._raise_context("games_map_unreadable")
+        entry = map_result.entry_for(identity)
+        if entry is None:
+            self._raise_context("games_map_identity_missing")
+
+        expected_prefix = state.prefix or ""
+        try:
+            discovery = self._process_discoverer.discover(
+                identity,
+                entry.executable,
+                expected_prefix,
+                expected_session=state.session,
+            )
+        except Exception:
+            self._raise_context("session_ended")
+        if discovery.state == DiscoveryState.AMBIGUOUS:
+            self._raise_context("multiple_game_sessions")
+        if discovery.state != DiscoveryState.SESSION or discovery.session is None:
+            self._raise_context("session_ended")
+        if discovery.session != state.session:
+            self._raise_context("session_recycled")
+        observed_environment = discovery.environment or {}
+        observed_prefix = observed_environment.get("WINEPREFIX", "")
+        original_prefix = state.session_prefix or ""
+        if not observed_prefix or not original_prefix or not self._prefix_matches(original_prefix, observed_prefix):
+            self._raise_context("prefix_mismatch")
+
+        try:
+            trainer_sha256 = sha256_file(state.trainer_path)
+        except (OSError, TypeError, ValueError):
+            self._raise_context("trainer_hash_unavailable")
+        if trainer_sha256 != state.trainer_sha256:
+            self._raise_context("trainer_hash_changed")
+        try:
+            trainer_arch = read_pe_architecture(state.trainer_path)
+        except (OSError, TypeError, ValueError):
+            self._raise_context("trainer_architecture_unknown")
+
+        return CommandContext(
+            identity=identity,
+            session=state.session,
+            trainer_sha256=trainer_sha256,
+            trainer_arch=trainer_arch,
+            environment=state.effective_environment,
+            umu_run=state.umu_run,
+            expected_reentry_bus=state.expected_reentry_bus,
+        )
 
     async def _poll_identity(self, identity: str, *, force_retry: bool = False) -> None:
         state = self._state_for(identity)
@@ -547,6 +669,7 @@ class RelayWatcher:
             previous_session = state.session
             await self._stop_owned(state, identity)
             state.session = discovery.session
+            state.session_prefix = (discovery.environment or {}).get("WINEPREFIX")
             state.retry_at = None
             state.automatic_retries = 0
             state.rejected_preflight_session = None

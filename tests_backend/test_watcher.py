@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from trainer_relay.container_reentry import ContainerReentryError
 from trainer_relay.games_map import GamesMapDiagnostic, GamesMapEntry, GamesMapResult
 from trainer_relay.process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity
 from trainer_relay.runner import StopResult
+from trainer_relay.types import CommandContext
 from trainer_relay.umu import UmuResolution
 from trainer_relay.watcher import RelayWatcher
 
@@ -18,6 +20,10 @@ class FakeRunner:
         self.spawn_calls = []
         self.stop_calls = []
         self.expected_reentry_buses = []
+
+    @property
+    def owned(self):
+        return tuple(self.handles)
 
     def spawn(self, session, trainer_executable, environment, *, expected_reentry_bus=None):
         handle = {
@@ -108,7 +114,12 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.directory = tempfile.TemporaryDirectory()
         root = Path(self.directory.name)
         self.trainer = root / "trainer.exe"
-        self.trainer.write_text("trainer", encoding="utf-8")
+        trainer_bytes = bytearray(0x100)
+        trainer_bytes[:2] = b"MZ"
+        trainer_bytes[0x3C:0x40] = (0x80).to_bytes(4, "little")
+        trainer_bytes[0x80:0x84] = b"PE\0\0"
+        trainer_bytes[0x84:0x86] = (0x14C).to_bytes(2, "little")
+        self.trainer.write_bytes(trainer_bytes)
         self.prefix = root / "prefix"
         self.prefix.mkdir()
         self.identity = "gog:game"
@@ -816,6 +827,79 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
                 {"process_group_id": 999, "signal": "SIGKILL", "forced": True},
             ],
         )
+
+    async def _start_running_session(self):
+        await self.watcher.poll_once()
+        self.clock_value = 3.0
+        await self.watcher.poll_once()
+
+    async def test_command_context_returns_an_immutable_revalidated_running_snapshot(self):
+        await self._start_running_session()
+
+        context = self.watcher.command_context(self.identity)
+
+        self.assertIsInstance(context, CommandContext)
+        self.assertEqual(context.identity, self.identity)
+        self.assertEqual(context.session, self.session)
+        self.assertEqual(context.trainer_sha256, hashlib.sha256(self.trainer.read_bytes()).hexdigest())
+        self.assertEqual(context.trainer_arch, "x86")
+        self.assertEqual(context.umu_run, str(Path("/umu-run")))
+        self.assertEqual(context.expected_reentry_bus, "com.steampowered.Appabc")
+        self.assertEqual(context.environment["PROTON_VERB"], "runinprefix")
+        with self.assertRaises(TypeError):
+            context.environment["WINEPREFIX"] = "/different"  # type: ignore[index]
+        self.assertEqual(self.discoverer.expected_sessions[-1], self.session)
+
+    async def test_command_context_rejects_disabled_and_launching_without_spawning(self):
+        with self.assertRaisesRegex(ValueError, "relay_not_running"):
+            self.watcher.command_context(self.identity)
+        await self.watcher.poll_once()
+        with self.assertRaisesRegex(ValueError, "relay_not_running"):
+            self.watcher.command_context(self.identity)
+        self.assertEqual(len(self.runner.spawn_calls), 1)
+
+    async def test_command_context_rejects_ended_and_recycled_sessions_without_spawning(self):
+        await self._start_running_session()
+        self.discoverer.result = DiscoveryResult("waiting_for_game")
+        with self.assertRaisesRegex(ValueError, "session_ended"):
+            self.watcher.command_context(self.identity)
+        self.discoverer.result = DiscoveryResult("session", session=SessionIdentity(10, 21), environment=self.discovery.environment)
+        with self.assertRaisesRegex(ValueError, "session_recycled"):
+            self.watcher.command_context(self.identity)
+        self.assertEqual(len(self.runner.spawn_calls), 1)
+
+    async def test_command_context_rejects_trainer_that_is_no_longer_owned(self):
+        await self._start_running_session()
+        self.runner.handles.clear()
+        with self.assertRaisesRegex(ValueError, "trainer_not_owned"):
+            self.watcher.command_context(self.identity)
+        self.assertEqual(len(self.runner.spawn_calls), 1)
+
+    async def test_command_context_rejects_ambiguous_discovery_changed_hash_prefix_and_bus(self):
+        await self._start_running_session()
+
+        self.discoverer.result = DiscoveryResult("ambiguous", candidates=(self.session, SessionIdentity(11, 21)))
+        with self.assertRaisesRegex(ValueError, "multiple_game_sessions"):
+            self.watcher.command_context(self.identity)
+
+        self.discoverer.result = self.discovery
+        original_trainer = self.trainer.read_bytes()
+        changed = bytearray(self.trainer.read_bytes())
+        changed[-1] ^= 1
+        self.trainer.write_bytes(changed)
+        with self.assertRaisesRegex(ValueError, "trainer_hash_changed"):
+            self.watcher.command_context(self.identity)
+
+        self.trainer.write_bytes(original_trainer)
+        self.discovery.environment["WINEPREFIX"] = "/other-prefix"
+        with self.assertRaisesRegex(ValueError, "prefix_mismatch"):
+            self.watcher.command_context(self.identity)
+
+        self.discovery.environment["WINEPREFIX"] = str(self.prefix)
+        self.watcher._states[self.identity].expected_reentry_bus = None
+        with self.assertRaisesRegex(ValueError, "container_reentry_bus_missing"):
+            self.watcher.command_context(self.identity)
+        self.assertEqual(len(self.runner.spawn_calls), 1)
 
 
 if __name__ == "__main__":
