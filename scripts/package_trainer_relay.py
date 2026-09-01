@@ -8,6 +8,11 @@ import os
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
+if __package__:
+    from .generate_helper_manifest import validate_helper_manifest
+else:
+    from generate_helper_manifest import validate_helper_manifest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_FILES = (
@@ -23,6 +28,11 @@ REQUIRED_FILES = (
 )
 TEXT_SUFFIXES = {".js", ".md", ".py", ".json", ""}
 PACKAGE_DATA_FILES = ("trainer_relay/data/fling_adapters_v1.json",)
+PACKAGE_BINARY_FILES = (
+    "bin/TrainerRelay.InputHelper.x86.exe",
+    "bin/TrainerRelay.InputHelper.x64.exe",
+    "bin/input-helper-manifest.json",
+)
 
 
 def iter_package_files() -> list[Path]:
@@ -30,6 +40,7 @@ def iter_package_files() -> list[Path]:
     runtime_dir = ROOT / "trainer_relay"
     files.extend(sorted(runtime_dir.rglob("*.py")))
     files.extend(ROOT / relative_path for relative_path in PACKAGE_DATA_FILES)
+    files.extend(ROOT / relative_path for relative_path in PACKAGE_BINARY_FILES)
     return files
 
 
@@ -52,6 +63,9 @@ def validate_sources(files: list[Path]) -> None:
     if invalid_runtime:
         invalid_text = ", ".join(invalid_runtime)
         raise ValueError(f"trainer_relay contains non-Python runtime files: {invalid_text}")
+
+    helper_directory = ROOT / "bin"
+    validate_helper_manifest(helper_directory, helper_directory / "input-helper-manifest.json")
 
 
 def write_archive(output: Path, files: list[Path]) -> None:

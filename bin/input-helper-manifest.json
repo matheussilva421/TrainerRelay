@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "helpers": {
+    "x86": {
+      "architecture": "x86",
+      "path": "TrainerRelay.InputHelper.x86.exe",
+      "sha256": "f0fc0379b78717ca9b27080f60c10ef11f8c53ff935bdf0f8ed1857ecaadbbf4"
+    },
+    "x64": {
+      "architecture": "x64",
+      "path": "TrainerRelay.InputHelper.x64.exe",
+      "sha256": "58379c547c7f3c5475f77a9a998e8a88bccc5f0439427111a8d0bb5eefb7737b"
+    }
+  }
+}

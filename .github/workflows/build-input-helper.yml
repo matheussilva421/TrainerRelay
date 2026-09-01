@@ -1,0 +1,108 @@
+name: build-input-helper
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-input-helper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          check-latest: true
+      - name: Build and test Win32 input helpers
+        shell: pwsh
+        run: .\scripts\build_input_helper.ps1
+      - name: Upload helper artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: trainer-relay-input-helper
+          path: |
+            bin/TrainerRelay.InputHelper.x86.exe
+            bin/TrainerRelay.InputHelper.x64.exe
+            bin/input-helper-manifest.json
+          if-no-files-found: error
+
+  frontend:
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.5.0
+      - name: Set up Node.js with pnpm cache
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint frontend
+        run: pnpm run lint
+      - name: Typecheck frontend
+        run: pnpm run typecheck
+      - name: Test frontend
+        run: pnpm run test -- --pool=forks --maxWorkers=1 --no-file-parallelism
+      - name: Build frontend
+        run: pnpm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          check-latest: true
+      - name: Run backend tests
+        run: python -m unittest discover -s tests_backend -p "test_*.py"
+      - name: Compile backend sources
+        run: python -m compileall -q main.py trainer_relay tests_backend tests_packaging
+
+  package:
+    runs-on: ubuntu-latest
+    needs:
+      - build-input-helper
+      - frontend
+      - backend
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download helper artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: trainer-relay-input-helper
+          path: bin
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.5.0
+      - name: Set up Node.js with pnpm cache
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Build frontend and package plugin
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm run package TrainerRelay.zip
+      - name: Verify package layout
+        run: python -m unittest discover -s tests_packaging -p "test_*.py"
