@@ -11,7 +11,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
-from trainer_relay.command_runner import OneShotCommandRunner
+from trainer_relay.command_runner import OneShotCommandRunner, process_group_members_from_proc
 from trainer_relay.process import SessionIdentity
 from trainer_relay.types import CommandContext
 
@@ -235,6 +235,43 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         self.assertTrue(process.stderr.was_closed)
         self.assertFalse(process.group_alive)
         self.assertEqual(process.descendants, set())
+
+    def test_aggregate_output_budget_rejects_two_streams_below_individual_limit(self):
+        process = FakeProcess(self._output(), self.marker, block=True)
+        process.stdout = TrackingStream(b"x" * 5000)
+        process.stderr = TrackingStream(b"y" * 5000)
+
+        def kill_group(_group, _signum):
+            process.group_alive = False
+            process.descendants.clear()
+            process.released.set()
+
+        runner, _ = self._runner(
+            process,
+            kill_group=kill_group,
+            process_group_members=lambda _pid: tuple(process.descendants),
+        )
+
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
+
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.diagnostic, "helper_output_oversized")
+        self.assertFalse(process.group_alive)
+        self.assertEqual(process.descendants, set())
+        self.assertTrue(process.stdout.was_closed)
+        self.assertTrue(process.stderr.was_closed)
+
+    def test_proc_group_probe_uses_injected_proc_root_and_fails_closed_on_error(self):
+        with tempfile.TemporaryDirectory() as proc_root:
+            root = Path(proc_root)
+            (root / "10").mkdir()
+            (root / "11").mkdir()
+            (root / "10" / "stat").write_text("10 (helper) S 1 4321 0", encoding="utf-8")
+            (root / "11" / "stat").write_text("11 (other) S 1 99 0", encoding="utf-8")
+
+            self.assertEqual(process_group_members_from_proc(4321, root), (10,))
+            (root / "10" / "stat").unlink()
+            self.assertIsNone(process_group_members_from_proc(4321, root))
 
     def test_lease_keeps_popen_inside_the_authority_window(self):
         process = FakeProcess(self._output(), self.marker)

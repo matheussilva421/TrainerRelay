@@ -188,7 +188,8 @@ class RelayWatcher:
         state.trainer_sha256 = None
 
     async def _stop_owned(self, state: _RelayState, identity: str | None = None) -> None:
-        with self._state_lock:
+        await self._acquire_state_lock()
+        try:
             if state.handle is None:
                 self._reset_launch_state(state)
                 return
@@ -196,6 +197,8 @@ class RelayWatcher:
             session = state.session
             process_group_id = self._process_group_id(handle)
             self._reset_launch_state(state)
+        finally:
+            self._state_lock.release()
         stop_result = None
         try:
             stop_result = await self._maybe_await(self._runner.stop(handle))
@@ -895,8 +898,11 @@ class RelayWatcher:
             await self._poll_identity(identity)
 
     async def update_config(self, config: Mapping[str, Any] | Any) -> None:
-        with self._state_lock:
+        await self._acquire_state_lock()
+        try:
             self._config = config
+        finally:
+            self._state_lock.release()
         await self.poll_once()
 
     async def retry(self, identity: str) -> dict[str, Any]:
@@ -906,18 +912,27 @@ class RelayWatcher:
         return self.status(identity)
 
     async def run(self) -> None:
-        with self._state_lock:
+        await self._acquire_state_lock()
+        try:
             self._stopped = False
+        finally:
+            self._state_lock.release()
         while True:
-            with self._state_lock:
+            await self._acquire_state_lock()
+            try:
                 if self._stopped:
                     return
+            finally:
+                self._state_lock.release()
             await self.poll_once()
             await self._sleep(1.0)
 
     async def stop(self) -> None:
-        with self._state_lock:
+        await self._acquire_state_lock()
+        try:
             self._stopped = True
             states = tuple(self._states.items())
+        finally:
+            self._state_lock.release()
         for identity, state in states:
             await self._stop_owned(state, identity)

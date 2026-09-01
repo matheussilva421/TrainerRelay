@@ -84,13 +84,35 @@ class CommandExecution:
         }
 
 
+class _CaptureBudget:
+    def __init__(self, limit: int):
+        self._limit = limit
+        self._used = 0
+        self._lock = threading.Lock()
+
+    def reserve(self, size: int) -> bool:
+        if type(size) is not int or size < 0:
+            return False
+        with self._lock:
+            if self._used + size > self._limit:
+                return False
+            self._used += size
+            return True
+
+
 class _BoundedCapture:
-    def __init__(self, stream: Any, overflow_event: threading.Event | None = None):
+    def __init__(
+        self,
+        stream: Any,
+        overflow_event: threading.Event | None = None,
+        budget: _CaptureBudget | None = None,
+    ):
         self._stream = stream
         self._buffer = bytearray()
         self._size = 0
         self._overflow = False
-        self._overflow_event = overflow_event or threading.Event()
+        self._overflow_event = overflow_event if overflow_event is not None else threading.Event()
+        self._budget = budget if budget is not None else _CaptureBudget(MAX_CAPTURE_BYTES)
         self._close_lock = threading.Lock()
         self._closed = False
 
@@ -108,12 +130,12 @@ class _BoundedCapture:
                     self._overflow_event.set()
                     self.close()
                     return
-                self._size += len(chunk)
-                if self._size > MAX_CAPTURE_BYTES:
+                if not self._budget.reserve(len(chunk)):
                     self._overflow = True
                     self._overflow_event.set()
                     self.close()
                     return
+                self._size += len(chunk)
                 self._buffer.extend(chunk)
         except (OSError, ValueError):
             self._overflow = True
@@ -150,8 +172,32 @@ def _kill_process_group(group_id: int, signum: int) -> None:
     os.killpg(group_id, signum)
 
 
-def _empty_process_group(_group_id: int) -> tuple[()]:
-    return ()
+def process_group_members_from_proc(
+    group_id: int,
+    proc_root: str | os.PathLike[str] = "/proc",
+) -> tuple[int, ...] | None:
+    if type(group_id) is not int or group_id <= 0:
+        return None
+    try:
+        entries = tuple(Path(proc_root).iterdir())
+    except (OSError, TypeError, ValueError):
+        return None
+    members: list[int] = []
+    for entry in entries:
+        if not entry.name.isdecimal():
+            continue
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8")
+            fields = stat[stat.rfind(")") + 1 :].split()
+            if stat.rfind(")") < 0 or len(fields) < 3:
+                return None
+            pid = int(entry.name)
+            process_group = int(fields[2])
+        except (OSError, TypeError, UnicodeError, ValueError):
+            return None
+        if process_group == group_id:
+            members.append(pid)
+    return tuple(sorted(members))
 
 
 class OneShotCommandRunner:
@@ -164,7 +210,7 @@ class OneShotCommandRunner:
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         kill_process_group: Callable[[int, int], None] = _kill_process_group,
-        process_group_members: Callable[[int], Any] = _empty_process_group,
+        process_group_members: Callable[[int], Any] = process_group_members_from_proc,
     ) -> None:
         if manifest_path is not None and manifest is not None:
             raise ValueError("duplicate_helper_manifest")
@@ -417,8 +463,9 @@ class OneShotCommandRunner:
                 return self._result("rejected", "command_context_revalidation_failed", started_at, self._monotonic)
 
             overflow_event = threading.Event()
-            stdout_capture = _BoundedCapture(getattr(process, "stdout", None), overflow_event)
-            stderr_capture = _BoundedCapture(getattr(process, "stderr", None), overflow_event)
+            capture_budget = _CaptureBudget(MAX_CAPTURE_BYTES)
+            stdout_capture = _BoundedCapture(getattr(process, "stdout", None), overflow_event, capture_budget)
+            stderr_capture = _BoundedCapture(getattr(process, "stderr", None), overflow_event, capture_budget)
             captures = (stdout_capture, stderr_capture)
             readers = [
                 threading.Thread(target=stdout_capture.read, daemon=True),
@@ -473,4 +520,4 @@ class OneShotCommandRunner:
                 self._busy.discard(identity)
 
 
-__all__ = ["CommandExecution", "OneShotCommandRunner"]
+__all__ = ["CommandExecution", "OneShotCommandRunner", "process_group_members_from_proc"]

@@ -2,6 +2,8 @@ import asyncio
 import hashlib
 import tempfile
 import threading
+from contextlib import suppress
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -977,6 +979,81 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         release_lease.set()
         await asyncio.to_thread(lease_thread.join, 1.0)
         await asyncio.wait_for(poll_task, 1.0)
+
+    async def _assert_async_waiter_yields_while_lease_is_held(self, operation, *, cancel=False):
+        lease_ready = threading.Event()
+        release_lease = threading.Event()
+
+        def hold_lease():
+            with self.watcher.command_context_lease(self.identity):
+                lease_ready.set()
+                release_lease.wait(1.0)
+
+        lease_thread = threading.Thread(target=hold_lease)
+        lease_thread.start()
+        self.assertTrue(lease_ready.wait(1.0))
+
+        heartbeat_ticks = 0
+        ticks_at_release = []
+        release_requested = threading.Event()
+
+        async def heartbeat():
+            nonlocal heartbeat_ticks
+            while True:
+                heartbeat_ticks += 1
+                await asyncio.sleep(0)
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        await asyncio.sleep(0)
+
+        async def invoke_operation():
+            nonlocal heartbeat_ticks
+            heartbeat_ticks = 0
+            await operation
+
+        waiter = asyncio.create_task(invoke_operation())
+
+        def release():
+            ticks_at_release.append(heartbeat_ticks)
+            release_requested.set()
+            release_lease.set()
+
+        timer = threading.Timer(0.05, release)
+        timer.start()
+        try:
+            await asyncio.to_thread(release_requested.wait, 1.0)
+            if cancel:
+                waiter.cancel()
+                with suppress(asyncio.CancelledError):
+                    await waiter
+            else:
+                await asyncio.wait_for(waiter, 1.0)
+        finally:
+            timer.cancel()
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
+            await asyncio.to_thread(lease_thread.join, 1.0)
+
+        self.assertGreater(ticks_at_release[0], 0)
+
+    async def test_update_config_yields_while_waiting_for_state_lease(self):
+        await self._start_running_session()
+        await self._assert_async_waiter_yields_while_lease_is_held(
+            self.watcher.update_config(self.watcher.config),
+        )
+
+    async def test_run_yields_while_waiting_for_state_lease(self):
+        await self._start_running_session()
+        self.watcher._sleep = lambda _seconds: asyncio.sleep(0)
+        await self._assert_async_waiter_yields_while_lease_is_held(
+            self.watcher.run(),
+            cancel=True,
+        )
+
+    async def test_stop_yields_while_waiting_for_state_lease(self):
+        await self._start_running_session()
+        await self._assert_async_waiter_yields_while_lease_is_held(self.watcher.stop())
 
     async def test_command_context_rejects_ambiguous_discovery_changed_hash_prefix_and_bus(self):
         await self._start_running_session()
