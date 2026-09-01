@@ -1615,3 +1615,39 @@ untested.
   whether to approve the staged design: ephemeral `SendInput` for exact FLiNG
   adapters, cooperative IPC for owned trainers, and manual catalog/hotkey
   configuration as the user fallback.
+
+### Cheat controls design approved and implementation prepared
+
+- The user approved the staged architecture and explicitly excluded XTest.
+  The approved FLiNG/manual path is a native Win32 `SendInput` helper launched
+  only for one command through the same verified UMU context. It exits after
+  releasing the key chord and never becomes a third resident Windows process.
+- The binding specification is
+  `docs/superpowers/specs/2026-09-01-trainer-relay-cheat-controls-design.md`.
+  It fixes the fail-closed session gate, exact trainer SHA-256 binding, finite
+  symbolic hotkey allowlist, command/result semantics, diagnostics hygiene,
+  cooperative-state boundary and explicit exclusions.
+- The TDD execution plan is
+  `docs/superpowers/plans/2026-09-01-trainer-relay-cheat-controls-plan.md`.
+  It is split into domain/catalog, command context/runner, native helper,
+  service/RPC, Decky UI, and release/physical-validation tasks.
+- Three Luna xhigh read-only audits confirmed that the existing watcher,
+  container re-entry and runner are reusable, but no catalog, command API,
+  cheat state API or packaged helper exists yet. Backend baseline remains
+  149/149 and packaging baseline remains 2/2. The frontend baseline was not
+  rerun because the relocated checkout's `node_modules` is incomplete; repair
+  must use the locked `pnpm@11.5.0` graph without dependency upgrades.
+- Local compiler discovery found Windows SDK 10.0.26100.0 but no `cl`, MinGW,
+  Clang or Zig on `PATH`. The plan therefore builds x86/x64 native helpers on
+  `windows-latest` with MSVC and returns them as CI artifacts before final ZIP
+  packaging. This is a build-environment boundary, not permission to ship a
+  managed or resident helper.
+- The independent primary-source report
+  `docs/research/2026-09-01-trainer-relay-input-control-alternatives.md` was
+  received from the earlier research agent and remains preserved for commit.
+- Ruling: cooperative trainer support in this plugin means implementing the
+  Relay-side versioned transport/decoder and authoritative-state rules. An old
+  custom trainer cannot report real state until its own process implements the
+  protocol; the plugin must show `unknown` until then. Cost if wrong: each
+  custom trainer will need a follow-up source change, but no false state will
+  be presented meanwhile.
