@@ -875,6 +875,21 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             self.watcher.command_context(self.identity)
         self.assertEqual(len(self.runner.spawn_calls), 1)
 
+    async def test_retry_same_session_preserves_session_prefix_for_command_context(self):
+        await self.watcher.poll_once()
+        self.runner.handles[0]["exit_code"] = 1
+        self.clock_value = 1.0
+        await self.watcher.poll_once()
+        self.clock_value = 3.0
+        await self.watcher.poll_once()
+        self.clock_value = 6.0
+        await self.watcher.poll_once()
+
+        context = self.watcher.command_context(self.identity)
+
+        self.assertEqual(context.session, self.session)
+        self.assertEqual(context.environment["WINEPREFIX"], self.runner.spawn_calls[1][2]["WINEPREFIX"])
+
     async def test_command_context_rejects_ambiguous_discovery_changed_hash_prefix_and_bus(self):
         await self._start_running_session()
 

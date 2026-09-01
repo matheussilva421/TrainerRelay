@@ -179,7 +179,6 @@ class RelayWatcher:
         state.umu_run = None
         state.trainer_path = None
         state.trainer_sha256 = None
-        state.session_prefix = None
 
     async def _stop_owned(self, state: _RelayState, identity: str | None = None) -> None:
         if state.handle is None:
@@ -547,11 +546,14 @@ class RelayWatcher:
         if not is_launch_identity(identity):
             await self._stop_owned(state, identity)
             self._set_state(state, RelayStatus.INVALID_CONFIG, "invalid_config_identity")
+            state.session = None
+            state.session_prefix = None
             return
         if game is None:
             await self._stop_owned(state, identity)
             self._set_state(state, RelayStatus.DISABLED)
             state.session = None
+            state.session_prefix = None
             state.retry_at = None
             state.rejected_preflight_session = None
             return
@@ -559,6 +561,7 @@ class RelayWatcher:
             await self._stop_owned(state, identity)
             self._set_state(state, RelayStatus.DISABLED)
             state.session = None
+            state.session_prefix = None
             state.retry_at = None
             state.rejected_preflight_session = None
             return
@@ -566,6 +569,8 @@ class RelayWatcher:
         if validated_game is None:
             await self._stop_owned(state, identity)
             self._set_state(state, RelayStatus.INVALID_CONFIG, "invalid_config_entry")
+            state.session = None
+            state.session_prefix = None
             return
 
         try:
@@ -640,11 +645,13 @@ class RelayWatcher:
         if discovery.state == DiscoveryState.AMBIGUOUS:
             await self._stop_owned(state, identity)
             state.session = None
+            state.session_prefix = None
             self._set_state(state, RelayStatus.AMBIGUOUS, discovery.diagnostic or "multiple_game_sessions")
             return
         if discovery.state == DiscoveryState.INVALID_CONFIG:
             await self._stop_owned(state, identity)
             state.session = None
+            state.session_prefix = None
             state.rejected_preflight_session = None
             self._set_state(state, RelayStatus.INVALID_CONFIG, discovery.diagnostic or "invalid_process_environment")
             return
@@ -660,6 +667,7 @@ class RelayWatcher:
                 )
             await self._stop_owned(state, identity)
             state.session = None
+            state.session_prefix = None
             state.rejected_preflight_session = None
             self._set_state(state, RelayStatus.WAITING_FOR_GAME, discovery.diagnostic)
             return

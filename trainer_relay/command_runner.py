@@ -18,6 +18,7 @@ from .types import CommandContext
 
 
 COMMAND_TIMEOUT_SECONDS = 5.0
+COMMAND_CLEANUP_TIMEOUT_SECONDS = 0.2
 MAX_CAPTURE_BYTES = 8192
 MAX_JSON_COUNTS = 64
 _JSON_FIELDS = {"protocol", "accepted_count", "expected_count", "result_code"}
@@ -89,30 +90,55 @@ class _BoundedCapture:
         self._buffer = bytearray()
         self._size = 0
         self._overflow = False
+        self._overflow_event = threading.Event()
+        self._close_lock = threading.Lock()
+        self._closed = False
 
     def read(self) -> None:
         if self._stream is None or not hasattr(self._stream, "read"):
             return
         try:
             while True:
-                chunk = self._stream.read(4096)
+                remaining = MAX_CAPTURE_BYTES - self._size
+                chunk = self._stream.read(min(4096, remaining + 1))
                 if not chunk:
                     return
                 if not isinstance(chunk, bytes):
                     self._overflow = True
+                    self._overflow_event.set()
+                    self.close()
                     return
                 self._size += len(chunk)
-                if len(self._buffer) < MAX_CAPTURE_BYTES:
-                    remaining = MAX_CAPTURE_BYTES - len(self._buffer)
-                    self._buffer.extend(chunk[:remaining])
                 if self._size > MAX_CAPTURE_BYTES:
                     self._overflow = True
+                    self._overflow_event.set()
+                    self.close()
+                    return
+                self._buffer.extend(chunk)
         except (OSError, ValueError):
             self._overflow = True
+            self._overflow_event.set()
+
+    def close(self) -> None:
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            stream = self._stream
+        close = getattr(stream, "close", None)
+        if close is not None:
+            try:
+                close()
+            except (OSError, ValueError):
+                return
 
     @property
     def overflow(self) -> bool:
         return self._overflow
+
+    @property
+    def overflow_event(self) -> threading.Event:
+        return self._overflow_event
 
     @property
     def data(self) -> bytes:
@@ -215,18 +241,86 @@ class OneShotCommandRunner:
         marker = f"INFO: Re-entering container through bus '{bus}'".encode("utf-8")
         return any(line == marker for line in capture.data.splitlines())
 
-    def _wait_for_process(self, process: Any, deadline: float) -> tuple[bool, int | None]:
-        remaining = max(0.0, deadline - self._monotonic())
-        try:
-            returncode = process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            return True, None
-        except (OSError, ValueError):
-            return False, None
-        if type(returncode) is int:
-            return False, returncode
+    @staticmethod
+    def _same_authority(left: CommandContext, right: Any) -> bool:
+        if not isinstance(right, CommandContext):
+            return False
+        return (
+            left.identity == right.identity
+            and left.session == right.session
+            and left.trainer_sha256 == right.trainer_sha256
+            and left.trainer_arch == right.trainer_arch
+            and left.environment.get("WINEPREFIX") == right.environment.get("WINEPREFIX")
+            and dict(left.environment) == dict(right.environment)
+            and left.umu_run == right.umu_run
+            and left.expected_reentry_bus == right.expected_reentry_bus
+        )
+
+    @staticmethod
+    def _returncode(process: Any) -> int | None:
         candidate = getattr(process, "returncode", None)
-        return False, candidate if type(candidate) is int else 0
+        return candidate if type(candidate) is int else None
+
+    def _wait_for_process(
+        self,
+        process: Any,
+        deadline: float,
+        overflow_event: threading.Event | None = None,
+    ) -> tuple[bool, int | None, bool]:
+        while True:
+            if overflow_event is not None and overflow_event.is_set():
+                return False, self._returncode(process), True
+            remaining = max(0.0, deadline - self._monotonic())
+            if remaining <= 0.0:
+                return True, None, False
+            wait_timeout = min(remaining, 0.05) if overflow_event is not None else remaining
+            try:
+                returncode = process.wait(timeout=wait_timeout)
+            except subprocess.TimeoutExpired:
+                if overflow_event is not None and overflow_event.is_set():
+                    return False, self._returncode(process), True
+                if self._monotonic() >= deadline:
+                    return True, None, False
+                continue
+            except (OSError, ValueError):
+                return False, None, False
+            if type(returncode) is int:
+                return False, returncode, bool(overflow_event and overflow_event.is_set())
+            return False, self._returncode(process), bool(overflow_event and overflow_event.is_set())
+
+    def _close_captures(self, captures: tuple[_BoundedCapture, ...], readers: list[threading.Thread]) -> bool:
+        for capture in captures:
+            capture.close()
+        for reader in readers:
+            reader.join(timeout=COMMAND_CLEANUP_TIMEOUT_SECONDS)
+        if any(reader.is_alive() for reader in readers):
+            for capture in captures:
+                capture.close()
+            for reader in readers:
+                reader.join(timeout=COMMAND_CLEANUP_TIMEOUT_SECONDS)
+        return not any(reader.is_alive() for reader in readers)
+
+    def _terminate_process_group(
+        self,
+        process: Any,
+        captures: tuple[_BoundedCapture, ...],
+        readers: list[threading.Thread],
+    ) -> bool:
+        pid = getattr(process, "pid", None)
+        cleanup_ok = type(pid) is int and pid > 0
+        if cleanup_ok:
+            try:
+                self._kill_process_group(pid, getattr(signal, "SIGKILL", 9))
+            except (OSError, ProcessLookupError, ValueError):
+                cleanup_ok = False
+        try:
+            returncode = process.wait(timeout=COMMAND_CLEANUP_TIMEOUT_SECONDS)
+            if type(returncode) is not int and self._returncode(process) is None:
+                cleanup_ok = False
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            cleanup_ok = False
+        cleanup_ok = self._close_captures(captures, readers) and cleanup_ok
+        return cleanup_ok
 
     def run(
         self,
@@ -235,6 +329,8 @@ class OneShotCommandRunner:
         vk: int,
         modifiers: int,
         hold_ms: int = 40,
+        *,
+        revalidator: Callable[[], CommandContext],
     ) -> CommandExecution:
         started_at = self._monotonic()
         identity = getattr(context, "identity", None)
@@ -267,22 +363,27 @@ class OneShotCommandRunner:
                 code = getattr(error, "code", None)
                 return self._result("rejected", code if isinstance(code, str) else "invalid_helper_manifest", started_at, self._monotonic)
 
-            argv = [
-                str(context.umu_run),
-                str(verified.path),
-                "--protocol",
-                "1",
-                "--key",
-                str(vk),
-                "--modifiers",
-                str(modifiers),
-                "--hold-ms",
-                str(hold_ms),
-            ]
+            try:
+                refreshed_context = revalidator()
+            except Exception:
+                return self._result("rejected", "command_context_revalidation_failed", started_at, self._monotonic)
+            if not self._same_authority(context, refreshed_context):
+                return self._result("rejected", "command_context_changed", started_at, self._monotonic)
             try:
                 process = self._popen(
-                    argv,
-                    env=context.environment,
+                    [
+                        str(refreshed_context.umu_run),
+                        str(verified.path),
+                        "--protocol",
+                        "1",
+                        "--key",
+                        str(vk),
+                        "--modifiers",
+                        str(modifiers),
+                        "--hold-ms",
+                        str(hold_ms),
+                    ],
+                    env=refreshed_context.environment,
                     shell=False,
                     start_new_session=True,
                     stdout=subprocess.PIPE,
@@ -294,53 +395,55 @@ class OneShotCommandRunner:
 
             stdout_capture = _BoundedCapture(getattr(process, "stdout", None))
             stderr_capture = _BoundedCapture(getattr(process, "stderr", None))
+            captures = (stdout_capture, stderr_capture)
             readers = [
                 threading.Thread(target=stdout_capture.read, daemon=True),
                 threading.Thread(target=stderr_capture.read, daemon=True),
             ]
             for reader in readers:
                 reader.start()
-
-            timed_out, exit_code = self._wait_for_process(process, started_at + COMMAND_TIMEOUT_SECONDS)
-            if timed_out:
-                pid = getattr(process, "pid", None)
-                if type(pid) is int and pid > 0:
-                    try:
-                        self._kill_process_group(pid, getattr(signal, "SIGKILL", 9))
-                    except (OSError, ProcessLookupError, ValueError):
-                        pass
-                try:
-                    process.wait(timeout=0.2)
-                except (OSError, subprocess.TimeoutExpired, ValueError):
-                    pass
-                for reader in readers:
-                    reader.join(timeout=0.2)
-                return self._result("failed", "command_timeout", started_at, self._monotonic)
-
-            for reader in readers:
-                reader.join(timeout=max(0.0, started_at + COMMAND_TIMEOUT_SECONDS - self._monotonic()))
-            if type(exit_code) is not int:
-                candidate = getattr(process, "returncode", None)
-                exit_code = candidate if type(candidate) is int else 1
-            if exit_code != 0:
-                return self._result("failed", "helper_exit_nonzero", started_at, self._monotonic, exit_code=exit_code)
-            if stderr_capture.overflow or stdout_capture.overflow:
-                return self._result("failed", "helper_output_oversized", started_at, self._monotonic, exit_code=exit_code)
-            if not self._has_reentry_marker(stderr_capture, context.expected_reentry_bus):
-                return self._result("failed", "container_reentry_marker_missing", started_at, self._monotonic, exit_code=exit_code)
-            parsed = self._parse_output(stdout_capture)
-            if isinstance(parsed, str):
-                return self._result("failed", parsed, started_at, self._monotonic, exit_code=exit_code)
-            accepted_count, expected_count, _result_code = parsed
-            return self._result(
-                "requested",
-                None,
-                started_at,
-                self._monotonic,
-                exit_code=exit_code,
-                accepted_count=accepted_count,
-                expected_count=expected_count,
-            )
+            try:
+                timed_out, exit_code, output_overflowed = self._wait_for_process(
+                    process,
+                    started_at + COMMAND_TIMEOUT_SECONDS,
+                    stdout_capture.overflow_event,
+                )
+                if timed_out:
+                    cleanup_ok = self._terminate_process_group(process, captures, readers)
+                    diagnostic = "command_timeout" if cleanup_ok else "command_timeout_cleanup_failed"
+                    return self._result("failed", diagnostic, started_at, self._monotonic)
+                if output_overflowed and exit_code is None:
+                    cleanup_ok = self._terminate_process_group(process, captures, readers)
+                    diagnostic = "helper_output_oversized" if cleanup_ok else "helper_output_cleanup_failed"
+                    return self._result("failed", diagnostic, started_at, self._monotonic)
+                capture_ok = self._close_captures(captures, readers)
+                if not capture_ok:
+                    return self._result("failed", "helper_output_cleanup_failed", started_at, self._monotonic)
+                if type(exit_code) is not int:
+                    exit_code = self._returncode(process)
+                    if exit_code is None:
+                        exit_code = 1
+                if exit_code != 0:
+                    return self._result("failed", "helper_exit_nonzero", started_at, self._monotonic, exit_code=exit_code)
+                if stderr_capture.overflow or stdout_capture.overflow:
+                    return self._result("failed", "helper_output_oversized", started_at, self._monotonic, exit_code=exit_code)
+                if not self._has_reentry_marker(stderr_capture, context.expected_reentry_bus):
+                    return self._result("failed", "container_reentry_marker_missing", started_at, self._monotonic, exit_code=exit_code)
+                parsed = self._parse_output(stdout_capture)
+                if isinstance(parsed, str):
+                    return self._result("failed", parsed, started_at, self._monotonic, exit_code=exit_code)
+                accepted_count, expected_count, _result_code = parsed
+                return self._result(
+                    "requested",
+                    None,
+                    started_at,
+                    self._monotonic,
+                    exit_code=exit_code,
+                    accepted_count=accepted_count,
+                    expected_count=expected_count,
+                )
+            finally:
+                self._close_captures(captures, readers)
         finally:
             with self._busy_lock:
                 self._busy.discard(identity)
