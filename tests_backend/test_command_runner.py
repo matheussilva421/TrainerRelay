@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,6 +26,24 @@ class TrackingStream(io.BytesIO):
     def close(self):
         self.was_closed = True
         super().close()
+
+
+class ExcessiveStream:
+    def __init__(self):
+        self.read_calls = 0
+        self.was_closed = False
+        self.closed = threading.Event()
+
+    def read(self, _size):
+        self.read_calls += 1
+        if self.read_calls == 1:
+            return b"x" * (8192 + 1)
+        self.closed.wait(1.0)
+        return b""
+
+    def close(self):
+        self.was_closed = True
+        self.closed.set()
 
 
 class FakeProcess:
@@ -92,7 +111,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    def _runner(self, process, *, kill_group=None):
+    def _runner(self, process, *, kill_group=None, process_group_members=None):
         calls = []
 
         def popen(argv, **kwargs):
@@ -103,8 +122,12 @@ class OneShotCommandRunnerTests(unittest.TestCase):
             self.manifest,
             popen_factory=popen,
             kill_process_group=kill_group or (lambda *_: None),
+            process_group_members=process_group_members or (lambda _pid: ()),
         )
         return runner, calls
+
+    def _lease_factory(self, context=None):
+        return lambda: nullcontext(self.context if context is None else context)
 
     @staticmethod
     def _output(*, accepted=3, expected=3, result_code=0):
@@ -121,7 +144,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         process = FakeProcess(self._output(), self.marker)
         runner, calls = self._runner(process)
 
-        result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "requested")
         self.assertIsNone(result.diagnostic)
@@ -155,7 +178,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         for process, diagnostic in cases:
             with self.subTest(diagnostic=diagnostic):
                 runner, calls = self._runner(process)
-                result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+                result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
                 self.assertEqual(result.outcome, "failed")
                 self.assertEqual(result.diagnostic, diagnostic)
                 self.assertEqual(len(calls), 1)
@@ -169,28 +192,11 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         for stdout, diagnostic in cases:
             with self.subTest(diagnostic=diagnostic):
                 runner, _ = self._runner(FakeProcess(stdout, self.marker))
-                result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+                result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
                 self.assertEqual(result.diagnostic, diagnostic)
                 self.assertNotIn("x" * 100, repr(result))
 
     def test_excessive_output_stops_total_capture_and_terminates_the_group(self):
-        class ExcessiveStream:
-            def __init__(self):
-                self.read_calls = 0
-                self.was_closed = False
-                self.closed = threading.Event()
-
-            def read(self, _size):
-                self.read_calls += 1
-                if self.read_calls == 1:
-                    return b"x" * (8192 + 1)
-                self.closed.wait(1.0)
-                return b""
-
-            def close(self):
-                self.was_closed = True
-                self.closed.set()
-
         process = FakeProcess(self._output(), self.marker, block=True)
         process.stdout = ExcessiveStream()
 
@@ -201,7 +207,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
 
         runner, _ = self._runner(process, kill_group=kill_group)
 
-        result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "failed")
         self.assertEqual(result.diagnostic, "helper_output_oversized")
@@ -209,6 +215,53 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         self.assertTrue(process.stdout.was_closed)
         self.assertFalse(process.group_alive)
         self.assertEqual(process.descendants, set())
+
+    def test_excessive_stderr_stops_total_capture_and_terminates_the_group(self):
+        process = FakeProcess(self._output(), self.marker, block=True)
+        process.stderr = ExcessiveStream()
+
+        def kill_group(_group, _signum):
+            process.group_alive = False
+            process.descendants.clear()
+            process.released.set()
+
+        runner, _ = self._runner(process, kill_group=kill_group)
+
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
+
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.diagnostic, "helper_output_oversized")
+        self.assertEqual(process.stderr.read_calls, 1)
+        self.assertTrue(process.stderr.was_closed)
+        self.assertFalse(process.group_alive)
+        self.assertEqual(process.descendants, set())
+
+    def test_lease_keeps_popen_inside_the_authority_window(self):
+        process = FakeProcess(self._output(), self.marker)
+        events = []
+
+        class Lease:
+            def __enter__(lease_self):
+                events.append("enter")
+                return self.context
+
+            def __exit__(lease_self, *_args):
+                events.append("exit")
+
+        def popen(argv, **kwargs):
+            events.append("popen")
+            return process
+
+        runner = OneShotCommandRunner(
+            self.manifest,
+            popen_factory=popen,
+            process_group_members=lambda _pid: (),
+        )
+
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=lambda: Lease())
+
+        self.assertEqual(result.outcome, "requested")
+        self.assertEqual(events, ["enter", "popen", "exit"])
 
     def test_timeout_kills_only_the_helper_process_group(self):
         process = FakeProcess(self._output(), self.marker, block=True)
@@ -220,9 +273,13 @@ class OneShotCommandRunnerTests(unittest.TestCase):
             process.descendants.clear()
             process.released.set()
 
-        runner, calls = self._runner(process, kill_group=kill_group)
+        runner, calls = self._runner(
+            process,
+            kill_group=kill_group,
+            process_group_members=lambda _pid: tuple(process.descendants),
+        )
 
-        result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "failed")
         self.assertEqual(result.diagnostic, "command_timeout")
@@ -236,13 +293,34 @@ class OneShotCommandRunnerTests(unittest.TestCase):
 
     def test_timeout_reports_cleanup_failure_when_group_does_not_die(self):
         process = FakeProcess(self._output(), self.marker, block=True)
-        runner, _ = self._runner(process, kill_group=lambda *_: None)
+        runner, _ = self._runner(process, kill_group=lambda *_: None, process_group_members=lambda _pid: ["descendant"])
 
-        result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "failed")
         self.assertEqual(result.diagnostic, "command_timeout_cleanup_failed")
         self.assertTrue(process.group_alive)
+        self.assertEqual(process.descendants, {"fake-descendant"})
+        self.assertTrue(process.stdout.was_closed)
+        self.assertTrue(process.stderr.was_closed)
+
+    def test_timeout_reports_cleanup_failure_when_process_exits_but_descendant_survives(self):
+        process = FakeProcess(self._output(), self.marker, block=True)
+
+        def kill_group(_group, _signum):
+            process.group_alive = False
+            process.released.set()
+
+        runner, _ = self._runner(
+            process,
+            kill_group=kill_group,
+            process_group_members=lambda _pid: tuple(process.descendants),
+        )
+
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
+
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.diagnostic, "command_timeout_cleanup_failed")
         self.assertEqual(process.descendants, {"fake-descendant"})
         self.assertTrue(process.stdout.was_closed)
         self.assertTrue(process.stderr.was_closed)
@@ -253,9 +331,9 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         def kill_group(*_):
             raise OSError("private process detail")
 
-        runner, _ = self._runner(process, kill_group=kill_group)
+        runner, _ = self._runner(process, kill_group=kill_group, process_group_members=lambda _pid: ())
 
-        result = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "failed")
         self.assertEqual(result.diagnostic, "command_timeout_cleanup_failed")
@@ -267,7 +345,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         first_result = []
         first = threading.Thread(
             target=lambda: first_result.append(
-                runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+                runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
             )
         )
         first.start()
@@ -275,7 +353,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         while not runner.busy_identities and time.monotonic() < deadline:
             time.sleep(0.001)
 
-        second = runner.run(self.context, self.helper, 65, 5, revalidator=lambda: self.context)
+        second = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
         process.released.set()
         first.join(timeout=2.0)
 
@@ -287,7 +365,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         runner, calls = self._runner(process)
         missing = Path(self.directory.name) / "missing.exe"
 
-        result = runner.run(self.context, missing, 65, 5, revalidator=lambda: self.context)
+        result = runner.run(self.context, missing, 65, 5, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "rejected")
         self.assertEqual(result.diagnostic, "helper_missing")
@@ -297,7 +375,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         process = FakeProcess(self._output(), self.marker)
         runner, calls = self._runner(process)
 
-        result = runner.run(self.context, self.helper, 1, 0, revalidator=lambda: self.context)
+        result = runner.run(self.context, self.helper, 1, 0, lease_factory=self._lease_factory())
 
         self.assertEqual(result.outcome, "rejected")
         self.assertEqual(result.diagnostic, "invalid_virtual_key")
@@ -318,13 +396,13 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         process = FakeProcess(self._output(), self.marker)
         runner, calls = self._runner(process)
 
-        result = runner.run(invalid_context, self.helper, 65, 5, revalidator=lambda: invalid_context)
+        result = runner.run(invalid_context, self.helper, 65, 5, lease_factory=self._lease_factory(invalid_context))
 
         self.assertEqual(result.outcome, "rejected")
         self.assertEqual(result.diagnostic, "invalid_command_context")
         self.assertEqual(calls, [])
 
-    def test_revalidator_rejects_changed_session_or_trainer_before_popen(self):
+    def test_lease_rejects_changed_session_or_trainer_before_popen(self):
         for changed_context in (
             replace(self.context, session=SessionIdentity(11, 21)),
             replace(self.context, trainer_sha256="b" * 64),
@@ -338,7 +416,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
                     self.helper,
                     65,
                     5,
-                    revalidator=lambda changed_context=changed_context: changed_context,
+                    lease_factory=self._lease_factory(changed_context),
                 )
 
                 self.assertEqual(result.outcome, "rejected")

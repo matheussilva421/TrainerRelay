@@ -85,12 +85,12 @@ class CommandExecution:
 
 
 class _BoundedCapture:
-    def __init__(self, stream: Any):
+    def __init__(self, stream: Any, overflow_event: threading.Event | None = None):
         self._stream = stream
         self._buffer = bytearray()
         self._size = 0
         self._overflow = False
-        self._overflow_event = threading.Event()
+        self._overflow_event = overflow_event or threading.Event()
         self._close_lock = threading.Lock()
         self._closed = False
 
@@ -118,6 +118,7 @@ class _BoundedCapture:
         except (OSError, ValueError):
             self._overflow = True
             self._overflow_event.set()
+            self.close()
 
     def close(self) -> None:
         with self._close_lock:
@@ -149,6 +150,10 @@ def _kill_process_group(group_id: int, signum: int) -> None:
     os.killpg(group_id, signum)
 
 
+def _empty_process_group(_group_id: int) -> tuple[()]:
+    return ()
+
+
 class OneShotCommandRunner:
     def __init__(
         self,
@@ -159,6 +164,7 @@ class OneShotCommandRunner:
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         kill_process_group: Callable[[int, int], None] = _kill_process_group,
+        process_group_members: Callable[[int], Any] = _empty_process_group,
     ) -> None:
         if manifest_path is not None and manifest is not None:
             raise ValueError("duplicate_helper_manifest")
@@ -167,6 +173,7 @@ class OneShotCommandRunner:
         self._monotonic = monotonic
         self._sleep = sleep
         self._kill_process_group = kill_process_group
+        self._process_group_members = process_group_members
         self._busy: set[str] = set()
         self._busy_lock = threading.Lock()
 
@@ -300,6 +307,20 @@ class OneShotCommandRunner:
                 reader.join(timeout=COMMAND_CLEANUP_TIMEOUT_SECONDS)
         return not any(reader.is_alive() for reader in readers)
 
+    def _wait_for_empty_group(self, group_id: int) -> bool:
+        deadline = self._monotonic() + COMMAND_CLEANUP_TIMEOUT_SECONDS
+        while True:
+            try:
+                members = self._process_group_members(group_id)
+                if members is not None and not tuple(members):
+                    return True
+            except Exception:
+                return False
+            remaining = deadline - self._monotonic()
+            if remaining <= 0.0:
+                return False
+            self._sleep(min(0.01, remaining))
+
     def _terminate_process_group(
         self,
         process: Any,
@@ -320,6 +341,8 @@ class OneShotCommandRunner:
         except (OSError, subprocess.TimeoutExpired, ValueError):
             cleanup_ok = False
         cleanup_ok = self._close_captures(captures, readers) and cleanup_ok
+        if type(pid) is int and pid > 0:
+            cleanup_ok = self._wait_for_empty_group(pid) and cleanup_ok
         return cleanup_ok
 
     def run(
@@ -330,7 +353,7 @@ class OneShotCommandRunner:
         modifiers: int,
         hold_ms: int = 40,
         *,
-        revalidator: Callable[[], CommandContext],
+        lease_factory: Callable[[], Any],
     ) -> CommandExecution:
         started_at = self._monotonic()
         identity = getattr(context, "identity", None)
@@ -364,37 +387,38 @@ class OneShotCommandRunner:
                 return self._result("rejected", code if isinstance(code, str) else "invalid_helper_manifest", started_at, self._monotonic)
 
             try:
-                refreshed_context = revalidator()
+                with lease_factory() as refreshed_context:
+                    if not self._same_authority(context, refreshed_context):
+                        return self._result("rejected", "command_context_changed", started_at, self._monotonic)
+                    try:
+                        process = self._popen(
+                            [
+                                str(refreshed_context.umu_run),
+                                str(verified.path),
+                                "--protocol",
+                                "1",
+                                "--key",
+                                str(vk),
+                                "--modifiers",
+                                str(modifiers),
+                                "--hold-ms",
+                                str(hold_ms),
+                            ],
+                            env=refreshed_context.environment,
+                            shell=False,
+                            start_new_session=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            bufsize=0,
+                        )
+                    except (OSError, TypeError, ValueError):
+                        return self._result("failed", "helper_spawn_failed", started_at, self._monotonic)
             except Exception:
                 return self._result("rejected", "command_context_revalidation_failed", started_at, self._monotonic)
-            if not self._same_authority(context, refreshed_context):
-                return self._result("rejected", "command_context_changed", started_at, self._monotonic)
-            try:
-                process = self._popen(
-                    [
-                        str(refreshed_context.umu_run),
-                        str(verified.path),
-                        "--protocol",
-                        "1",
-                        "--key",
-                        str(vk),
-                        "--modifiers",
-                        str(modifiers),
-                        "--hold-ms",
-                        str(hold_ms),
-                    ],
-                    env=refreshed_context.environment,
-                    shell=False,
-                    start_new_session=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    bufsize=0,
-                )
-            except (OSError, TypeError, ValueError):
-                return self._result("failed", "helper_spawn_failed", started_at, self._monotonic)
 
-            stdout_capture = _BoundedCapture(getattr(process, "stdout", None))
-            stderr_capture = _BoundedCapture(getattr(process, "stderr", None))
+            overflow_event = threading.Event()
+            stdout_capture = _BoundedCapture(getattr(process, "stdout", None), overflow_event)
+            stderr_capture = _BoundedCapture(getattr(process, "stderr", None), overflow_event)
             captures = (stdout_capture, stderr_capture)
             readers = [
                 threading.Thread(target=stdout_capture.read, daemon=True),

@@ -7,7 +7,9 @@ import inspect
 import ntpath
 import os
 import posixpath
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -96,19 +98,23 @@ class RelayWatcher:
         self._sleep = sleep
         self._diagnostics = diagnostics or NullDiagnosticRecorder()
         self._states: dict[str, _RelayState] = {}
+        self._state_lock = threading.RLock()
         self._stopped = False
 
     @property
     def config(self) -> Any:
-        return self._config
+        with self._state_lock:
+            return self._config
 
     def _games(self) -> Mapping[str, Any]:
-        if isinstance(self._config, Mapping) and isinstance(self._config.get("games"), Mapping):
-            return self._config["games"]
-        return {}
+        with self._state_lock:
+            if isinstance(self._config, Mapping) and isinstance(self._config.get("games"), Mapping):
+                return self._config["games"]
+            return {}
 
     def _state_for(self, identity: str) -> _RelayState:
-        return self._states.setdefault(identity, _RelayState())
+        with self._state_lock:
+            return self._states.setdefault(identity, _RelayState())
 
     @staticmethod
     def _diagnostic(code: str | None) -> dict[str, str] | None:
@@ -124,12 +130,13 @@ class RelayWatcher:
         return parent if basename.casefold() == "pfx" and parent else normalized
 
     def status(self, identity: str) -> dict[str, Any]:
-        state = self._states.get(identity, _RelayState())
-        return {
-            "identity": identity,
-            "state": state.state,
-            "diagnostic": self._diagnostic(state.diagnostic),
-        }
+        with self._state_lock:
+            state = self._states.get(identity, _RelayState())
+            return {
+                "identity": identity,
+                "state": state.state,
+                "diagnostic": self._diagnostic(state.diagnostic),
+            }
 
     async def _maybe_await(self, value: Any) -> Any:
         if inspect.isawaitable(value):
@@ -181,13 +188,14 @@ class RelayWatcher:
         state.trainer_sha256 = None
 
     async def _stop_owned(self, state: _RelayState, identity: str | None = None) -> None:
-        if state.handle is None:
+        with self._state_lock:
+            if state.handle is None:
+                self._reset_launch_state(state)
+                return
+            handle = state.handle
+            session = state.session
+            process_group_id = self._process_group_id(handle)
             self._reset_launch_state(state)
-            return
-        handle = state.handle
-        session = state.session
-        process_group_id = self._process_group_id(handle)
-        self._reset_launch_state(state)
         stop_result = None
         try:
             stop_result = await self._maybe_await(self._runner.stop(handle))
@@ -239,8 +247,9 @@ class RelayWatcher:
         return value if isinstance(value, Mapping) else None
 
     def _set_state(self, state: _RelayState, value: RelayStatus, diagnostic: str | None = None) -> None:
-        state.state = value
-        state.diagnostic = diagnostic
+        with self._state_lock:
+            state.state = value
+            state.diagnostic = diagnostic
 
     def _record_discovery(self, identity: str, discovery: DiscoveryResult) -> None:
         counts = discovery.rejection_counts
@@ -447,7 +456,7 @@ class RelayWatcher:
         observed_normalized = normalize_wine_path(observed).rstrip("/")
         return observed_normalized in {expected_normalized, expected_normalized + "/pfx"}
 
-    def command_context(self, identity: str) -> CommandContext:
+    def _command_context_unlocked(self, identity: str) -> CommandContext:
         """Return a fresh, immutable command snapshot only for a live relay session."""
 
         if not is_launch_identity(identity):
@@ -540,7 +549,20 @@ class RelayWatcher:
             expected_reentry_bus=state.expected_reentry_bus,
         )
 
-    async def _poll_identity(self, identity: str, *, force_retry: bool = False) -> None:
+    def command_context(self, identity: str) -> CommandContext:
+        with self._state_lock:
+            return self._command_context_unlocked(identity)
+
+    @contextmanager
+    def command_context_lease(self, identity: str):
+        with self._state_lock:
+            yield self.command_context(identity)
+
+    async def _acquire_state_lock(self) -> None:
+        while not self._state_lock.acquire(blocking=False):
+            await asyncio.sleep(0)
+
+    async def _poll_identity_unlocked(self, identity: str, *, force_retry: bool = False) -> None:
         state = self._state_for(identity)
         game = self._games().get(identity)
         if not is_launch_identity(identity):
@@ -856,13 +878,25 @@ class RelayWatcher:
             state.rejected_preflight_session = None
         await self._spawn(state, identity, validated_game, discovery.session, discovery.environment or {}, prefix)
 
+    async def _poll_identity(self, identity: str, *, force_retry: bool = False) -> None:
+        await self._acquire_state_lock()
+        try:
+            await self._poll_identity_unlocked(identity, force_retry=force_retry)
+        finally:
+            self._state_lock.release()
+
     async def poll_once(self) -> None:
-        identities = set(self._states) | set(self._games())
+        await self._acquire_state_lock()
+        try:
+            identities = set(self._states) | set(self._games())
+        finally:
+            self._state_lock.release()
         for identity in sorted(identities):
             await self._poll_identity(identity)
 
     async def update_config(self, config: Mapping[str, Any] | Any) -> None:
-        self._config = config
+        with self._state_lock:
+            self._config = config
         await self.poll_once()
 
     async def retry(self, identity: str) -> dict[str, Any]:
@@ -872,12 +906,18 @@ class RelayWatcher:
         return self.status(identity)
 
     async def run(self) -> None:
-        self._stopped = False
-        while not self._stopped:
+        with self._state_lock:
+            self._stopped = False
+        while True:
+            with self._state_lock:
+                if self._stopped:
+                    return
             await self.poll_once()
             await self._sleep(1.0)
 
     async def stop(self) -> None:
-        self._stopped = True
-        for identity, state in self._states.items():
+        with self._state_lock:
+            self._stopped = True
+            states = tuple(self._states.items())
+        for identity, state in states:
             await self._stop_owned(state, identity)

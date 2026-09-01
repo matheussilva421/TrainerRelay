@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,7 +10,7 @@ from trainer_relay.container_reentry import ContainerReentryError
 from trainer_relay.games_map import GamesMapDiagnostic, GamesMapEntry, GamesMapResult
 from trainer_relay.process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity
 from trainer_relay.runner import StopResult
-from trainer_relay.types import CommandContext
+from trainer_relay.types import CommandContext, RelayStatus
 from trainer_relay.umu import UmuResolution
 from trainer_relay.watcher import RelayWatcher
 
@@ -889,6 +890,93 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.session, self.session)
         self.assertEqual(context.environment["WINEPREFIX"], self.runner.spawn_calls[1][2]["WINEPREFIX"])
+
+    async def test_watcher_context_lease_blocks_mutation_until_popen_returns(self):
+        await self._start_running_session()
+        state = self.watcher._states[self.identity]
+        lease_ready = threading.Event()
+        release_lease = threading.Event()
+
+        def hold_lease():
+            with self.watcher.command_context_lease(self.identity) as context:
+                self.assertEqual(context.session, self.session)
+                lease_ready.set()
+                release_lease.wait(1.0)
+
+        lease_thread = threading.Thread(target=hold_lease)
+        lease_thread.start()
+        self.assertTrue(lease_ready.wait(1.0))
+
+        mutation_started = threading.Event()
+        mutation_finished = threading.Event()
+
+        def mutate_state():
+            mutation_started.set()
+            self.watcher._set_state(state, RelayStatus.FAILED, "during_popen")
+            mutation_finished.set()
+
+        mutation_thread = threading.Thread(target=mutate_state)
+        mutation_thread.start()
+        self.assertTrue(mutation_started.wait(1.0))
+        await asyncio.sleep(0.02)
+        self.assertFalse(mutation_finished.is_set())
+
+        release_lease.set()
+        await asyncio.to_thread(lease_thread.join, 1.0)
+        await asyncio.to_thread(mutation_thread.join, 1.0)
+        self.assertTrue(mutation_finished.is_set())
+        self.assertEqual(state.state, RelayStatus.FAILED)
+
+    async def test_watcher_mutation_started_during_popen_waits_for_context_lease(self):
+        await self._start_running_session()
+        state = self.watcher._states[self.identity]
+        popen_started = threading.Event()
+        popen_release = threading.Event()
+        mutation_finished = threading.Event()
+
+        def popen():
+            with self.watcher.command_context_lease(self.identity):
+                popen_started.set()
+
+                def mutate_state():
+                    self.watcher._set_state(state, RelayStatus.FAILED, "during_popen")
+                    mutation_finished.set()
+
+                mutation_thread = threading.Thread(target=mutate_state)
+                mutation_thread.start()
+                self.assertFalse(mutation_finished.wait(0.02))
+                popen_release.wait(1.0)
+            mutation_thread.join(1.0)
+
+        popen_thread = threading.Thread(target=popen)
+        popen_thread.start()
+        self.assertTrue(popen_started.wait(1.0))
+        popen_release.set()
+        await asyncio.to_thread(popen_thread.join, 1.0)
+        self.assertTrue(mutation_finished.is_set())
+        self.assertEqual(state.state, RelayStatus.FAILED)
+
+    async def test_poll_once_waits_for_context_lease_without_blocking_event_loop(self):
+        await self._start_running_session()
+        lease_ready = threading.Event()
+        release_lease = threading.Event()
+
+        def hold_lease():
+            with self.watcher.command_context_lease(self.identity):
+                lease_ready.set()
+                release_lease.wait(1.0)
+
+        lease_thread = threading.Thread(target=hold_lease)
+        lease_thread.start()
+        self.assertTrue(lease_ready.wait(1.0))
+
+        poll_task = asyncio.create_task(self.watcher.poll_once())
+        await asyncio.sleep(0.02)
+        self.assertFalse(poll_task.done())
+
+        release_lease.set()
+        await asyncio.to_thread(lease_thread.join, 1.0)
+        await asyncio.wait_for(poll_task, 1.0)
 
     async def test_command_context_rejects_ambiguous_discovery_changed_hash_prefix_and_bus(self):
         await self._start_running_session()
