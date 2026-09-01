@@ -1579,3 +1579,39 @@ untested.
   key dispatch, with state shown as `requested`/`unknown`, never falsely as an
   authoritative enabled/disabled toggle. Unknown hashes fail closed.
 - No implementation may start until the user approves this design boundary.
+
+### Hotkey delivery alternatives research
+
+- The user's concern about a third Windows executable was researched against
+  Microsoft Win32, Wine, UMU, Proton, Linux input, X11/XTest, Wayland,
+  Gamescope, libei and Decky primary sources. The full matrix is recorded in
+  `docs/research/2026-09-01-trainer-relay-hotkey-delivery-alternatives.md`.
+- The relevant local FLiNG builds poll `GetAsyncKeyState`. This makes
+  `PostMessage`/`SendMessage` an invalid generic shortcut even when a target
+  window can be found: window-message delivery does not establish the async
+  keyboard state the trainer reads.
+- For closed FLiNG trainers, the preferred generic transport is a tiny native
+  Windows helper launched on demand through the already verified UMU
+  `runinprefix` context. It calls `SendInput`, releases every modifier, reports
+  the accepted event count and exits immediately. It is a transient third
+  process per command, not a resident third executable.
+- The UI contract remains fail-closed and honest: a successful helper call may
+  report `requested`, never `enabled`. Real state still requires a cooperative
+  trainer protocol or a separately approved, build-specific state observer.
+- For trainers owned by this project, the preferred final architecture is to
+  embed a versioned command/state protocol in the existing trainer process.
+  That uses only the game and trainer Windows processes and can return an
+  acknowledged, trainer-verified state.
+- XTest and `uinput` remain experimental fallbacks. XTest depends on the exact
+  Gamescope/Xwayland display and focus topology. `uinput` is host-global and
+  would likely require elevated device access; the current plugin deliberately
+  keeps `plugin.json` at `flags: []`, so root must not be added merely for this
+  feature.
+- UI Automation, private Gamescope input-method APIs, DLL injection and a
+  generic direct-memory patch engine are not recommended defaults. A patch
+  engine is a separate per-game/build project with materially higher safety and
+  maintenance costs.
+- No production implementation was made in this block. The next decision is
+  whether to approve the staged design: ephemeral `SendInput` for exact FLiNG
+  adapters, cooperative IPC for owned trainers, and manual catalog/hotkey
+  configuration as the user fallback.
