@@ -1686,3 +1686,36 @@ untested.
   build gate.
 - Next: Task 2 adds an immutable, revalidated command context and one-shot
   process-group-owned runner. No helper binary or user-visible RPC exists yet.
+
+### Cheat controls Task 2 complete — atomic command authority and runner
+
+- Added immutable command metadata in `trainer_relay/types.py`, helper manifest
+  validation in `trainer_relay/helper_manifest.py`, and the bounded synchronous
+  one-shot core in `trainer_relay/command_runner.py`.
+- `RelayWatcher.command_context_lease()` now holds one watcher-owned state lock
+  from final PID/starttime, trainer hash/architecture, prefix and bus
+  revalidation through `Popen`. Polling and other async lifecycle paths wait
+  for this lock with event-loop yields rather than blocking Decky.
+- The runner requires structured argv, `shell=False`, a fresh process group,
+  exact helper hash/architecture, UMU reentry marker, bounded protocol JSON and
+  equal accepted/expected counts. A command snapshot cannot be reused after
+  session or trainer authority changes.
+- Timeout and oversized output terminate only the helper group. Cleanup now
+  requires both the main process and the real `/proc` process group to be
+  empty; inability to inspect `/proc` fails closed. Stdout and stderr share one
+  thread-safe 8,192-byte total budget.
+- An independent Luna review required three fix rounds: TOCTOU/retry/cleanup,
+  watcher lease/descendants/stderr overflow, then non-blocking async locks,
+  fail-closed default group probing and aggregate capture budget. Final
+  re-review found no Critical/Important breakage.
+- Final Task 2 gates: 82/82 focused tests and 202/202 backend tests, zero
+  failures. Commits: `d1e5539`, `5388241`, `93d2235`, `8ce2f46`.
+- Ruling carried to Task 4: the runner intentionally remains synchronous;
+  every RPC/service call must execute context resolution and runner work via
+  `asyncio.to_thread`.
+- Deferred final-review minors: use the concrete session type instead of
+  `Any`, remove the unused injected sleep if no longer needed, and explicitly
+  reject manifest paths containing `..`.
+- Next: Task 3 implements and locally builds the native Win32 `SendInput`
+  helper for x86/x64, plus deterministic manifest and ZIP packaging. No
+  user-visible command RPC exists yet.
