@@ -175,7 +175,7 @@ def _decode_adapter(value: Any) -> AdapterDescriptor:
     adapter_id = _validate_identifier(value["id"], "invalid_adapter_id")
     sha256 = validate_trainer_sha256(value["sha256"])
     pe_architecture = value["peArchitecture"]
-    if pe_architecture not in _ARCHITECTURES:
+    if not isinstance(pe_architecture, str) or pe_architecture not in _ARCHITECTURES:
         raise ValueError("invalid_pe_architecture")
     trainer_label = validate_label(value["trainerLabel"])
 

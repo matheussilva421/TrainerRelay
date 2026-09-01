@@ -99,6 +99,16 @@ class CheatCatalogTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         CheatCatalog.load(path)
 
+    def test_non_text_pe_architecture_is_a_bounded_catalog_error(self):
+        for invalid_architecture in ([], {}):
+            with self.subTest(invalid_architecture=invalid_architecture):
+                invalid = adapter("test", "a" * 64, [cheat()], peArchitecture=invalid_architecture)
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "catalog.json"
+                    path.write_text(json.dumps({"schemaVersion": 1, "adapters": [invalid]}), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "^invalid_cheat_catalog$"):
+                        CheatCatalog.load(path)
+
     def test_descriptors_are_immutable_dataclasses(self):
         catalog = load_packaged_catalog()
         adapter_record = catalog.resolve(BS2_SHA256, "gog:1482265668")
