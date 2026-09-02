@@ -1890,3 +1890,29 @@ untested.
 - No production code was changed and no implementation was authorized. Research
   validation: `git diff --check` passed. The attachment directory remains
   user-owned and untracked.
+
+### Steam Input radial-menu design approved — 2026-09-02
+
+- The user approved the assisted safe path and fixed the interaction contract:
+  built-in Steam Deck **left trackpad**, touch for sector selection, and a
+  **physical trackpad click** as the only command activator. Touch release must
+  never send a command.
+- Trainers with more controls use deterministic multiple pages. Each page has
+  six cheat sectors plus stable previous/next navigation sectors; navigation
+  emits no keyboard command.
+- The written specification is
+  `docs/superpowers/specs/2026-09-02-trainer-relay-steam-input-radial-menu-design.md`.
+  It requires cloning the selected layout into a new personal layout, proving
+  that the source remains selected and unchanged, and then opening Steam's
+  normal configurator for explicit review/application.
+- The private Steam Input adapter is fail-closed and runtime-fingerprint gated.
+  Unknown Steam client shapes fall back to opening the normal configurator; no
+  direct active-VDF edit, silent selection, or automatic reapplication is
+  allowed.
+- Delivery is staged because the exact export/edit lifecycle is a physical Deck
+  boundary: pure planner/registry/read-only probe first, sanitized runtime
+  fixture capture second, isolated clone adapter third, then the physical gate.
+  Static/unit success alone is not functional Steam Input validation.
+- No production implementation was made in this block. Next gate: user review
+  of the committed written spec. Only after approval should the
+  `superpowers:writing-plans` skill create the TDD implementation plan.
