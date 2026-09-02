@@ -1916,3 +1916,26 @@ untested.
 - No production implementation was made in this block. Next gate: user review
   of the committed written spec. Only after approval should the
   `superpowers:writing-plans` skill create the TDD implementation plan.
+
+### Steam Input radial-menu implementation plan prepared — 2026-09-02
+
+- The user approved the written specification. The TDD execution plan is
+  `docs/superpowers/plans/2026-09-02-trainer-relay-steam-input-radial-menu-plan.md`.
+- The plan has eight reviewer-sized tasks: pure planner, backend registry,
+  strict read-only Steam adapter, preview/probe build, physical capture gate,
+  fingerprinted Neptune clone profile, confirmed generation UI, and final
+  physical candidate.
+- Task 5 is a mandatory human/device checkpoint. Tasks 6-8 are forbidden unless
+  evidence proves a distinct personal-layout target, unchanged selected source,
+  writable targeting without `SetSelectedConfigForApp`, distinct re-read, and
+  safe edit cleanup. Failure preserves the read-only configurator fallback.
+- Probe version is fixed at `0.1.0-experimental.21.probe.1`; the generation
+  candidate is `0.1.0-experimental.21`. Neither authorizes a tag or GitHub
+  Release.
+- Current official Decky types were rechecked while planning. They expose
+  `GetConfigForAppAndController`, export/edit/save/select methods, and
+  `ShowControllerConfigurator`, but their editing payloads remain private and
+  the config-info registration retains an explicit breakage warning.
+- No production code was changed. Next gate: choose subagent-driven or inline
+  execution. The recommended path is subagent-driven with review after each
+  task and a hard stop after the probe build for Steam Deck evidence.
