@@ -435,7 +435,21 @@ class DiagnosticRecorderTests(unittest.TestCase):
                 "observed_prefix": marker_environment,
                 "wineprefix": marker_environment,
                 "protonpath": marker_path,
+                "expected_executable": marker_path,
+                "observed_executable": marker_path,
             },
+        )
+        recorder.record(
+            "games_map",
+            "games_map_loaded",
+            "accepted",
+            details={"entry_count": 1, "map_path": marker_path, "expected_executable": marker_path},
+        )
+        recorder.record(
+            "umu",
+            "umu_resolved",
+            "accepted",
+            details={"source": "resolver", "umu_path": marker_path},
         )
         recorder.record(
             "trainer",
@@ -470,6 +484,16 @@ class DiagnosticRecorderTests(unittest.TestCase):
                 "observed_descendant_names": marker_path,
             },
         )
+        recorder.record(
+            "config",
+            "config_persisted",
+            "info",
+            details={
+                "game_count": 1,
+                "trainer_path": marker_path,
+                "prefix_override": marker_environment,
+            },
+        )
 
         export = recorder.export_text(Path(self.directory.name) / "Downloads", "test")
         exported = Path(export["path"]).read_text(encoding="utf-8")
@@ -477,6 +501,7 @@ class DiagnosticRecorderTests(unittest.TestCase):
         self.assertNotIn(marker_path, exported)
         self.assertNotIn(marker_environment, exported)
         self.assertNotIn(marker_output, exported)
+        self.assertIn("prefix_override=redacted", exported)
 
 
 if __name__ == "__main__":

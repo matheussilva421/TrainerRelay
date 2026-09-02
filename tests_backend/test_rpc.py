@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from trainer_relay.rpc import RelayRpc, RelayRpcError
 
@@ -427,6 +428,23 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
         with self.assertRaisesRegex(RelayRpcError, "cheat_service_failed"):
             await rpc.get_cheat_controls({"identity": "gog:game"})
+
+    async def test_add_manual_maps_future_validator_codes_to_bounded_manual_error(self):
+        class Unsafe:
+            async def add_manual_cheat_control(self, _request):
+                return {"identity": "gog:game", "trainerSha256": "a" * 64, "cheat": {}}
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with patch("trainer_relay.rpc.validate_label", side_effect=ValueError("future_private_validator_code")):
+            with self.assertRaisesRegex(RelayRpcError, "invalid_manual_cheat"):
+                await rpc.add_manual_cheat_control(
+                    {
+                        "identity": "gog:game",
+                        "trainerSha256": "a" * 64,
+                        "label": "Health",
+                        "hotkey": {"modifiers": [], "key": "F1"},
+                    }
+                )
 
 
 if __name__ == "__main__":

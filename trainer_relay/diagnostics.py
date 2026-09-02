@@ -34,6 +34,7 @@ _EXPORT_REDACTED_DETAIL_KEYS = frozenset(
         "protonpath",
         "umu_path",
         "steam_compat_data_path",
+        "prefix_override",
         "stdout_tail",
         "stderr_tail",
         "runtime_flags",

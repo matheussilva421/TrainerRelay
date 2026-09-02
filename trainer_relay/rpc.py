@@ -472,7 +472,8 @@ class RelayRpc:
                 "hotkey": normalize_hotkey(request["hotkey"]),
             }
         except ValueError as error:
-            raise RelayRpcError(str(error) if _SAFE_CODE.fullmatch(str(error)) else "invalid_manual_cheat") from None
+            code = str(error)
+            raise RelayRpcError(code if code in PUBLIC_CHEAT_DIAGNOSTIC_CODES else "invalid_manual_cheat") from None
         return self._safe_manual_mutation(
             identity,
             await self._cheat_call("add_manual_cheat_control", normalized),

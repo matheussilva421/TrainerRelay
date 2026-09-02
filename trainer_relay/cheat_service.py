@@ -98,6 +98,7 @@ _PUBLIC_CODES = frozenset(
         "invalid_hotkey",
         "cooperative_unavailable",
         "cooperative_ack_stale",
+        "cooperative_ack_non_authoritative",
         "cooperative_command_rejected",
         "command_runner_failed",
         "command_busy",
@@ -133,6 +134,13 @@ class _ResolvedControl:
     cheats: tuple[Mapping[str, Any], ...]
     by_id: Mapping[str, Mapping[str, Any]]
     cooperative: CooperativeDescriptor | None = None
+
+
+@dataclass(frozen=True)
+class _CooperativeDispatch:
+    attempted: bool
+    ack: CooperativeAck | None
+    diagnostic: str | None = None
 
 
 def _safe_identity(value: Any) -> str:
@@ -208,6 +216,7 @@ class CheatControlService:
         self._revision_state: dict[str, tuple[str, tuple[int, int], int]] = {}
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
         self._dispatch_guard = asyncio.Lock()
+        self._cooperative_workers: dict[asyncio.Task[Any], tuple[CooperativeDescriptor, str]] = {}
         self._close_lock = asyncio.Lock()
         self._closing = False
 
@@ -641,8 +650,39 @@ class CheatControlService:
                     await asyncio.to_thread(cancel_all)
                 except Exception:
                     pass
+            await self._cancel_and_drain_cooperative_workers()
             if dispatches:
                 await asyncio.gather(*dispatches, return_exceptions=True)
+            await self._cancel_and_drain_cooperative_workers()
+
+    def _forget_cooperative_worker(self, worker: asyncio.Task[Any]) -> None:
+        self._cooperative_workers.pop(worker, None)
+
+    async def _cancel_and_drain_cooperative_workers(self) -> None:
+        workers = tuple(self._cooperative_workers.items())
+        provider = self._cooperative
+        cancel = getattr(provider, "cancel_command", None) if provider is not None else None
+        if callable(cancel):
+            async def request_cancel(descriptor: CooperativeDescriptor, command_id: str) -> None:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(asyncio.to_thread(cancel, descriptor, command_id)),
+                        timeout=1.0,
+                    )
+                except Exception:
+                    return
+
+            await asyncio.gather(
+                *(request_cancel(descriptor, command_id) for worker, (descriptor, command_id) in workers if not worker.done()),
+                return_exceptions=True,
+            )
+        for worker, _metadata in workers:
+            if worker.done():
+                continue
+            try:
+                await asyncio.wait_for(asyncio.shield(worker), timeout=2.0)
+            except Exception:
+                continue
 
     def _cooperative_send_sync(
         self,
@@ -653,11 +693,11 @@ class CheatControlService:
         cheat: Mapping[str, Any],
         operation: str,
         previous_revision: int | None,
-    ) -> CooperativeAck | None:
+    ) -> _CooperativeDispatch:
         provider = self._cooperative
         sender = getattr(provider, "send_command", None) if provider is not None else None
         if sender is None:
-            return None
+            return _CooperativeDispatch(False, None)
         lease_factory = getattr(self._watcher, "command_context_lease", None)
         if not callable(lease_factory):
             raise CheatServiceError("command_context_unavailable")
@@ -670,20 +710,27 @@ class CheatControlService:
                 or self._session_key(descriptor.session) != self._session_key(refreshed_context.session)
             ):
                 raise CheatServiceError("command_context_changed")
-            raw = sender(descriptor, command_id, cheat["id"], operation)
+            try:
+                raw = sender(descriptor, command_id, cheat["id"], operation)
+            except Exception:
+                return _CooperativeDispatch(True, None, "cooperative_ack_non_authoritative")
             if inspect.isawaitable(raw):
                 if inspect.iscoroutine(raw):
                     raw.close()
-                raise ValueError("cooperative_transport_invalid")
+                return _CooperativeDispatch(True, None, "cooperative_ack_non_authoritative")
             if isinstance(raw, CooperativeAck):
                 raw = raw.to_wire()
-            return decode_cooperative_ack(
-                raw,
-                descriptor=descriptor,
-                expected_command_id=command_id,
-                now=self._clock(),
-                previous_revision=previous_revision,
-            )
+            try:
+                ack = decode_cooperative_ack(
+                    raw,
+                    descriptor=descriptor,
+                    expected_command_id=command_id,
+                    now=self._clock(),
+                    previous_revision=previous_revision,
+                )
+            except Exception:
+                return _CooperativeDispatch(True, None, "cooperative_ack_non_authoritative")
+            return _CooperativeDispatch(True, ack, "cooperative_ack_stale" if not ack.fresh else None)
 
     async def _cooperative_send(
         self,
@@ -694,17 +741,25 @@ class CheatControlService:
         cheat: Mapping[str, Any],
         operation: str,
         previous_revision: int | None,
-    ) -> CooperativeAck | None:
-        return await asyncio.to_thread(
-            self._cooperative_send_sync,
-            identity,
-            context,
-            descriptor,
-            command_id,
-            cheat,
-            operation,
-            previous_revision,
+    ) -> _CooperativeDispatch:
+        worker = asyncio.create_task(
+            asyncio.to_thread(
+                self._cooperative_send_sync,
+                identity,
+                context,
+                descriptor,
+                command_id,
+                cheat,
+                operation,
+                previous_revision,
+            )
         )
+        self._cooperative_workers[worker] = (descriptor, command_id)
+        worker.add_done_callback(self._forget_cooperative_worker)
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            raise
 
     async def send_cheat_command(self, identity_or_request: Any, cheat_id: Any = None) -> dict[str, Any]:
         if isinstance(identity_or_request, Mapping):
@@ -742,7 +797,7 @@ class CheatControlService:
                     if isinstance(operations, list) and "toggle" not in operations:
                         operation = str(operations[0]) if operations else "toggle"
                     try:
-                        ack = await self._cooperative_send(
+                        dispatch_result = await self._cooperative_send(
                             identity,
                             context,
                             resolved.cooperative,
@@ -755,9 +810,20 @@ class CheatControlService:
                         if error.code in {"command_context_changed", "command_context_unavailable"}:
                             await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": error.code})
                             return self._command_result(command_id, identity, cheat_id, "rejected", error.code)
-                        ack = None
+                        dispatch_result = _CooperativeDispatch(False, None, None)
                     except Exception:
-                        ack = None
+                        dispatch_result = _CooperativeDispatch(True, None, "cooperative_ack_non_authoritative")
+                    if dispatch_result.attempted and dispatch_result.ack is None:
+                        code = dispatch_result.diagnostic or "cooperative_ack_non_authoritative"
+                        await self._record(
+                            "cooperative_stale" if code == "cooperative_ack_stale" else "command_rejected",
+                            "rejected",
+                            identity=identity,
+                            context=context,
+                            details={"command_id": command_id, "cheat_id": cheat_id, "reason": code, "revision": self._previous_revision(context) or 0},
+                        )
+                        return self._command_result(command_id, identity, cheat_id, "requested", code)
+                    ack = dispatch_result.ack
                     if ack is not None:
                         self._remember_revision(context, ack.revision)
                         await self._record(
@@ -776,6 +842,8 @@ class CheatControlService:
                                 None if ack.accepted else "cooperative_command_rejected",
                                 ack.state if ack.accepted else "unknown",
                             )
+                        if dispatch_result.attempted:
+                            return self._command_result(command_id, identity, cheat_id, "requested", "cooperative_ack_stale")
                     try:
                         context = await self._context(identity)
                         resolved = await self._resolve(context, allow_cooperative=False)

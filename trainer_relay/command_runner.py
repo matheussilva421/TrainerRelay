@@ -414,7 +414,11 @@ class OneShotCommandRunner:
         cleanup_ok = type(pid) is int and pid > 0
         if cleanup_ok:
             try:
-                self._kill_process_group(pid, getattr(signal, "SIGKILL", 9))
+                cleanup_ok = self._returncode(process) is None
+                members = self._process_group_members(pid) if cleanup_ok else None
+                cleanup_ok = cleanup_ok and members is not None and pid in tuple(members)
+                if cleanup_ok:
+                    self._kill_process_group(pid, getattr(signal, "SIGKILL", 9))
             except (OSError, ProcessLookupError, ValueError):
                 cleanup_ok = False
         try:
@@ -424,7 +428,7 @@ class OneShotCommandRunner:
         except (OSError, subprocess.TimeoutExpired, ValueError):
             cleanup_ok = False
         cleanup_ok = self._close_captures(captures, readers) and cleanup_ok
-        if type(pid) is int and pid > 0:
+        if type(pid) is int and pid > 0 and cleanup_ok:
             cleanup_ok = self._wait_for_empty_group(pid) and cleanup_ok
         return cleanup_ok
 

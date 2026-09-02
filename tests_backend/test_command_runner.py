@@ -118,11 +118,16 @@ class OneShotCommandRunnerTests(unittest.TestCase):
             calls.append((argv, kwargs))
             return process
 
+        members = process_group_members or (
+            lambda _pid: (process.pid, *tuple(process.descendants))
+            if process.group_alive
+            else tuple(process.descendants)
+        )
         runner = OneShotCommandRunner(
             self.manifest,
             popen_factory=popen,
             kill_process_group=kill_group or (lambda *_: None),
-            process_group_members=process_group_members or (lambda _pid: ()),
+            process_group_members=members,
         )
         return runner, calls
 
@@ -249,7 +254,9 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         runner, _ = self._runner(
             process,
             kill_group=kill_group,
-            process_group_members=lambda _pid: tuple(process.descendants),
+            process_group_members=lambda _pid: (process.pid, *tuple(process.descendants))
+            if process.group_alive
+            else tuple(process.descendants),
         )
 
         result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
@@ -313,7 +320,9 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         runner, calls = self._runner(
             process,
             kill_group=kill_group,
-            process_group_members=lambda _pid: tuple(process.descendants),
+            process_group_members=lambda _pid: (process.pid, *tuple(process.descendants))
+            if process.group_alive
+            else tuple(process.descendants),
         )
 
         result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
@@ -330,7 +339,11 @@ class OneShotCommandRunnerTests(unittest.TestCase):
 
     def test_timeout_reports_cleanup_failure_when_group_does_not_die(self):
         process = FakeProcess(self._output(), self.marker, block=True)
-        runner, _ = self._runner(process, kill_group=lambda *_: None, process_group_members=lambda _pid: ["descendant"])
+        runner, _ = self._runner(
+            process,
+            kill_group=lambda *_: None,
+            process_group_members=lambda _pid: (process.pid, "descendant"),
+        )
 
         result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
@@ -351,7 +364,9 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         runner, _ = self._runner(
             process,
             kill_group=kill_group,
-            process_group_members=lambda _pid: tuple(process.descendants),
+            process_group_members=lambda _pid: (process.pid, *tuple(process.descendants))
+            if process.group_alive
+            else tuple(process.descendants),
         )
 
         result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
@@ -368,7 +383,7 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         def kill_group(*_):
             raise OSError("private process detail")
 
-        runner, _ = self._runner(process, kill_group=kill_group, process_group_members=lambda _pid: ())
+        runner, _ = self._runner(process, kill_group=kill_group, process_group_members=lambda _pid: (process.pid,))
 
         result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
 
@@ -410,7 +425,9 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         runner, _ = self._runner(
             process,
             kill_group=kill_group,
-            process_group_members=lambda _pid: tuple(process.descendants),
+            process_group_members=lambda _pid: (process.pid, *tuple(process.descendants))
+            if process.group_alive
+            else tuple(process.descendants),
         )
         results = []
         thread = threading.Thread(
@@ -433,6 +450,35 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         self.assertEqual(signals, [(process.pid, getattr(signal, "SIGKILL", 9))])
         self.assertFalse(process.process_kill_called)
         self.assertEqual(process.descendants, set())
+
+    def test_cancel_after_wait_does_not_signal_a_reused_process_group(self):
+        process = FakeProcess(self._output(), self.marker)
+        signals = []
+        runner_holder = {}
+        reused = {"value": False}
+
+        def kill_group(group, signum):
+            signals.append((group, signum))
+
+        def members(_pid):
+            return (9999,) if reused["value"] else (process.pid,)
+
+        original_wait = process.wait
+
+        def wait(timeout=None):
+            result = original_wait(timeout)
+            reused["value"] = True
+            runner_holder["runner"].cancel("gog:game")
+            return result
+
+        process.wait = wait
+        runner, _ = self._runner(process, kill_group=kill_group, process_group_members=members)
+        runner_holder["runner"] = runner
+
+        result = runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
+
+        self.assertEqual(result.diagnostic, "command_cancel_cleanup_failed")
+        self.assertEqual(signals, [])
 
     def test_manifest_rejection_happens_before_popen(self):
         process = FakeProcess(self._output(), self.marker)

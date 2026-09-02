@@ -702,8 +702,97 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["outcome"], "requested")
         self.assertEqual(result["state"], "unknown")
-        self.assertIsNone(result["diagnostic"])
-        self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(result["diagnostic"], {"code": "cooperative_ack_stale"})
+        self.assertEqual(len(runner.calls), 0)
+
+    async def test_malformed_cooperative_ack_after_send_never_falls_back_to_helper(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class CooperativeProvider:
+            def descriptor_for(self, _context):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": 1,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+            def send_command(self, _descriptor, _command_id, _cheat_id, _operation):
+                return {"malformed": True}
+
+        runner = Runner()
+        service = CheatControlService(
+            Settings(),
+            Watcher(_cooperative_context()),
+            runner,
+            catalog=Catalog(_adapter()),
+            cooperative=CooperativeProvider(),
+            helper_paths={"x86": "/helper.exe"},
+        )
+
+        result = await service.send_cheat_command(IDENTITY, "health")
+
+        self.assertEqual(result["outcome"], "requested")
+        self.assertEqual(result["state"], "unknown")
+        self.assertEqual(result["diagnostic"], {"code": "cooperative_ack_non_authoritative"})
+        self.assertEqual(runner.calls, [])
+
+    async def test_cancelled_cooperative_coroutine_keeps_worker_owned_until_close_drains_it(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class CooperativeProvider:
+            def __init__(self):
+                self.started = threading.Event()
+                self.released = threading.Event()
+                self.finished = threading.Event()
+                self.cancel_calls = 0
+
+            def descriptor_for(self, _context):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": 1,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+            def send_command(self, _descriptor, _command_id, _cheat_id, _operation):
+                self.started.set()
+                self.released.wait(2)
+                self.finished.set()
+                return {"malformed": True}
+
+            def cancel_command(self, _descriptor, _command_id):
+                self.cancel_calls += 1
+                self.released.set()
+
+        provider = CooperativeProvider()
+        service = CheatControlService(
+            Settings(), Watcher(_cooperative_context()), Runner(), cooperative=provider
+        )
+        dispatch = asyncio.create_task(service.send_cheat_command(IDENTITY, "health"))
+        await asyncio.to_thread(provider.started.wait, 1)
+
+        dispatch.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await dispatch
+
+        self.assertFalse(provider.finished.is_set())
+        await service.close()
+
+        self.assertEqual(provider.cancel_calls, 1)
+        self.assertTrue(provider.finished.is_set())
 
     async def test_cooperative_revision_regression_is_rejected_per_session_binding(self):
         from trainer_relay.cheat_service import CheatControlService
