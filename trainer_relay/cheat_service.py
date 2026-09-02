@@ -201,7 +201,10 @@ def _sync_callable(value: Any) -> bool:
 def _bounded_seconds(value: Any, maximum: float) -> float | None:
     if type(value) not in {int, float}:
         return None
-    result = float(value)
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        return None
     if not math.isfinite(result) or not 0.0 < result <= maximum:
         return None
     return result

@@ -794,6 +794,63 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider.send_calls, 0)
         self.assertEqual(runner.calls, [])
 
+    async def test_overflowing_cooperative_deadlines_are_rejected_before_send(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        for overflowing_field in ("deadline_seconds", "cancel_deadline_seconds"):
+            with self.subTest(field=overflowing_field):
+                class CooperativeProvider:
+                    cooperative_command_contract = {
+                        "deadline_seconds": 0.1,
+                        "cancel_deadline_seconds": 0.1,
+                        overflowing_field: 10**1000,
+                    }
+
+                    def __init__(self):
+                        self.send_calls = 0
+
+                    def descriptor_for(self, _context):
+                        return {
+                            "protocol": "TrainerRelay Cooperative Control v1",
+                            "schemaVersion": 1,
+                            "identity": IDENTITY,
+                            "trainerSha256": HASH,
+                            "session": {"pid": 10, "startTime": 20},
+                            "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                            "capabilityToken": "token",
+                            "revision": 1,
+                            "operations": ["toggle"],
+                            "cheats": [
+                                {"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}
+                            ],
+                        }
+
+                    def send_command(self, _descriptor, _command_id, _cheat_id, _operation):
+                        self.send_calls += 1
+                        raise AssertionError("overflowing cooperative provider was invoked")
+
+                    def cancel_command(self, _descriptor, _command_id):
+                        raise AssertionError("overflowing cooperative provider was cancelled")
+
+                provider = CooperativeProvider()
+                runner = Runner()
+                service = CheatControlService(
+                    Settings(),
+                    Watcher(_cooperative_context()),
+                    runner,
+                    catalog=Catalog(_adapter()),
+                    cooperative=provider,
+                    helper_paths={"x86": "/helper.exe"},
+                )
+
+                result = await service.send_cheat_command(IDENTITY, "health")
+
+                self.assertEqual(result["outcome"], "rejected")
+                self.assertEqual(result["state"], "unknown")
+                self.assertEqual(result["diagnostic"], {"code": "cooperative_provider_ineligible"})
+                self.assertEqual(provider.send_calls, 0)
+                self.assertEqual(runner.calls, [])
+
     async def test_unload_fails_closed_when_cooperative_worker_ignores_cancel(self):
         from trainer_relay.cheat_service import CheatControlService, CheatServiceError
 
