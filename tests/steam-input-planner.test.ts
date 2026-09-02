@@ -82,13 +82,74 @@ describe("Steam Input radial planner command expansion", () => {
       ],
     });
 
-    expect(result.map(({ itemId, label, hotkey }) => ({ itemId, label, hotkey }))).toEqual([
+    expect(result.map(({ label, hotkey }) => ({ label, hotkey }))).toEqual([
       {
-        itemId: "duplicate:0",
         label: "Duplicate (Ctrl+Shift+F5)",
         hotkey: { modifiers: ["ctrl", "shift"], key: "F5" },
       },
-      { itemId: "duplicate:1", label: "Duplicate (Ctrl+F5)", hotkey: { modifiers: ["ctrl"], key: "F5" } },
+      { label: "Duplicate (Ctrl+F5)", hotkey: { modifiers: ["ctrl"], key: "F5" } },
+    ]);
+  });
+
+  it("bounds final labels at 80 characters without dropping hotkey alternatives", () => {
+    const maximumLabel = "L".repeat(80);
+    const result = buildSteamInputCommandItems({
+      ...controls,
+      cheats: [
+        { id: "single-max", label: maximumLabel, hotkey: { modifiers: [], key: "F1" }, state: "unknown" },
+        {
+          id: "bounded-alternatives",
+          label: maximumLabel,
+          hotkeys: [
+            { modifiers: [], key: "NUMPAD1" },
+            { modifiers: ["ctrl"], key: "F2" },
+          ],
+          state: "unknown",
+        },
+      ],
+    });
+
+    expect(result.map(({ label }) => label)).toEqual([
+      maximumLabel,
+      `${"L".repeat(70)} (NUMPAD1)`,
+      `${"L".repeat(70)} (Ctrl+F2)`,
+    ]);
+    expect(result.every(({ label }) => label.length <= 80)).toBe(true);
+  });
+
+  it("rejects labels containing Unicode C1 control characters", () => {
+    const result = buildSteamInputCommandItems({
+      ...controls,
+      cheats: [
+        { id: "c1-start", label: "Blocked\u0080label", hotkey: { modifiers: [], key: "F1" }, state: "unknown" },
+        { id: "c1-end", label: "Blocked\u009flabel", hotkey: { modifiers: [], key: "F2" }, state: "unknown" },
+        { id: "safe", label: "Safe label", hotkey: { modifiers: [], key: "F3" }, state: "unknown" },
+      ],
+    });
+
+    expect(result.map(({ cheatId }) => cheatId)).toEqual(["safe"]);
+  });
+
+  it("uses hotkeys alternatives instead of the singular hotkey when both are present", () => {
+    const result = buildSteamInputCommandItems({
+      ...controls,
+      cheats: [
+        {
+          id: "precedence",
+          label: "Precedence",
+          hotkey: { modifiers: [], key: "F1" },
+          hotkeys: [
+            { modifiers: [], key: "F2" },
+            { modifiers: [], key: "F3" },
+          ],
+          state: "unknown",
+        },
+      ],
+    });
+
+    expect(result.map(({ label, hotkey }) => ({ label, hotkey }))).toEqual([
+      { label: "Precedence (F2)", hotkey: { modifiers: [], key: "F2" } },
+      { label: "Precedence (F3)", hotkey: { modifiers: [], key: "F3" } },
     ]);
   });
 
@@ -180,6 +241,7 @@ describe("Steam Input radial planner pages and activation", () => {
       ["invalid_app_id", { appId: Number.MAX_SAFE_INTEGER + 1 }],
       ["identity_mismatch", { identity: "gog:other" as never }],
       ["invalid_trainer_sha256", { trainerSha256: "A".repeat(64) }],
+      ["trainer_sha256_mismatch", { trainerSha256: "c".repeat(64) }],
       ["invalid_catalog_fingerprint", { catalogFingerprint: "b".repeat(63) }],
       ["no_commands", { controls: { ...fourteenCommandControls, cheats: [] } }],
     ];
@@ -191,10 +253,10 @@ describe("Steam Input radial planner pages and activation", () => {
 
   it("does not mutate the command snapshot while paginating", () => {
     const input = validPlanInput();
-    const originalCheats = [...input.controls.cheats];
+    const baseline = JSON.parse(JSON.stringify(input)) as BuildRadialPlanInput;
 
     buildSteamInputRadialPlan(input);
 
-    expect(input.controls.cheats).toEqual(originalCheats);
+    expect(input).toEqual(baseline);
   });
 });

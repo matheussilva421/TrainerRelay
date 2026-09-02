@@ -164,3 +164,107 @@ The commit SHA is supplied in the final handoff. To continue Task 2, consume
 `SteamInputRadialPlanV1` and keep the adapter/runtime work separate from this
 pure domain module; re-run the focused planner test and the frontend TypeScript
 check before integration.
+
+## Fix round 1
+
+Date: 2026-09-02
+Status: DONE
+
+### Review findings addressed
+
+- Final generated labels are now bounded to 80 characters after appending the
+  formatted hotkey. Only the base label is shortened; every valid alternative
+  remains present and its full hotkey suffix remains visible.
+- Label validation now rejects the complete Unicode C1 control range
+  U+0080 through U+009F in addition to C0 controls and DEL.
+- The mutation test now compares the complete input against a deep-cloned
+  baseline, including nested hotkeys and modifier arrays.
+- Focused edge coverage now includes an exactly 80-character source label,
+  bounded final alternative labels, trainer SHA-256 mismatch, and explicit
+  `hotkeys` precedence when both `hotkey` and `hotkeys` are present.
+- The deduplication test no longer asserts a duplicate-specific item-ID
+  renumbering policy that is not required by the brief.
+
+### TDD RED evidence
+
+Command:
+
+```text
+node_modules/.bin/vitest.cmd run tests/steam-input-planner.test.ts
+```
+
+Result before the production fix: 13 tests collected; 11 passed and 2 failed.
+The expected failures showed alternative labels emitted at 90 characters
+instead of the required 80 maximum, and labels containing U+0080/U+009F being
+accepted instead of skipped.
+
+### TDD GREEN evidence
+
+The same focused command after the minimum production fix passed 1 test file,
+13 tests passed, and 0 failed.
+
+### Fix round 1 validation
+
+Focused planner:
+
+```text
+node_modules/.bin/vitest.cmd run tests/steam-input-planner.test.ts
+```
+
+Result: 1 test file passed; 13 tests passed; 0 failed.
+
+Required frontend regressions:
+
+```text
+node_modules/.bin/vitest.cmd run tests/cheat-decoder.test.ts tests/cheat-control-list.test.ts tests/steam-input-planner.test.ts
+```
+
+Result: 3 test files passed; 24 tests passed; 0 failed.
+
+Test TypeScript check:
+
+```text
+node_modules/.bin/tsc.cmd --noEmit -p tsconfig.test.json
+```
+
+Result: exit code 0; no diagnostics.
+
+Production TypeScript check:
+
+```text
+node_modules/.bin/tsc.cmd --noEmit
+```
+
+Result: exit code 0; no diagnostics.
+
+Biome:
+
+```text
+node_modules/.bin/biome.cmd check src tests vitest.config.ts
+```
+
+Result: 78 files checked; no fixes and no errors.
+
+Full frontend suite:
+
+```text
+node_modules/.bin/vitest.cmd run
+```
+
+Result: 31 test files passed; 230 tests passed; 0 failed.
+
+Git whitespace validation:
+
+```text
+git diff --check
+```
+
+Result: exit code 0; no whitespace errors. The pre-existing ignored
+`.codex-remote-attachments/` directory remains untouched and outside the fix
+commit.
+
+### Fix round 1 concerns
+
+No open Task 1 code concern remains from this review round. Physical Steam
+Input generation and Steam Deck validation remain later-task boundaries and
+are not claimed by this pure planner fix.

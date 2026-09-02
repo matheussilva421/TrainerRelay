@@ -43,16 +43,18 @@ const hotkeyKeys = new Set([
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+const maximumLabelLength = 80;
+
 const hasControlCharacter = (value: string): boolean =>
   Array.from(value).some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint <= 31 || codePoint === 127;
+    return codePoint <= 31 || (codePoint >= 0x7f && codePoint <= 0x9f);
   });
 
 const isValidLabel = (value: unknown): value is string =>
   typeof value === "string" &&
   value.length >= 1 &&
-  value.length <= 80 &&
+  value.length <= maximumLabelLength &&
   value.trim() === value &&
   !hasControlCharacter(value);
 
@@ -74,6 +76,12 @@ const normalizeHotkey = (hotkey: SymbolicHotkey): SymbolicHotkey => ({
 const hotkeyChord = (hotkey: SymbolicHotkey): string => JSON.stringify(normalizeHotkey(hotkey));
 
 const compactHotkey = (hotkey: SymbolicHotkey): string => formatHotkey(hotkey).replace(/ \+ /g, "+");
+
+const labelWithHotkey = (label: string, hotkey: SymbolicHotkey): string => {
+  const suffix = ` (${compactHotkey(hotkey)})`;
+  const boundedLabel = label.slice(0, maximumLabelLength - suffix.length).trimEnd();
+  return `${boundedLabel}${suffix}`;
+};
 
 const hotkeysFor = (cheat: CheatDescriptor): unknown[] => {
   if (Array.isArray(cheat.hotkeys)) return cheat.hotkeys;
@@ -103,7 +111,7 @@ export const buildSteamInputCommandItems = (controls: ReadyCheatControls): Steam
       items.push({
         itemId: `${cheat.id}:${index}`,
         cheatId: cheat.id,
-        label: appendHotkey ? `${cheat.label} (${compactHotkey(normalizedHotkey)})` : cheat.label,
+        label: appendHotkey ? labelWithHotkey(cheat.label, normalizedHotkey) : cheat.label,
         hotkey: normalizedHotkey,
       });
     }
