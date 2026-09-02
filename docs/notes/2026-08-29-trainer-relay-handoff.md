@@ -2070,10 +2070,12 @@ untested.
 - Detailed RED/GREEN records, all 35 ZIP entries, file scope, and self-review are
   appended to
   `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-4-report.md`.
-- Commit subject: `fix: harden read-only Steam Input radial probe`. Exact SHA and
-  push result follow in the final delivery response after this handoff is
-  included. No tag or release was created. `.codex-remote-attachments/` remains
-  user-owned and unstaged.
+- Commit `c5db79d` (`fix: harden read-only Steam Input radial probe`) is pushed
+  to `origin/feat/trainer-relay`. No tag or release was created.
+  `.codex-remote-attachments/` remains user-owned and unstaged.
+- Independent fix re-review by Arya/Confucius
+  (`01a0645d-6d4f-74b1-96c9-ae654c49be33`) marked all ten findings
+  `ADDRESSED`, with final verdict `ALL ADDRESSED`.
 - Resume boundary: install this exact ZIP on the physical Steam Deck and execute
   Task 5. Do not begin Tasks 6-8 unless the device evidence reaches
   `PASS_SAFE_CLONE`.
