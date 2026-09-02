@@ -25,6 +25,7 @@ from .radial_registry import (
     validate_generated_radial_layout,
     validate_radial_layout_registry,
 )
+from .steam_input_probe import export_steam_input_probe, validate_steam_input_probe
 
 
 class RelayRpcError(ValueError):
@@ -91,11 +92,19 @@ class RelayRpc:
             raise RelayRpcError("config_persist_failed") from error
         self._record_diagnostic("config_persisted", "info", {"game_count": len(config["games"])})
 
-    def _record_diagnostic(self, event: str, outcome: str, details: Mapping[str, Any]) -> None:
+    def _record_diagnostic(
+        self,
+        event: str,
+        outcome: str,
+        details: Mapping[str, Any],
+        *,
+        category: str = "config",
+        identity: str | None = None,
+    ) -> None:
         if self._diagnostics is None:
             return
         try:
-            self._diagnostics.record("config", event, outcome, details=details)
+            self._diagnostics.record(category, event, outcome, identity=identity, details=details)
         except (OSError, ValueError):
             return
 
@@ -155,6 +164,33 @@ class RelayRpc:
 
     async def get_radial_layout_registry(self) -> dict[str, Any]:
         return self._load_radial_layout_registry()
+
+    async def export_steam_input_probe(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            report = validate_steam_input_probe(data)
+            result = export_steam_input_probe(report, self._downloads_dir)
+        except ValueError as error:
+            code = str(error)
+            if code not in {"invalid_steam_input_probe", "steam_input_probe_too_large"}:
+                code = "invalid_steam_input_probe"
+            raise RelayRpcError(code) from None
+        except OSError as error:
+            raise RelayRpcError("steam_input_probe_export_failed") from error
+
+        self._record_diagnostic(
+            "probe_completed",
+            "accepted",
+            {
+                "app_id": report["appId"],
+                "primitive_key_count": len(report["responsePrimitiveKeys"]),
+                "runtime_fingerprint_prefix": report["runtimeFingerprint"][:12],
+                "result_code": "readonly",
+                "correlation_id": str(uuid.uuid4()),
+            },
+            category="steam_input",
+            identity=report["identity"],
+        )
+        return result
 
     async def record_generated_radial_layout(self, data: Mapping[str, Any]) -> dict[str, Any]:
         request = self._strict_request(data, set(RADIAL_LAYOUT_FIELDS))

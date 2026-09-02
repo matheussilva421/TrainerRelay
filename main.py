@@ -39,7 +39,7 @@ _cheat_service: CheatControlService | None = None
 _diagnostics: DiagnosticRecorder | None = None
 _unload_lock = asyncio.Lock()
 
-PLUGIN_VERSION = "0.1.0-experimental.20"
+PLUGIN_VERSION = "0.1.0-experimental.21.probe.1"
 
 
 def _host_user_home() -> str:
@@ -189,6 +189,10 @@ class Plugin:
     @classmethod
     async def record_generated_radial_layout(cls, data: Mapping[str, Any]) -> dict[str, Any]:
         return await _service().record_generated_radial_layout(data)
+
+    @classmethod
+    async def export_steam_input_probe(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        return await _service().export_steam_input_probe(data)
 
     @classmethod
     async def set_relay_game_config(cls, data: Mapping[str, Any]) -> dict[str, Any]:

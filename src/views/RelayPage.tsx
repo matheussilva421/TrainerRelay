@@ -3,6 +3,7 @@ import type { FC } from "react";
 import { FaArrowsRotate, FaShieldHalved } from "react-icons/fa6";
 import { CheatControlList } from "../components/CheatControlList";
 import { ManualCheatEditor } from "../components/ManualCheatEditor";
+import { SteamInputRadialMenu } from "../components/SteamInputRadialMenu";
 import { TrainerFilePicker } from "../components/TrainerFilePicker";
 import type { LegacyMigrationPlan } from "../domain/relay/migration";
 import type { LaunchIdentity } from "../domain/relay/types";
@@ -117,6 +118,11 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
             busy={cheatControls.busy || busy || migrationBusy}
             onCommand={(cheatId) => cheatControls.sendCommand(cheatId)}
             lastResults={cheatControls.lastResults}
+          />
+          <SteamInputRadialMenu
+            appId={appid}
+            identity={cheatControls.response.identity}
+            controls={cheatControls.response}
           />
           {cheatControls.response.source === "manual" && (
             <ManualCheatEditor

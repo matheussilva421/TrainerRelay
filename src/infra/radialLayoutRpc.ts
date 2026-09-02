@@ -4,16 +4,23 @@ import {
   decodeRadialLayoutRegistry,
   SteamInputDecodeError,
 } from "../domain/steamInput/decoder";
-import type { GeneratedRadialLayoutV1, RadialLayoutRegistryV1 } from "../domain/steamInput/types";
+import type {
+  GeneratedRadialLayoutV1,
+  RadialLayoutRegistryV1,
+  SteamInputProbeExportResult,
+  SteamInputProbeReport,
+} from "../domain/steamInput/types";
 
 export interface RadialLayoutRpcTransport {
   getRegistry: () => Promise<unknown>;
   record: (record: GeneratedRadialLayoutV1) => Promise<unknown>;
+  exportProbe: (report: SteamInputProbeReport) => Promise<unknown>;
 }
 
 export interface RadialLayoutRpcClient {
   getRegistry: () => Promise<RadialLayoutRegistryV1>;
   record: (record: GeneratedRadialLayoutV1) => Promise<RadialLayoutRegistryV1>;
+  exportProbe: (report: SteamInputProbeReport) => Promise<SteamInputProbeExportResult>;
 }
 
 const radialLayoutRpcErrorCodes = new Set([
@@ -31,6 +38,9 @@ const radialLayoutRpcErrorCodes = new Set([
   "radial_layout_ids_must_differ",
   "too_many_radial_layouts",
   "duplicate_radial_layout",
+  "invalid_steam_input_probe",
+  "steam_input_probe_too_large",
+  "steam_input_probe_export_failed",
 ]);
 
 export class RadialLayoutRpcError extends Error {
@@ -62,6 +72,24 @@ const decodeWire = <T>(operation: () => T, fallback: "invalid_radial_layout" | "
   }
 };
 
+const decodeProbeExport = (value: unknown): SteamInputProbeExportResult => {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  if (
+    !record ||
+    typeof record.path !== "string" ||
+    !record.path.startsWith("/") ||
+    typeof record.bytesWritten !== "number" ||
+    !Number.isSafeInteger(record.bytesWritten) ||
+    record.bytesWritten < 0
+  )
+    throw new RadialLayoutRpcError("invalid_steam_input_probe");
+  return {
+    path: record.path,
+    bytesWritten: record.bytesWritten,
+  };
+};
+
 export const createRadialLayoutRpc = (transport: RadialLayoutRpcTransport): RadialLayoutRpcClient => ({
   async getRegistry() {
     const response = await callTransport(() => transport.getRegistry());
@@ -72,12 +100,18 @@ export const createRadialLayoutRpc = (transport: RadialLayoutRpcTransport): Radi
     const response = await callTransport(() => transport.record(decoded));
     return decodeWire(() => decodeRadialLayoutRegistry(response), "invalid_radial_layout_registry");
   },
+  async exportProbe(report) {
+    const response = await callTransport(() => transport.exportProbe(report));
+    return decodeProbeExport(response);
+  },
 });
 
 const getRegistryCall = callable<[], unknown>("get_radial_layout_registry");
 const recordCall = callable<[GeneratedRadialLayoutV1], unknown>("record_generated_radial_layout");
+const exportProbeCall = callable<[SteamInputProbeReport], unknown>("export_steam_input_probe");
 
 export const radialLayoutRpc = createRadialLayoutRpc({
   getRegistry: () => getRegistryCall(),
   record: (record) => recordCall(record),
+  exportProbe: (report) => exportProbeCall(report),
 });

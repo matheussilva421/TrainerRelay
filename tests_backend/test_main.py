@@ -74,6 +74,7 @@ class FakeDiagnosticRpc:
         self.get_diagnostic_events = AsyncMock(return_value={"generation": 1, "events": []})
         self.export_diagnostics = AsyncMock(return_value={"path": "/downloads/export.txt", "bytesWritten": 1})
         self.clear_diagnostics = AsyncMock(return_value={"generation": 2})
+        self.export_steam_input_probe = AsyncMock(return_value={"path": "/downloads/probe.json", "bytesWritten": 1})
 
 
 class FakeCheatRpc(FakeDiagnosticRpc):
@@ -303,6 +304,15 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
 
         rpc.get_radial_layout_registry.assert_awaited_once_with()
         rpc.record_generated_radial_layout.assert_awaited_once_with(record)
+
+    async def test_plugin_delegates_sanitized_steam_input_probe_export(self):
+        rpc = FakeDiagnosticRpc()
+        self.main._rpc = rpc
+        report = {"schemaVersion": 1}
+
+        await self.main.Plugin.export_steam_input_probe(report)
+
+        rpc.export_steam_input_probe.assert_awaited_once_with(report)
 
 
 if __name__ == "__main__":

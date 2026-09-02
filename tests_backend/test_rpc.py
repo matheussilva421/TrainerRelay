@@ -1,4 +1,5 @@
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -190,6 +191,54 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(settings.commit_calls, 1)
             self.assertEqual(watcher.configs, [config])
             self.assertEqual(await rpc.get_relay_config(), config)
+
+    async def test_export_steam_input_probe_writes_only_the_sanitized_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            diagnostics = FakeDiagnostics(enabled=True)
+            rpc = RelayRpc(
+                FakeSettings(None),
+                FakeWatcher(),
+                diagnostics,
+                downloads_dir=Path(directory),
+                plugin_version="0.1.0-experimental.21.probe.1",
+            )
+            report = {
+                "schemaVersion": 1,
+                "appId": 123456789,
+                "identity": "gog:1482265668",
+                "controller": "steam_deck_builtin",
+                "controllerIndex": 0,
+                "runtimeFingerprint": "c" * 64,
+                "sourceLayoutIdHash": "d" * 64,
+                "sourceLayoutNameLength": 17,
+                "methodShape": {
+                    "getConfig": True,
+                    "exportConfig": True,
+                    "startEditing": True,
+                    "saveEditing": True,
+                    "setSelected": True,
+                    "showConfigurator": True,
+                },
+                "responsePrimitiveKeys": ["controller_type", "url"],
+            }
+
+            result = await rpc.export_steam_input_probe(report)
+
+            self.assertEqual(result["bytesWritten"], Path(result["path"]).stat().st_size)
+            exported = Path(result["path"]).read_text(encoding="utf-8")
+            self.assertEqual(json.loads(exported), report)
+            self.assertEqual(len(diagnostics.record_calls), 1)
+            event_args, event_kwargs = diagnostics.record_calls[0]
+            self.assertEqual(event_args, ("steam_input", "probe_completed", "accepted"))
+            self.assertEqual(event_kwargs["identity"], report["identity"])
+            self.assertNotEqual(event_kwargs["details"], report)
+            self.assertNotIn("sourceLayoutIdHash", event_kwargs["details"])
+
+    async def test_export_steam_input_probe_rejects_private_fields(self):
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), FakeDiagnostics(), downloads_dir=Path(tempfile.mkdtemp()))
+
+        with self.assertRaisesRegex(RelayRpcError, "invalid_request|invalid_steam_input_probe"):
+            await rpc.export_steam_input_probe({"accountId": "76561198000000000"})
 
     async def test_radial_registry_reads_only_strict_safe_metadata(self):
         settings = FakeSettings(None)

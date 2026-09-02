@@ -74,6 +74,31 @@ export interface SteamInputMethodShape {
   controllerClassification?: "steam_deck_builtin" | "unknown";
 }
 
+export interface SteamInputProbeReport {
+  schemaVersion: 1;
+  appId: number;
+  identity: LaunchIdentity;
+  controller: "steam_deck_builtin";
+  controllerIndex: 0;
+  runtimeFingerprint: string;
+  sourceLayoutIdHash: string;
+  sourceLayoutNameLength: number;
+  methodShape: {
+    getConfig: boolean;
+    exportConfig: boolean;
+    startEditing: boolean;
+    saveEditing: boolean;
+    setSelected: boolean;
+    showConfigurator: boolean;
+  };
+  responsePrimitiveKeys: string[];
+}
+
+export interface SteamInputProbeExportResult {
+  path: string;
+  bytesWritten: number;
+}
+
 export interface SelectedLayoutSnapshot {
   appId: number;
   controllerIndex: 0;

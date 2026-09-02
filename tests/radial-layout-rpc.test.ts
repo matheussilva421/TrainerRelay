@@ -48,7 +48,11 @@ describe("radial layout RPC", () => {
     await expect(radialLayoutRpc.getRegistry()).resolves.toEqual(registry);
     await expect(radialLayoutRpc.record(record)).resolves.toEqual(registry);
 
-    expect(deckyMock.registrations).toEqual(["get_radial_layout_registry", "record_generated_radial_layout"]);
+    expect(deckyMock.registrations).toEqual([
+      "get_radial_layout_registry",
+      "record_generated_radial_layout",
+      "export_steam_input_probe",
+    ]);
     expect(deckyMock.invocations).toEqual([
       { name: "get_radial_layout_registry", args: [] },
       { name: "record_generated_radial_layout", args: [record] },
@@ -74,6 +78,7 @@ describe("radial layout RPC", () => {
     const transport = {
       getRegistry: vi.fn().mockResolvedValue(registry),
       record: vi.fn().mockResolvedValue(registry),
+      exportProbe: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 
@@ -88,6 +93,7 @@ describe("radial layout RPC", () => {
     const transport = {
       getRegistry: vi.fn().mockResolvedValue({ schemaVersion: 1, layouts: [{ ...record, leaked: "private" }] }),
       record: vi.fn(),
+      exportProbe: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 
@@ -98,6 +104,7 @@ describe("radial layout RPC", () => {
     const transport = {
       getRegistry: vi.fn().mockRejectedValue(new RadialLayoutRpcError("private_transport_code")),
       record: vi.fn(),
+      exportProbe: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 
@@ -110,6 +117,7 @@ describe("radial layout RPC", () => {
     const transport = {
       getRegistry: vi.fn(),
       record: vi.fn(),
+      exportProbe: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 

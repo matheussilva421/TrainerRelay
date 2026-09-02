@@ -76,6 +76,80 @@ describe("diagnostic RPC boundary", () => {
     ).toEqual([revalidated]);
   });
 
+  it("decodes all bounded Steam Input probe events", () => {
+    const steamEvents = [
+      {
+        ...event,
+        category: "steam_input",
+        event: "probe_completed",
+        outcome: "accepted",
+        details: {
+          app_id: 123456789,
+          primitive_key_count: 2,
+          runtime_fingerprint_prefix: "c".repeat(12),
+          trainer_hash_prefix: "a".repeat(12),
+          catalog_fingerprint_prefix: "b".repeat(12),
+          source_layout_id_hash_prefix: "d".repeat(12),
+          result_code: "readonly",
+          correlation_id: "11111111-1111-4111-8111-111111111111",
+        },
+      },
+      {
+        ...event,
+        category: "steam_input",
+        event: "preview_created",
+        outcome: "accepted",
+        details: {
+          app_id: 123456789,
+          command_count: 2,
+          page_count: 1,
+          skipped_count: 0,
+          trainer_hash_prefix: "a".repeat(12),
+          catalog_fingerprint_prefix: "b".repeat(12),
+          runtime_fingerprint_prefix: "c".repeat(12),
+          source_layout_id_hash_prefix: "d".repeat(12),
+          correlation_id: "22222222-2222-4222-8222-222222222222",
+        },
+      },
+      {
+        ...event,
+        category: "steam_input",
+        event: "authority_changed",
+        outcome: "rejected",
+        details: {
+          app_id: 123456789,
+          changed_field_count: 1,
+          trainer_hash_prefix: "a".repeat(12),
+          catalog_fingerprint_prefix: "b".repeat(12),
+          runtime_fingerprint_prefix: "c".repeat(12),
+          source_layout_id_hash_prefix: "d".repeat(12),
+          result_code: "authority_changed",
+          correlation_id: "33333333-3333-4333-8333-333333333333",
+        },
+      },
+      {
+        ...event,
+        category: "steam_input",
+        event: "configurator_opened",
+        outcome: "accepted",
+        details: {
+          app_id: 123456789,
+          result_code: "opened",
+          correlation_id: "44444444-4444-4444-8444-444444444444",
+        },
+      },
+    ];
+
+    expect(
+      decodeDiagnosticEventsResponse({
+        generation: 1,
+        nextCursor: "v1:1:4",
+        cursorReset: false,
+        events: steamEvents,
+      }).events,
+    ).toEqual(steamEvents);
+  });
+
   it("decodes the effective UMU shape of a trainer spawn", () => {
     const spawned = {
       ...event,

@@ -5,7 +5,7 @@ export interface DiagnosticSettingsV1 {
   readonly enabled: boolean;
 }
 
-export type DiagnosticCategory = "config" | "games_map" | "process" | "umu" | "trainer" | "lifecycle";
+export type DiagnosticCategory = "config" | "games_map" | "process" | "umu" | "trainer" | "lifecycle" | "steam_input";
 export type DiagnosticOutcome = "info" | "accepted" | "rejected" | "warning" | "error";
 export type DiagnosticDetailValue = string | number | boolean | null;
 

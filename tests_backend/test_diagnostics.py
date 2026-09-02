@@ -73,6 +73,64 @@ class DiagnosticRecorderTests(unittest.TestCase):
         self.assertEqual(events[0]["session"], {"pid": 123, "startTime": 456})
         self.assertEqual(events[0]["details"]["reason"], "prefix_mismatch")
 
+    def test_accepts_bounded_steam_input_events_without_private_values(self):
+        recorder = self.recorder()
+        recorder.record(
+            "steam_input",
+            "probe_completed",
+            "accepted",
+            identity="gog:1482265668",
+            details={
+                "app_id": 123456789,
+                "primitive_key_count": 2,
+                "runtime_fingerprint_prefix": "c" * 12,
+                "result_code": "readonly",
+                "correlation_id": "11111111-1111-4111-8111-111111111111",
+            },
+        )
+        recorder.record(
+            "steam_input",
+            "preview_created",
+            "accepted",
+            identity="gog:1482265668",
+            details={
+                "app_id": 123456789,
+                "command_count": 2,
+                "page_count": 1,
+                "skipped_count": 0,
+                "correlation_id": "22222222-2222-4222-8222-222222222222",
+            },
+        )
+        recorder.record(
+            "steam_input",
+            "authority_changed",
+            "rejected",
+            identity="gog:1482265668",
+            details={
+                "app_id": 123456789,
+                "changed_field_count": 1,
+                "result_code": "authority_changed",
+                "correlation_id": "33333333-3333-4333-8333-333333333333",
+            },
+        )
+        recorder.record(
+            "steam_input",
+            "configurator_opened",
+            "accepted",
+            identity="gog:1482265668",
+            details={
+                "app_id": 123456789,
+                "result_code": "opened",
+                "correlation_id": "44444444-4444-4444-8444-444444444444",
+            },
+        )
+
+        events = recorder.events_after(None, 20)["events"]
+        self.assertEqual(len(events), 4)
+        exported = json.dumps(events)
+        self.assertNotIn("account", exported)
+        self.assertNotIn("payload", exported)
+
     def test_writes_only_effective_umu_shape_for_trainer_spawn(self):
         recorder = self.recorder()
         recorder.record(

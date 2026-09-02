@@ -1994,3 +1994,40 @@ untested.
   contains no `any`.
 - Detailed evidence is appended to
   `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-3-report.md`.
+
+### Steam Input radial-menu Task 4 backend probe RED/GREEN checkpoint — 2026-09-02
+
+- Added the first Task 4 tests before production implementation in
+  `tests_backend/test_steam_input_probe.py`, `tests_backend/test_rpc.py`,
+  `tests_backend/test_main.py`, and `tests_backend/test_diagnostics.py`.
+- RED command collected 70 tests: 65 passed and 5 expected failures/errors
+  (missing `trainer_relay.steam_input_probe`, missing RPC and Plugin methods,
+  and rejected `steam_input` diagnostics category).
+- Implemented strict exact-schema probe validation, 16 KiB UTF-8/LF atomic
+  export, bounded `RelayRpc.export_steam_input_probe`, Plugin delegation, and
+  bounded `steam_input` diagnostic event validation. The report is never
+  inserted into the journal; only a summary event is recorded.
+- Focused GREEN command collected 73 tests: 73 passed, 0 failed.
+- Next: add frontend controller/menu RED tests and implement the read-only
+  preview flow. Keep `createSeparateLayout` unreachable for the shipped probe
+  adapter and preserve `.codex-remote-attachments/`.
+
+### Steam Input radial-menu Task 4 probe build complete — 2026-09-02
+
+- Completed the read-only preview UI, safe probe export, bounded diagnostics,
+  configurator fallback, and versioned probe package. Generation remains
+  disabled with `Steam Input runtime not physically validated`.
+- Full local gates: backend 287/287, frontend 273/273, packaging 7/7,
+  production/test TypeScript, Biome (89 files), Rollup, compileall, and
+  `git diff --check` all passed.
+- The first full frontend run caught a frontend/backend diagnostic-detail
+  allowlist mismatch. The existing regression test failed; root-cause tracing
+  identified omitted sanitized hash-prefix fields. The allowlist was synchronized
+  without relaxing arbitrary-field rejection, then focused 13/13 and full
+  frontend 273/273 passed.
+- Artifact: `TrainerRelay.zip`, 815884 bytes, 35 entries, packaged version
+  `0.1.0-experimental.21.probe.1`, SHA-256
+  `0D2092C69B3C18A4F303C3A1C1AC1472E75A4F1D8A0F2526CD5A2C9BEA504418`.
+  Archive inspection found zero writable Steam profile files.
+- Hard stop: Task 5 requires installation on the physical Steam Deck and a
+  sanitized probe export. Tasks 6-8 remain forbidden until `PASS_SAFE_CLONE`.
