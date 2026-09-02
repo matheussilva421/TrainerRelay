@@ -1719,3 +1719,60 @@ untested.
 - Next: Task 3 implements and locally builds the native Win32 `SendInput`
   helper for x86/x64, plus deterministic manifest and ZIP packaging. No
   user-visible command RPC exists yet.
+
+### Cheat controls Task 3 complete — ephemeral native helper
+
+- Added the one-shot native Win32 `SendInput` helper, host tests, x86/x64 MSVC
+  build, deterministic PE/hash manifest, Windows CI artifact pipeline, and ZIP
+  package inclusion. No XTest, X11, `uinput`, root flag, resident helper, shell
+  command, network API, or process discovery was introduced.
+- The helper accepts only protocol/key/modifier/hold integers from the finite
+  backend allowlist, sends modifiers plus key in canonical order, releases in
+  reverse order, performs best-effort cleanup after partial/zero `SendInput`,
+  emits one bounded JSON line, and exits.
+- An independent Luna review found three P2 gaps. Fix round 1 added `/Brepro`
+  and corrected linker argument construction, exercised real zero returns from
+  `SendInput`, and made packaging validate exact schema, PE Machine, filenames,
+  architectures and SHA-256 before copying artifacts. Re-review marked all
+  three addressed with no new Critical/Important finding.
+- Final Task 3 gates: native host scenarios passed for x86 and x64; packaging
+  7/7; focused helper/hotkey/package matrix 19/19; two independent complete
+  builds produced byte-identical PEs, manifests and ZIPs. Physical Wine/Steam
+  Deck input delivery remains unverified and belongs to the Task 6 device gate.
+- Commit `7ff4f1e` contains only Task 3 files. Task 4 service/RPC changes remain
+  separate and uncommitted while their implementer runs its own TDD cycle.
+- Next: finish and review Task 4, then expose the typed controls in the Decky
+  routed page and Quick Access sidebar.
+
+### Cheat controls Task 4 complete — service, cooperative boundary and RPC
+
+- Added `CheatControlService`, exact adapter/manual resolution, Relay-side
+  cooperative descriptor/ack validation, four typed Decky RPCs, bounded command
+  diagnostics and unload ownership for in-flight commands.
+- Adapter/manual commands invoke only the finite one-shot helper and return
+  exactly `requested` plus `unknown`. A fresh, valid cooperative acknowledgement
+  is the only path allowed to report `enabled` or `disabled`.
+- Context lookup and the synchronous helper runner execute off Decky's event
+  loop. Cooperative dispatch holds the watcher authority lease through send and
+  acknowledgement; after a possible send, stale/invalid acknowledgements never
+  trigger a second fallback hotkey.
+- Providers are accepted only with explicit bounded send/cancel deadlines and
+  synchronous cancellation. Real worker ownership survives awaiter cancellation;
+  `close()` fails closed, and plugin unload does not stop the watcher while a
+  worker remains alive. Oversized numeric deadlines, including conversion
+  overflow, are rejected before send.
+- Independent Luna reviews required four correction rounds. The final review
+  confirmed zero Critical/Important findings and both overflowing deadline
+  fields fail closed with zero provider/runner calls.
+- Final Task 4 gates: focused service/cooperative/RPC/main/diagnostics/runner
+  matrix 103/103; complete backend suite 254/254; zero failures. Commits:
+  `71f4f90`, `0e598f9`, `585f135`, `3881bda`, `11732a2`.
+- Ruling: fallback to adapter/manual is allowed only before any cooperative send
+  may have happened. Cost: a trainer that ignored an uncertain first request
+  requires manual retry rather than risking duplicate toggling.
+- Ruling: custom cooperative providers without a bounded cancellation contract
+  are unavailable until adapted. Cost: availability is sacrificed to prevent an
+  unowned command from surviving Decky unload.
+- Next: finish the strict TypeScript decoder/RPC and add controller/touch cheat
+  rows to the routed page and Quick Access sidebar. Native helper delivery still
+  requires physical Steam Deck validation.
