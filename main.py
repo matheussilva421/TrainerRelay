@@ -195,6 +195,10 @@ class Plugin:
         return await _service().export_steam_input_probe(data)
 
     @classmethod
+    async def record_steam_input_probe_event(cls, data: Mapping[str, Any]) -> dict[str, bool]:
+        return await _service().record_steam_input_probe_event(data)
+
+    @classmethod
     async def set_relay_game_config(cls, data: Mapping[str, Any]) -> dict[str, Any]:
         return await _service().set_relay_game_config(data)
 

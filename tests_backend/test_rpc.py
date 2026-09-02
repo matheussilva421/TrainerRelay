@@ -240,6 +240,99 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RelayRpcError, "invalid_request|invalid_steam_input_probe"):
             await rpc.export_steam_input_probe({"accountId": "76561198000000000"})
 
+    async def test_records_only_exact_steam_input_probe_metadata_events(self):
+        diagnostics = FakeDiagnostics(enabled=True)
+        rpc = self.diagnostic_rpc(diagnostics=diagnostics)
+        events = [
+            {
+                "event": "preview_created",
+                "appId": 123456789,
+                "identity": "gog:1482265668",
+                "commandCount": 2,
+                "pageCount": 1,
+                "skippedCount": 0,
+                "trainerHashPrefix": "a" * 12,
+                "catalogFingerprintPrefix": "b" * 12,
+                "runtimeFingerprintPrefix": "c" * 12,
+                "sourceLayoutIdHashPrefix": "d" * 12,
+                "resultCode": "readonly",
+                "correlationId": "11111111-1111-4111-8111-111111111111",
+            },
+            {
+                "event": "authority_changed",
+                "appId": 123456789,
+                "identity": "gog:1482265668",
+                "changedFieldCount": 1,
+                "trainerHashPrefix": "a" * 12,
+                "catalogFingerprintPrefix": "b" * 12,
+                "runtimeFingerprintPrefix": "c" * 12,
+                "sourceLayoutIdHashPrefix": "d" * 12,
+                "resultCode": "authority_changed",
+                "correlationId": "22222222-2222-4222-8222-222222222222",
+            },
+            {
+                "event": "configurator_opened",
+                "appId": 123456789,
+                "identity": "gog:1482265668",
+                "resultCode": "opened",
+                "correlationId": "33333333-3333-4333-8333-333333333333",
+            },
+        ]
+
+        for event in events:
+            self.assertEqual(await rpc.record_steam_input_probe_event(event), {"accepted": True})
+
+        self.assertEqual(
+            [call[0] for call in diagnostics.record_calls],
+            [
+                ("steam_input", "preview_created", "accepted"),
+                ("steam_input", "authority_changed", "rejected"),
+                ("steam_input", "configurator_opened", "accepted"),
+            ],
+        )
+        self.assertEqual([call[1]["identity"] for call in diagnostics.record_calls], ["gog:1482265668"] * 3)
+        self.assertEqual(
+            diagnostics.record_calls[0][1]["details"],
+            {
+                "app_id": 123456789,
+                "command_count": 2,
+                "page_count": 1,
+                "skipped_count": 0,
+                "trainer_hash_prefix": "a" * 12,
+                "catalog_fingerprint_prefix": "b" * 12,
+                "runtime_fingerprint_prefix": "c" * 12,
+                "source_layout_id_hash_prefix": "d" * 12,
+                "result_code": "readonly",
+                "correlation_id": "11111111-1111-4111-8111-111111111111",
+            },
+        )
+
+    async def test_rejects_arbitrary_steam_input_probe_event_or_metadata(self):
+        diagnostics = FakeDiagnostics(enabled=True)
+        rpc = self.diagnostic_rpc(diagnostics=diagnostics)
+        valid = {
+            "event": "configurator_opened",
+            "appId": 123456789,
+            "identity": "gog:1482265668",
+            "resultCode": "opened",
+            "correlationId": "33333333-3333-4333-8333-333333333333",
+        }
+        invalid = [
+            {**valid, "event": "probe_completed"},
+            {**valid, "details": {"accountId": "private"}},
+            {**valid, "resultCode": "opened", "rawPayload": "private"},
+            {**valid, "appId": True},
+            {**valid, "correlationId": "not-a-uuid"},
+            {key: value for key, value in valid.items() if key != "identity"},
+        ]
+
+        for event in invalid:
+            with self.subTest(event=event):
+                with self.assertRaisesRegex(RelayRpcError, "invalid_steam_input_probe_event"):
+                    await rpc.record_steam_input_probe_event(event)
+
+        self.assertEqual(diagnostics.record_calls, [])
+
     async def test_radial_registry_reads_only_strict_safe_metadata(self):
         settings = FakeSettings(None)
         settings.values[RADIAL_LAYOUT_REGISTRY_KEY] = {

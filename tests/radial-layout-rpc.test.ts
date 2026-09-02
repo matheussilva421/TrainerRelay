@@ -34,6 +34,13 @@ const record = {
 };
 
 const registry = { schemaVersion: 1 as const, layouts: [record] };
+const configuratorEvent = {
+  event: "configurator_opened" as const,
+  appId: 123456789,
+  identity: "gog:1482265668" as const,
+  resultCode: "opened" as const,
+  correlationId: "33333333-3333-4333-8333-333333333333",
+};
 
 describe("radial layout RPC", () => {
   beforeEach(() => {
@@ -52,11 +59,20 @@ describe("radial layout RPC", () => {
       "get_radial_layout_registry",
       "record_generated_radial_layout",
       "export_steam_input_probe",
+      "record_steam_input_probe_event",
     ]);
     expect(deckyMock.invocations).toEqual([
       { name: "get_radial_layout_registry", args: [] },
       { name: "record_generated_radial_layout", args: [record] },
     ]);
+  });
+
+  it("sends only the typed Steam Input metadata event to the exact Decky callable", async () => {
+    deckyMock.handlers.set("record_steam_input_probe_event", () => Promise.resolve({ accepted: true }));
+
+    await expect(radialLayoutRpc.recordProbeEvent(configuratorEvent)).resolves.toEqual({ accepted: true });
+
+    expect(deckyMock.invocations).toEqual([{ name: "record_steam_input_probe_event", args: [configuratorEvent] }]);
   });
 
   it.each(["get", "record"] as const)("maps exported %s transport failures to one bounded code", async (operation) => {
@@ -79,6 +95,7 @@ describe("radial layout RPC", () => {
       getRegistry: vi.fn().mockResolvedValue(registry),
       record: vi.fn().mockResolvedValue(registry),
       exportProbe: vi.fn(),
+      recordProbeEvent: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 
@@ -94,6 +111,7 @@ describe("radial layout RPC", () => {
       getRegistry: vi.fn().mockResolvedValue({ schemaVersion: 1, layouts: [{ ...record, leaked: "private" }] }),
       record: vi.fn(),
       exportProbe: vi.fn(),
+      recordProbeEvent: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 
@@ -105,6 +123,7 @@ describe("radial layout RPC", () => {
       getRegistry: vi.fn().mockRejectedValue(new RadialLayoutRpcError("private_transport_code")),
       record: vi.fn(),
       exportProbe: vi.fn(),
+      recordProbeEvent: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 
@@ -118,6 +137,7 @@ describe("radial layout RPC", () => {
       getRegistry: vi.fn(),
       record: vi.fn(),
       exportProbe: vi.fn(),
+      recordProbeEvent: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);
 

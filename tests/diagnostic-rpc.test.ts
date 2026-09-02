@@ -150,6 +150,127 @@ describe("diagnostic RPC boundary", () => {
     ).toEqual(steamEvents);
   });
 
+  it("decodes every backend-allowlisted UMU and command diagnostic shape", () => {
+    const commandId = "11111111-1111-4111-8111-111111111111";
+    const allowlisted = [
+      {
+        category: "umu",
+        event: "container_reentry_verified",
+        details: {
+          bus_name: "com.example.Runtime",
+          runtime_variant: "umu",
+          attempt_count: 1,
+          bus_source: "host",
+          app_id_source: "gameid",
+          service_marker_present: true,
+        },
+      },
+      {
+        category: "umu",
+        event: "container_reentry_rejected",
+        details: {
+          reason: "bus_missing",
+          failure_class: "unavailable",
+          probe_exit_code: 1,
+          bus_source: "host",
+          attempt_count: 2,
+          service_marker_present: false,
+        },
+      },
+      { category: "umu", event: "container_reentry_confirmed", details: { bus_name: "runtime", elapsed_ms: 12 } },
+      {
+        category: "umu",
+        event: "container_reentry_confirmation_failed",
+        details: { bus_name: "runtime", elapsed_ms: 12, failure_observed: true, service_marker_present: false },
+      },
+      {
+        category: "umu",
+        event: "umu_exit_diagnostics",
+        details: {
+          stdout_bytes: 2,
+          stderr_bytes: 0,
+          stdout_truncated: false,
+          stderr_truncated: false,
+          stdout_tail: "ok",
+          stderr_tail: "",
+          failure_class: "none",
+          group_member_count: 1,
+          group_member_names: "trainer",
+          observed_descendant_count: 1,
+          observed_descendant_names: "trainer",
+        },
+      },
+      {
+        category: "trainer",
+        event: "trainer_spawned",
+        details: {
+          trainer_path: "/trainer.exe",
+          process_group_id: 12,
+          wineprefix: "/prefix",
+          steam_compat_data_path: "/compat",
+          proton_verb: "runinprefix",
+          container_reentry: true,
+          environment_key_count: 8,
+          runtime_flags: "verified",
+        },
+      },
+      { category: "command", event: "catalog_loaded", details: { adapter_count: 1 } },
+      { category: "command", event: "catalog_rejected", details: { reason: "hash_mismatch" } },
+      { category: "command", event: "manual_control_added", details: { cheat_id: "health", control_count: 1 } },
+      { category: "command", event: "manual_control_removed", details: { cheat_id: "health", control_count: 0 } },
+      {
+        category: "command",
+        event: "command_rejected",
+        details: { command_id: commandId, cheat_id: "health", reason: "stale" },
+      },
+      {
+        category: "command",
+        event: "helper_spawned",
+        details: { command_id: commandId, cheat_id: "health", source: "manual" },
+      },
+      {
+        category: "command",
+        event: "helper_completed",
+        details: { command_id: commandId, cheat_id: "health", source: "manual", outcome: "requested", duration_ms: 12 },
+      },
+      { category: "command", event: "helper_timeout", details: { command_id: commandId, cheat_id: "health" } },
+      {
+        category: "command",
+        event: "cooperative_acknowledged",
+        details: { command_id: commandId, cheat_id: "health", revision: 2 },
+      },
+      {
+        category: "command",
+        event: "cooperative_stale",
+        details: { command_id: commandId, cheat_id: "health", revision: 2, reason: "stale" },
+      },
+      { category: "command", event: "cooperative_descriptor_rejected", details: { reason: "invalid_descriptor" } },
+    ].map((candidate, index) => ({ ...event, ...candidate, sequence: index + 1 }));
+
+    expect(
+      decodeDiagnosticEventsResponse({
+        generation: 1,
+        nextCursor: `v1:1:${allowlisted.length}`,
+        cursorReset: false,
+        events: allowlisted,
+      }).events,
+    ).toEqual(allowlisted);
+  });
+
+  it.each([
+    {
+      ...event,
+      category: "command",
+      event: "helper_spawned",
+      details: { command_id: "11111111-1111-4111-8111-111111111111", cheat_id: "health", source: "private" },
+    },
+    { ...event, category: "umu", event: "umu_exit_diagnostics", details: { stdout_tail: "x".repeat(1025) } },
+  ])("rejects diagnostic metadata that the backend allowlist rejects", (candidate) => {
+    expect(() =>
+      decodeDiagnosticEventsResponse({ generation: 1, nextCursor: "v1:1:1", cursorReset: false, events: [candidate] }),
+    ).toThrowError("invalid_diagnostic_response");
+  });
+
   it("decodes the effective UMU shape of a trainer spawn", () => {
     const spawned = {
       ...event,

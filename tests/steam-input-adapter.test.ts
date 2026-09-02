@@ -14,6 +14,7 @@ const recognizedResponse = {
 const forbiddenMethods = [
   "ExportCurrentControllerConfiguration",
   "StartEditingControllerConfigurationForAppIDAndControllerIndex",
+  "StopEditingControllerConfiguration",
   "SetEditingControllerConfigurationActionSet",
   "SetEditingControllerConfigurationInputActivator",
   "SetEditingControllerConfigurationInputBinding",
@@ -60,6 +61,17 @@ describe("read-only Steam Input adapter", () => {
         sourceLayoutName: recognizedResponse.name,
       });
       expect(result.snapshot.runtimeFingerprint).toHaveLength(64);
+      expect(result.observation).toEqual({
+        methodShape: {
+          getConfig: true,
+          exportConfig: true,
+          startEditing: true,
+          saveEditing: true,
+          setSelected: true,
+          showConfigurator: true,
+        },
+        responsePrimitiveKeys: ["controller_type", "url", "name"],
+      });
     }
     expect(dependencies.input.GetConfigForAppAndController).toHaveBeenCalledWith(appId, 0);
     expect(dependencies.calls).toEqual(["GetConfigForAppAndController"]);
@@ -182,6 +194,34 @@ describe("read-only Steam Input adapter", () => {
       diagnostic: "steam_input_runtime_not_validated",
     });
     expect(dependencies.calls).toEqual([]);
+  });
+
+  it("keeps every shipped adapter flow free of write and registration calls", async () => {
+    const dependencies = createDependencies();
+    const adapter = createSteamInputLayoutAdapter(dependencies);
+
+    await adapter.probe(appId);
+    await adapter.inspectSelectedLayout(appId);
+    await adapter.createSeparateLayout({
+      source: {
+        appId,
+        controllerIndex: 0,
+        controller: "steam_deck_builtin",
+        sourceLayoutId: recognizedResponse.url,
+        sourceLayoutName: recognizedResponse.name,
+        runtimeFingerprint: "a".repeat(64),
+      },
+      plan: {} as never,
+      generatedLayoutName: "Trainer Relay - test",
+    });
+    await adapter.openConfigurator(appId);
+
+    expect(dependencies.calls).toEqual([
+      "GetConfigForAppAndController",
+      "GetConfigForAppAndController",
+      "ShowControllerConfigurator",
+    ]);
+    for (const method of forbiddenMethods) expect(dependencies.input[method]).not.toHaveBeenCalled();
   });
 
   it("opens only the normal configurator after positive safe AppID validation", async () => {

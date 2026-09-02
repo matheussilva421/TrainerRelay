@@ -7,6 +7,7 @@ import type {
   SteamInputLayoutCreationResult,
   SteamInputMethodShape,
   SteamInputPrimitiveType,
+  SteamInputProbeObservation,
 } from "../../domain/steamInput/types";
 import { fingerprintSteamInputShape, SteamInputFingerprintError } from "./runtimeFingerprint";
 
@@ -103,6 +104,18 @@ const methodShapeFor = (input: unknown, app: unknown, response: Record<string, u
   };
 };
 
+const probeObservationFor = (shape: SteamInputMethodShape): SteamInputProbeObservation => ({
+  methodShape: {
+    getConfig: shape.getConfig,
+    exportConfig: shape.exportConfig,
+    startEditing: shape.startEditing,
+    saveEditing: shape.saveEditing,
+    setSelected: shape.setSelected,
+    showConfigurator: shape.showConfigurator,
+  },
+  responsePrimitiveKeys: [...shape.responsePrimitiveKeys],
+});
+
 const boundedIdentifier = (value: unknown, code: string): string => {
   if (
     typeof value !== "string" ||
@@ -135,7 +148,7 @@ const responseToSnapshot = async (
   app: unknown,
   digest: SteamInputAdapterDependencies["digest"],
   response: unknown,
-): Promise<SelectedLayoutSnapshot> => {
+): Promise<{ snapshot: SelectedLayoutSnapshot; observation: SteamInputProbeObservation }> => {
   if (!isRecord(response)) throw new SteamInputAdapterError("unknown_response_shape");
   if (
     typeof response.controller_type !== "string" ||
@@ -155,12 +168,15 @@ const responseToSnapshot = async (
     throw new SteamInputAdapterError("fingerprint_failed");
   }
   return {
-    appId,
-    controllerIndex: 0,
-    controller: "steam_deck_builtin",
-    sourceLayoutId: boundedIdentifier(response.url, "unknown_response_shape"),
-    sourceLayoutName: boundedName(response.name),
-    runtimeFingerprint,
+    snapshot: {
+      appId,
+      controllerIndex: 0,
+      controller: "steam_deck_builtin",
+      sourceLayoutId: boundedIdentifier(response.url, "unknown_response_shape"),
+      sourceLayoutName: boundedName(response.name),
+      runtimeFingerprint,
+    },
+    observation: probeObservationFor(shape),
   };
 };
 
@@ -169,7 +185,7 @@ const readSelectedLayout = async (
   input: unknown,
   app: unknown,
   digest: SteamInputAdapterDependencies["digest"],
-): Promise<SelectedLayoutSnapshot> => {
+): Promise<{ snapshot: SelectedLayoutSnapshot; observation: SteamInputProbeObservation }> => {
   positiveSafeAppId(appId);
   if (!hasMethod(input, methodNames.getConfig)) throw new SteamInputAdapterError("steam_input_method_unavailable");
   const api = input as ReadOnlySteamInputApi;
@@ -192,17 +208,18 @@ export const createSteamInputLayoutAdapter = (
 ): SteamInputLayoutAdapter => ({
   async probe(appId): Promise<SteamInputCapabilityResult> {
     try {
+      const result = await readSelectedLayout(appId, dependencies.input, dependencies.app, dependencies.digest);
       return {
         status: "readonly",
-        snapshot: await readSelectedLayout(appId, dependencies.input, dependencies.app, dependencies.digest),
+        ...result,
       };
     } catch (error) {
       return { status: "unavailable", diagnostic: diagnosticFor(error) };
     }
   },
 
-  inspectSelectedLayout(appId): Promise<SelectedLayoutSnapshot> {
-    return readSelectedLayout(appId, dependencies.input, dependencies.app, dependencies.digest);
+  async inspectSelectedLayout(appId): Promise<SelectedLayoutSnapshot> {
+    return (await readSelectedLayout(appId, dependencies.input, dependencies.app, dependencies.digest)).snapshot;
   },
 
   async createSeparateLayout(_request: CreateRadialLayoutRequest): Promise<SteamInputLayoutCreationResult> {

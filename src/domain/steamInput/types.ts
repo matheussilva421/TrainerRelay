@@ -94,6 +94,47 @@ export interface SteamInputProbeReport {
   responsePrimitiveKeys: string[];
 }
 
+export interface SteamInputProbeObservation {
+  methodShape: SteamInputProbeReport["methodShape"];
+  responsePrimitiveKeys: string[];
+}
+
+interface SteamInputProbeEventCommon {
+  appId: number;
+  identity: LaunchIdentity;
+  correlationId: string;
+}
+
+export type SteamInputProbeMetadataEvent =
+  | (SteamInputProbeEventCommon & {
+      event: "preview_created";
+      commandCount: number;
+      pageCount: number;
+      skippedCount: number;
+      trainerHashPrefix: string;
+      catalogFingerprintPrefix: string;
+      runtimeFingerprintPrefix: string;
+      sourceLayoutIdHashPrefix: string;
+      resultCode: "readonly";
+    })
+  | (SteamInputProbeEventCommon & {
+      event: "authority_changed";
+      changedFieldCount: number;
+      trainerHashPrefix: string;
+      catalogFingerprintPrefix: string;
+      runtimeFingerprintPrefix: string;
+      sourceLayoutIdHashPrefix: string;
+      resultCode: "authority_changed";
+    })
+  | (SteamInputProbeEventCommon & {
+      event: "configurator_opened";
+      resultCode: "opened";
+    });
+
+export interface SteamInputProbeEventResult {
+  accepted: true;
+}
+
 export interface SteamInputProbeExportResult {
   path: string;
   bytesWritten: number;
@@ -110,8 +151,8 @@ export interface SelectedLayoutSnapshot {
 
 export type SteamInputCapabilityResult =
   | { status: "unavailable"; diagnostic: string }
-  | { status: "readonly"; snapshot: SelectedLayoutSnapshot }
-  | { status: "writable"; snapshot: SelectedLayoutSnapshot };
+  | { status: "readonly"; snapshot: SelectedLayoutSnapshot; observation: SteamInputProbeObservation }
+  | { status: "writable"; snapshot: SelectedLayoutSnapshot; observation: SteamInputProbeObservation };
 
 export interface CreateRadialLayoutRequest {
   source: SelectedLayoutSnapshot;

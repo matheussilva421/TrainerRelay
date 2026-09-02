@@ -21,6 +21,31 @@ vi.mock("react", () => ({
   useState: <T>(initial: T) => [initial, vi.fn()],
 }));
 
+const hookMock = vi.hoisted(() => ({
+  controller: {
+    state: {
+      status: "ready" as const,
+      reason: "Steam Input runtime not physically validated",
+      busy: false,
+      generationAvailable: false,
+      plan: {} as never,
+      commandCount: 1,
+      pageCount: 1,
+      skippedCount: 0,
+      skippedReasons: [] as readonly string[],
+    },
+    prepare: vi.fn(),
+    beginConfirmation: vi.fn(async () => ({ status: "confirming" as const })),
+    confirm: vi.fn(async () => ({ status: "ready" as const })),
+    exportSafeProbe: vi.fn(async () => ({ path: "/home/deck/Downloads/probe.json", bytesWritten: 10 })),
+    openConfigurator: vi.fn(async () => undefined),
+  },
+}));
+
+vi.mock("../src/hooks/useSteamInputRadialMenu", () => ({
+  useSteamInputRadialMenu: () => hookMock.controller,
+}));
+
 vi.mock("@decky/ui", () => {
   const component = (name: string) => name;
   return {
@@ -43,6 +68,7 @@ vi.mock("../src/infra/steamInput/adapter", () => ({
   }),
 }));
 
+import { showModal } from "@decky/ui";
 import { SteamInputRadialMenu } from "../src/components/SteamInputRadialMenu";
 
 interface ElementNode {
@@ -96,5 +122,30 @@ describe("Steam Input radial menu", () => {
       true,
     );
     expect(text).not.toContain("Quick Access");
+  });
+
+  it("describes the actual readonly confirmation action and disables every action while busy", async () => {
+    hookMock.controller.state.busy = false;
+    const nodes = descendants(SteamInputRadialMenu(props));
+    const prepareButton = nodes.find(
+      (node) => node.type === "DialogButton" && textContent(node).includes("Prepare Steam Input radial menu"),
+    );
+
+    (prepareButton?.props?.onClick as (() => void) | undefined)?.();
+    await vi.waitFor(() => expect(showModal).toHaveBeenCalled());
+    const modalCalls = vi.mocked(showModal).mock.calls;
+    const modal = modalCalls[modalCalls.length - 1]?.[0] as ElementNode;
+    expect(modal.props?.strTitle).toBe("Confirm read-only Steam Input preview?");
+    expect(modal.props?.strDescription).toContain("No Steam layout will be generated or selected");
+    expect(modal.props?.strOKButtonText).toBe("Confirm preview");
+    expect(String(modal.props?.strOKButtonText)).not.toContain("export");
+    (modal.props?.onOK as (() => void) | undefined)?.();
+    expect(hookMock.controller.confirm).toHaveBeenCalled();
+
+    hookMock.controller.state.busy = true;
+    const busyButtons = descendants(SteamInputRadialMenu(props)).filter((node) => node.type === "DialogButton");
+    expect(busyButtons).toHaveLength(4);
+    expect(busyButtons.every((button) => button.props?.disabled === true)).toBe(true);
+    hookMock.controller.state.busy = false;
   });
 });

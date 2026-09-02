@@ -4,6 +4,7 @@ import type {
   RadialLayoutRegistryV1,
   SelectedLayoutSnapshot,
   SteamInputCapabilityResult,
+  SteamInputProbeObservation,
 } from "./types";
 
 export class SteamInputDecodeError extends Error {
@@ -113,6 +114,49 @@ const decodeSnapshot = (value: unknown): SelectedLayoutSnapshot => {
   };
 };
 
+const decodeProbeObservation = (value: unknown): SteamInputProbeObservation => {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, ["methodShape", "responsePrimitiveKeys"]) ||
+    !isRecord(value.methodShape) ||
+    !exactKeys(value.methodShape, [
+      "getConfig",
+      "exportConfig",
+      "startEditing",
+      "saveEditing",
+      "setSelected",
+      "showConfigurator",
+    ]) ||
+    Object.values(value.methodShape).some((present) => typeof present !== "boolean") ||
+    !Array.isArray(value.responsePrimitiveKeys) ||
+    value.responsePrimitiveKeys.length > 64
+  )
+    return fail("invalid_steam_input_capability");
+  const responsePrimitiveKeys: string[] = [];
+  for (const key of value.responsePrimitiveKeys) {
+    if (
+      typeof key !== "string" ||
+      key.length < 1 ||
+      key.length > 256 ||
+      !/^[A-Za-z0-9_.-]+$/.test(key) ||
+      responsePrimitiveKeys.includes(key)
+    )
+      return fail("invalid_steam_input_capability");
+    responsePrimitiveKeys.push(key);
+  }
+  return {
+    methodShape: {
+      getConfig: value.methodShape.getConfig as boolean,
+      exportConfig: value.methodShape.exportConfig as boolean,
+      startEditing: value.methodShape.startEditing as boolean,
+      saveEditing: value.methodShape.saveEditing as boolean,
+      setSelected: value.methodShape.setSelected as boolean,
+      showConfigurator: value.methodShape.showConfigurator as boolean,
+    },
+    responsePrimitiveKeys,
+  };
+};
+
 export const decodeGeneratedRadialLayout = (value: unknown): GeneratedRadialLayoutV1 => {
   if (
     !isRecord(value) ||
@@ -201,6 +245,10 @@ export const decodeSteamInputCapabilityResult = (value: unknown): SteamInputCapa
     return { status: "unavailable", diagnostic: decodeDiagnostic(value.diagnostic) };
   }
   if (value.status !== "readonly" && value.status !== "writable") return fail("invalid_steam_input_capability");
-  if (!exactKeys(value, ["status", "snapshot"])) return fail("invalid_steam_input_capability");
-  return { status: value.status, snapshot: decodeSnapshot(value.snapshot) };
+  if (!exactKeys(value, ["status", "snapshot", "observation"])) return fail("invalid_steam_input_capability");
+  return {
+    status: value.status,
+    snapshot: decodeSnapshot(value.snapshot),
+    observation: decodeProbeObservation(value.observation),
+  };
 };

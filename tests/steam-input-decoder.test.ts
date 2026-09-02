@@ -84,10 +84,22 @@ describe("Steam Input wire decoders", () => {
       sourceLayoutName: "Source Layout",
       runtimeFingerprint: validLayout.steamRuntimeFingerprint,
     };
+    const observation = {
+      methodShape: {
+        getConfig: true,
+        exportConfig: false,
+        startEditing: false,
+        saveEditing: false,
+        setSelected: false,
+        showConfigurator: true,
+      },
+      responsePrimitiveKeys: ["controller_type", "url", "name"],
+    };
 
-    expect(decodeSteamInputCapabilityResult({ status: "readonly", snapshot })).toEqual({
+    expect(decodeSteamInputCapabilityResult({ status: "readonly", snapshot, observation })).toEqual({
       status: "readonly",
       snapshot,
+      observation,
     });
     expect(decodeSteamInputCapabilityResult({ status: "unavailable", diagnostic: "unsupported_runtime" })).toEqual({
       status: "unavailable",
@@ -102,5 +114,8 @@ describe("Steam Input wire decoders", () => {
     expect(() =>
       decodeSteamInputCapabilityResult({ status: "unavailable", diagnostic: "plausible_but_unapproved" }),
     ).toThrowError("invalid_steam_input_capability");
+    expect(() => decodeSteamInputCapabilityResult({ status: "readonly", snapshot })).toThrowError(
+      "invalid_steam_input_capability",
+    );
   });
 });

@@ -1,6 +1,8 @@
 import json
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,6 +67,39 @@ class SteamInputProbeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "invalid_steam_input_probe"):
                     validate_steam_input_probe(candidate)
 
+    def test_rejects_boolean_and_float_schema_and_controller_index_values(self):
+        invalid = [
+            {**probe_report(), "schemaVersion": True},
+            {**probe_report(), "schemaVersion": 1.0},
+            {**probe_report(), "controllerIndex": False},
+            {**probe_report(), "controllerIndex": 0.0},
+        ]
+
+        for candidate in invalid:
+            with self.subTest(candidate=candidate):
+                with self.assertRaisesRegex(ValueError, "invalid_steam_input_probe"):
+                    validate_steam_input_probe(candidate)
+
+    def test_rejects_sensitive_invalid_and_unbounded_primitive_key_names(self):
+        invalid_keys = [
+            "account_id",
+            "accessToken",
+            "authorization-header",
+            "client_secret",
+            "password_hint",
+            "session.cookie",
+            "credential-id",
+            "space separated",
+            "x" * 257,
+        ]
+
+        for key in invalid_keys:
+            with self.subTest(key=key):
+                candidate = probe_report()
+                candidate["responsePrimitiveKeys"] = [key]
+                with self.assertRaisesRegex(ValueError, "invalid_steam_input_probe"):
+                    validate_steam_input_probe(candidate)
+
     def test_rejects_encoded_probe_above_sixteen_kib(self):
         candidate = probe_report()
         candidate["responsePrimitiveKeys"] = [f"k_{index}_{'x' * 250}" for index in range(64)]
@@ -94,6 +129,50 @@ class SteamInputProbeTests(unittest.TestCase):
             self.assertTrue(payload.endswith(b"\n"))
             self.assertEqual(json.loads(payload), probe_report())
             self.assertEqual(list(downloads.glob("*.tmp")), [])
+
+    def test_concurrent_exports_reserve_unique_names_without_overwriting(self):
+        worker_count = 12
+        clock_barrier = threading.Barrier(worker_count)
+        fixed_time = datetime(2026, 9, 2, 12, 0, 3, tzinfo=timezone.utc)
+
+        def synchronized_clock():
+            clock_barrier.wait(timeout=5)
+            return fixed_time
+
+        with tempfile.TemporaryDirectory() as directory:
+            downloads = Path(directory) / "Downloads"
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                results = list(
+                    executor.map(
+                        lambda _: export_steam_input_probe(
+                            probe_report(),
+                            downloads,
+                            wall_clock=synchronized_clock,
+                        ),
+                        range(worker_count),
+                    )
+                )
+
+            paths = [Path(result["path"]) for result in results]
+            self.assertEqual(len(set(paths)), worker_count)
+            self.assertEqual(len(list(downloads.glob("TrainerRelay-steam-input-probe-*.json"))), worker_count)
+            self.assertTrue(all(json.loads(path.read_text(encoding="utf-8")) == probe_report() for path in paths))
+
+    def test_collision_never_overwrites_an_existing_probe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            downloads = Path(directory) / "Downloads"
+            downloads.mkdir()
+            existing = downloads / "TrainerRelay-steam-input-probe-20260902-120003.json"
+            existing.write_bytes(b"existing-probe\n")
+
+            result = export_steam_input_probe(
+                probe_report(),
+                downloads,
+                wall_clock=lambda: datetime(2026, 9, 2, 12, 0, 3, tzinfo=timezone.utc),
+            )
+
+            self.assertEqual(existing.read_bytes(), b"existing-probe\n")
+            self.assertEqual(Path(result["path"]).name, "TrainerRelay-steam-input-probe-20260902-120003-1.json")
 
 
 if __name__ == "__main__":

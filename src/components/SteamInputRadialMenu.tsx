@@ -13,8 +13,6 @@ export interface SteamInputRadialMenuProps {
   controls: ReadyCheatControls;
   adapter?: SteamInputLayoutAdapter;
   rpc?: SteamInputRadialMenuRpc;
-  catalogFingerprint?: string;
-  sourceLayoutIdHash?: string;
   digest?: Sha256Digest;
 }
 
@@ -41,8 +39,6 @@ const SteamInputRadialMenu: FC<SteamInputRadialMenuProps> = (props) => {
     controls: props.controls,
     adapter: props.adapter ?? defaultAdapter(),
     rpc: props.rpc ?? radialLayoutRpc,
-    catalogFingerprint: props.catalogFingerprint,
-    sourceLayoutIdHash: props.sourceLayoutIdHash,
     digest: props.digest ?? browserDigest,
   });
   const { state } = controller;
@@ -54,13 +50,13 @@ const SteamInputRadialMenu: FC<SteamInputRadialMenuProps> = (props) => {
     if (!modalWindow) return;
     showModal(
       <ConfirmModal
-        strTitle="Prepare Steam Input radial menu?"
-        strDescription={`This preview changes only a generated copy of the left trackpad. ${state.commandCount} command item(s) across ${state.pageCount} page(s). Physical click activates a selected item; touch release sends nothing.`}
-        strOKButtonText="Review and export"
+        strTitle="Confirm read-only Steam Input preview?"
+        strDescription={`No Steam layout will be generated or selected. This confirms a read-only preview of ${state.commandCount} command item(s) across ${state.pageCount} page(s). Physical click activates a selected item; touch release sends nothing.`}
+        strOKButtonText="Confirm preview"
         strCancelButtonText="Cancel"
         onCancel={() => undefined}
         onOK={() => void controller.confirm()}
-        bOKDisabled={state.status === "generating"}
+        bOKDisabled={state.busy}
       />,
       modalWindow,
     );
@@ -102,7 +98,10 @@ const SteamInputRadialMenu: FC<SteamInputRadialMenuProps> = (props) => {
         padding="standard"
         bottomSeparator="standard"
       >
-        <DialogButton disabled={state.status !== "ready" || !state.plan} onClick={() => void openConfirmation()}>
+        <DialogButton
+          disabled={state.busy || state.status !== "ready" || !state.plan}
+          onClick={() => void openConfirmation()}
+        >
           Prepare Steam Input radial menu
         </DialogButton>
       </Field>
@@ -113,11 +112,15 @@ const SteamInputRadialMenu: FC<SteamInputRadialMenuProps> = (props) => {
         childrenLayout="below"
         bottomSeparator="standard"
       >
-        <DialogButton disabled={!state.generationAvailable}>Generate layout</DialogButton>
+        <DialogButton disabled={state.busy || !state.generationAvailable}>Generate layout</DialogButton>
       </Field>
       <Field padding="standard" childrenLayout="below" bottomSeparator="standard">
-        <DialogButton onClick={() => void exportProbe()}>Export safe probe report</DialogButton>
-        <DialogButton onClick={() => void openConfigurator()}>Open Steam controller configurator</DialogButton>
+        <DialogButton disabled={state.busy} onClick={() => void exportProbe()}>
+          Export safe probe report
+        </DialogButton>
+        <DialogButton disabled={state.busy} onClick={() => void openConfigurator()}>
+          Open Steam controller configurator
+        </DialogButton>
       </Field>
     </Focusable>
   );

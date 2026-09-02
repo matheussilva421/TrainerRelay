@@ -49,6 +49,55 @@ _CHEAT_STATES = {"unknown", "enabled", "disabled"}
 _CHEAT_OPERATIONS = {"enable", "disable", "toggle"}
 _CHEAT_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_DIAGNOSTIC_UUID = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+_HASH_PREFIX = re.compile(r"^[0-9a-f]{8,16}$")
+_STEAM_INPUT_PROBE_EVENT_FIELDS = {
+    "preview_created": frozenset(
+        {
+            "event",
+            "appId",
+            "identity",
+            "commandCount",
+            "pageCount",
+            "skippedCount",
+            "trainerHashPrefix",
+            "catalogFingerprintPrefix",
+            "runtimeFingerprintPrefix",
+            "sourceLayoutIdHashPrefix",
+            "resultCode",
+            "correlationId",
+        }
+    ),
+    "authority_changed": frozenset(
+        {
+            "event",
+            "appId",
+            "identity",
+            "changedFieldCount",
+            "trainerHashPrefix",
+            "catalogFingerprintPrefix",
+            "runtimeFingerprintPrefix",
+            "sourceLayoutIdHashPrefix",
+            "resultCode",
+            "correlationId",
+        }
+    ),
+    "configurator_opened": frozenset(
+        {"event", "appId", "identity", "resultCode", "correlationId"}
+    ),
+}
+_STEAM_INPUT_PROBE_EVENT_OUTCOMES = {
+    "preview_created": "accepted",
+    "authority_changed": "rejected",
+    "configurator_opened": "accepted",
+}
+_STEAM_INPUT_PROBE_RESULT_CODES = {
+    "preview_created": "readonly",
+    "authority_changed": "authority_changed",
+    "configurator_opened": "opened",
+}
 
 
 class RelayRpc:
@@ -191,6 +240,67 @@ class RelayRpc:
             identity=report["identity"],
         )
         return result
+
+    async def record_steam_input_probe_event(self, data: Mapping[str, Any]) -> dict[str, bool]:
+        if not isinstance(data, Mapping):
+            raise RelayRpcError("invalid_steam_input_probe_event")
+        event = data.get("event")
+        fields = _STEAM_INPUT_PROBE_EVENT_FIELDS.get(event) if isinstance(event, str) else None
+        if fields is None or set(data) != fields:
+            raise RelayRpcError("invalid_steam_input_probe_event")
+        app_id = data["appId"]
+        if type(app_id) is not int or not 1 <= app_id <= 2**53 - 1:
+            raise RelayRpcError("invalid_steam_input_probe_event")
+        try:
+            identity = validate_launch_identity(data["identity"])
+        except (TypeError, ValueError):
+            raise RelayRpcError("invalid_steam_input_probe_event") from None
+        correlation_id = data["correlationId"]
+        if not isinstance(correlation_id, str) or _DIAGNOSTIC_UUID.fullmatch(correlation_id) is None:
+            raise RelayRpcError("invalid_steam_input_probe_event")
+        if data["resultCode"] != _STEAM_INPUT_PROBE_RESULT_CODES[event]:
+            raise RelayRpcError("invalid_steam_input_probe_event")
+
+        details: dict[str, str | int] = {
+            "app_id": app_id,
+            "result_code": data["resultCode"],
+            "correlation_id": correlation_id,
+        }
+        count_fields = {
+            "commandCount": "command_count",
+            "pageCount": "page_count",
+            "skippedCount": "skipped_count",
+            "changedFieldCount": "changed_field_count",
+        }
+        for wire_key, detail_key in count_fields.items():
+            if wire_key not in data:
+                continue
+            value = data[wire_key]
+            if type(value) is not int or not 0 <= value <= 64:
+                raise RelayRpcError("invalid_steam_input_probe_event")
+            details[detail_key] = value
+        hash_fields = {
+            "trainerHashPrefix": "trainer_hash_prefix",
+            "catalogFingerprintPrefix": "catalog_fingerprint_prefix",
+            "runtimeFingerprintPrefix": "runtime_fingerprint_prefix",
+            "sourceLayoutIdHashPrefix": "source_layout_id_hash_prefix",
+        }
+        for wire_key, detail_key in hash_fields.items():
+            if wire_key not in data:
+                continue
+            value = data[wire_key]
+            if not isinstance(value, str) or _HASH_PREFIX.fullmatch(value) is None:
+                raise RelayRpcError("invalid_steam_input_probe_event")
+            details[detail_key] = value
+
+        self._record_diagnostic(
+            event,
+            _STEAM_INPUT_PROBE_EVENT_OUTCOMES[event],
+            details,
+            category="steam_input",
+            identity=identity,
+        )
+        return {"accepted": True}
 
     async def record_generated_radial_layout(self, data: Mapping[str, Any]) -> dict[str, Any]:
         request = self._strict_request(data, set(RADIAL_LAYOUT_FIELDS))

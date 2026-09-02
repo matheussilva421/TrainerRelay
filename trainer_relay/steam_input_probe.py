@@ -38,6 +38,15 @@ _METHOD_SHAPE_FIELDS = frozenset(
 )
 _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _RESPONSE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
+_FORBIDDEN_RESPONSE_KEY_PARTS = (
+    "account",
+    "token",
+    "authorization",
+    "secret",
+    "password",
+    "cookie",
+    "credential",
+)
 
 
 class SteamInputProbeStorageError(OSError):
@@ -71,6 +80,7 @@ def _validate_response_keys(value: Any) -> list[str]:
             not isinstance(key, str)
             or not 1 <= len(key) <= MAX_RESPONSE_PRIMITIVE_KEY_LENGTH
             or _RESPONSE_KEY_PATTERN.fullmatch(key) is None
+            or any(part in key.casefold() for part in _FORBIDDEN_RESPONSE_KEY_PARTS)
         ):
             raise _invalid()
         if key in result:
@@ -84,7 +94,7 @@ def validate_steam_input_probe(value: Any) -> dict[str, Any]:
 
     if not isinstance(value, Mapping) or set(value) != _PROBE_FIELDS:
         raise _invalid()
-    if value["schemaVersion"] != 1:
+    if type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1:
         raise _invalid()
     app_id = value["appId"]
     if type(app_id) is not int or not 1 <= app_id <= MAX_SAFE_APP_ID:
@@ -93,7 +103,11 @@ def validate_steam_input_probe(value: Any) -> dict[str, Any]:
         identity = validate_launch_identity(value["identity"])
     except (TypeError, ValueError):
         raise _invalid() from None
-    if value["controller"] != "steam_deck_builtin" or value["controllerIndex"] != 0:
+    if (
+        value["controller"] != "steam_deck_builtin"
+        or type(value["controllerIndex"]) is not int
+        or value["controllerIndex"] != 0
+    ):
         raise _invalid()
     name_length = value["sourceLayoutNameLength"]
     if type(name_length) is not int or not 0 <= name_length <= 120:
@@ -121,15 +135,36 @@ def _encode_probe(value: Mapping[str, Any]) -> bytes:
     return encoded
 
 
-def _next_probe_path(downloads_dir: Path, wall_clock: Callable[[], datetime]) -> Path:
+def _probe_stem(wall_clock: Callable[[], datetime]) -> str:
     timestamp = wall_clock().astimezone(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    stem = f"TrainerRelay-steam-input-probe-{timestamp}"
-    destination = downloads_dir / f"{stem}.json"
-    suffix = 1
-    while destination.exists():
-        destination = downloads_dir / f"{stem}-{suffix}.json"
-        suffix += 1
-    return destination
+    return f"TrainerRelay-steam-input-probe-{timestamp}"
+
+
+def _reserve_probe_path(downloads_dir: Path, stem: str, temporary_path: Path) -> Path:
+    suffix = 0
+    while True:
+        name = f"{stem}.json" if suffix == 0 else f"{stem}-{suffix}.json"
+        destination = downloads_dir / name
+        try:
+            os.link(temporary_path, destination)
+            return destination
+        except FileExistsError:
+            suffix += 1
+
+
+def _fsync_directory(directory: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError:
+            pass
+    finally:
+        os.close(descriptor)
 
 
 def export_steam_input_probe(
@@ -147,7 +182,7 @@ def export_steam_input_probe(
     try:
         directory = Path(downloads_dir)
         directory.mkdir(parents=True, exist_ok=True)
-        destination = _next_probe_path(directory, wall_clock or (lambda: datetime.now(timezone.utc)))
+        stem = _probe_stem(wall_clock or (lambda: datetime.now(timezone.utc)))
         with tempfile.NamedTemporaryFile(
             mode="wb", prefix=".trainer-relay-steam-input-probe-", suffix=".tmp", dir=directory, delete=False
         ) as stream:
@@ -155,8 +190,10 @@ def export_steam_input_probe(
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary_path, destination)
+        destination = _reserve_probe_path(directory, stem, temporary_path)
+        temporary_path.unlink()
         temporary_path = None
+        _fsync_directory(directory)
         return {"path": str(destination.resolve()), "bytesWritten": len(encoded)}
     except (OSError, UnicodeError):
         if temporary_path is not None:

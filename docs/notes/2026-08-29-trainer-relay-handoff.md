@@ -2031,3 +2031,49 @@ untested.
   Archive inspection found zero writable Steam profile files.
 - Hard stop: Task 5 requires installation on the physical Steam Deck and a
   sanitized probe export. Tasks 6-8 remain forbidden until `PASS_SAFE_CLONE`.
+
+### Steam Input radial-menu Task 4 fix round 1 complete — 2026-09-02
+
+- Resolved review blockers without widening the production safety boundary:
+  exact metadata-only frontend/backend RPC for `preview_created`,
+  `authority_changed`, and `configurator_opened`; fresh confirmation/export
+  authority recomputation; operation-token guards around asynchronous hashing,
+  fingerprinting, probing, and export; and probe shape taken from actual adapter
+  observation with fail-closed decoding.
+- Hardened backend schema and storage: exact Python ints reject bool/float,
+  sensitive/malformed/unbounded primitive keys reject, concurrent exports use an
+  exclusive no-overwrite reservation, and file plus supported directory fsyncs
+  protect the atomic LF JSON output.
+- Corrected modal wording and busy-state disabling while preserving permanently
+  disabled production generation. Packaging now explicitly requires
+  `steam_input_probe.py`, rejects writable Steam profiles, and README references
+  `0.1.0-experimental.21.probe.1`.
+- Strict TDD evidence: backend probe RED was 8 methods with 12 failing subtests
+  and 1 error, then an intermediate 7/8 regression and final 8/8 GREEN; metadata
+  RPC/Plugin RED was 3 methods with 8 errors, then 11/11 GREEN. Frontend RED was
+  47/59, then 59/59 GREEN. The final reviewer-only failure was fixture
+  instrumentation (`adapter.probe` was not a spy); wrapping only that fixture in
+  `vi.fn` preserved production behavior and restored focused GREEN.
+- Final Step 6 gates: backend focused 80/80, frontend focused 18/18, full backend
+  294/294, full frontend 277/277 across 36 files, packaging 7/7, Biome 89 files,
+  production/test TypeScript, Rollup, package build, and `git diff --check` all
+  passed.
+- Rebuilt artifact:
+  `C:/Users/slvma/Downloads/Github/TrainerRelay/TrainerRelay.zip`, 834878 bytes,
+  35 entries, SHA-256
+  `1F489B7F78B6D1763AD63941F7898C272F7686C16F798FA9D901DF973B133A2D`.
+  Inspection confirmed the probe module and exact version, with zero writable
+  Steam profiles, tests, caches, node modules, or source maps.
+- Safety inspection found no production export/edit/save/select/register call.
+  The shipped adapter remains read-only and generation remains unavailable;
+  physical click/focus validation is still the mandatory Task 5 boundary.
+- Detailed RED/GREEN records, all 35 ZIP entries, file scope, and self-review are
+  appended to
+  `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-4-report.md`.
+- Commit subject: `fix: harden read-only Steam Input radial probe`. Exact SHA and
+  push result follow in the final delivery response after this handoff is
+  included. No tag or release was created. `.codex-remote-attachments/` remains
+  user-owned and unstaged.
+- Resume boundary: install this exact ZIP on the physical Steam Deck and execute
+  Task 5. Do not begin Tasks 6-8 unless the device evidence reaches
+  `PASS_SAFE_CLONE`.
