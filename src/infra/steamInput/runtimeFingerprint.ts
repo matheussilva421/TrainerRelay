@@ -1,4 +1,4 @@
-import type { Sha256Digest, SteamInputMethodShape } from "../../domain/steamInput/types";
+import type { Sha256Digest, SteamInputMethodShape, SteamInputPrimitiveType } from "../../domain/steamInput/types";
 
 export class SteamInputFingerprintError extends Error {
   constructor(readonly code: string) {
@@ -7,7 +7,15 @@ export class SteamInputFingerprintError extends Error {
   }
 }
 
-const primitiveTypes = new Set(["string", "number", "boolean", "bigint", "symbol", "undefined", "null"]);
+const primitiveTypes = new Set<SteamInputPrimitiveType>([
+  "string",
+  "number",
+  "boolean",
+  "bigint",
+  "symbol",
+  "undefined",
+  "null",
+]);
 const responseKeyPattern = /^[A-Za-z0-9_.-]{1,128}$/;
 const methodKeys = [
   "getConfig",
@@ -23,19 +31,21 @@ const methodKeys = [
   "showConfigurator",
 ] as const;
 
-const isPrimitiveType = (value: string): boolean => primitiveTypes.has(value);
+const isPrimitiveType = (value: string): value is SteamInputPrimitiveType =>
+  primitiveTypes.has(value as SteamInputPrimitiveType);
 
 const canonicalShape = (shape: SteamInputMethodShape): string => {
   if (
     methodKeys.some((key) => typeof shape[key] !== "boolean") ||
     !Array.isArray(shape.responsePrimitiveKeys) ||
     shape.responsePrimitiveKeys.length > 64 ||
-    shape.responsePrimitiveKeys.some((key) => typeof key !== "string" || !responseKeyPattern.test(key))
+    shape.responsePrimitiveKeys.some((key) => typeof key !== "string" || !responseKeyPattern.test(key)) ||
+    new Set(shape.responsePrimitiveKeys).size !== shape.responsePrimitiveKeys.length
   )
     throw new SteamInputFingerprintError("invalid_runtime_shape");
 
-  const responsePrimitiveKeys = [...new Set(shape.responsePrimitiveKeys)].sort();
-  const responsePrimitiveTypes = shape.responsePrimitiveTypes ?? {};
+  const responsePrimitiveKeys = [...shape.responsePrimitiveKeys].sort();
+  const responsePrimitiveTypes = shape.responsePrimitiveTypes;
   if (
     shape.controllerClassification !== undefined &&
     shape.controllerClassification !== "steam_deck_builtin" &&
@@ -46,6 +56,7 @@ const canonicalShape = (shape: SteamInputMethodShape): string => {
     typeof responsePrimitiveTypes !== "object" ||
     responsePrimitiveTypes === null ||
     Array.isArray(responsePrimitiveTypes) ||
+    Object.keys(responsePrimitiveTypes).length !== responsePrimitiveKeys.length ||
     Object.keys(responsePrimitiveTypes).some(
       (key) =>
         !responsePrimitiveKeys.includes(key) ||
@@ -60,11 +71,7 @@ const canonicalShape = (shape: SteamInputMethodShape): string => {
     controller: shape.controllerClassification ?? "unknown",
     methods: Object.fromEntries(methodKeys.map((key) => [key, shape[key]])),
     responsePrimitiveKeys,
-    responsePrimitiveTypes: Object.fromEntries(
-      responsePrimitiveKeys
-        .filter((key) => responsePrimitiveTypes[key] !== undefined)
-        .map((key) => [key, responsePrimitiveTypes[key]]),
-    ),
+    responsePrimitiveTypes: Object.fromEntries(responsePrimitiveKeys.map((key) => [key, responsePrimitiveTypes[key]])),
   });
 };
 

@@ -16,36 +16,62 @@ export interface RadialLayoutRpcClient {
   record: (record: GeneratedRadialLayoutV1) => Promise<RadialLayoutRegistryV1>;
 }
 
+const radialLayoutRpcErrorCodes = new Set([
+  "radial_layout_rpc_failed",
+  "invalid_radial_layout",
+  "invalid_radial_layout_registry",
+  "invalid_radial_app_id",
+  "invalid_radial_source_layout_id",
+  "invalid_radial_generated_layout_id",
+  "invalid_radial_generated_layout_name",
+  "invalid_radial_catalog_fingerprint",
+  "invalid_radial_runtime_fingerprint",
+  "invalid_radial_revision",
+  "invalid_radial_created_at",
+  "radial_layout_ids_must_differ",
+  "too_many_radial_layouts",
+  "duplicate_radial_layout",
+]);
+
 export class RadialLayoutRpcError extends Error {
-  constructor(readonly code: string) {
-    super(code);
+  readonly code: string;
+
+  constructor(code: string) {
+    const boundedCode = radialLayoutRpcErrorCodes.has(code) ? code : "radial_layout_rpc_failed";
+    super(boundedCode);
+    this.code = boundedCode;
     this.name = "RadialLayoutRpcError";
   }
 }
 
-const guarded = async <T>(operation: () => Promise<T>): Promise<T> => {
+const callTransport = async <T>(operation: () => Promise<T>): Promise<T> => {
   try {
     return await operation();
-  } catch (error) {
-    if (error instanceof RadialLayoutRpcError) throw error;
-    if (error instanceof SteamInputDecodeError) throw new RadialLayoutRpcError(error.code);
+  } catch {
     throw new RadialLayoutRpcError("radial_layout_rpc_failed");
   }
 };
 
+const decodeWire = <T>(operation: () => T, fallback: "invalid_radial_layout" | "invalid_radial_layout_registry"): T => {
+  try {
+    return operation();
+  } catch (error) {
+    if (error instanceof SteamInputDecodeError && radialLayoutRpcErrorCodes.has(error.code))
+      throw new RadialLayoutRpcError(error.code);
+    throw new RadialLayoutRpcError(fallback);
+  }
+};
+
 export const createRadialLayoutRpc = (transport: RadialLayoutRpcTransport): RadialLayoutRpcClient => ({
-  getRegistry: () => guarded(async () => decodeRadialLayoutRegistry(await transport.getRegistry())),
-  record: (record) =>
-    guarded(async () => {
-      let decoded: GeneratedRadialLayoutV1;
-      try {
-        decoded = decodeGeneratedRadialLayout(record);
-      } catch (error) {
-        if (error instanceof SteamInputDecodeError) throw error;
-        throw new SteamInputDecodeError("invalid_radial_layout");
-      }
-      return decodeRadialLayoutRegistry(await transport.record(decoded));
-    }),
+  async getRegistry() {
+    const response = await callTransport(() => transport.getRegistry());
+    return decodeWire(() => decodeRadialLayoutRegistry(response), "invalid_radial_layout_registry");
+  },
+  async record(record) {
+    const decoded = decodeWire(() => decodeGeneratedRadialLayout(record), "invalid_radial_layout");
+    const response = await callTransport(() => transport.record(decoded));
+    return decodeWire(() => decodeRadialLayoutRegistry(response), "invalid_radial_layout_registry");
+  },
 });
 
 const getRegistryCall = callable<[], unknown>("get_radial_layout_registry");

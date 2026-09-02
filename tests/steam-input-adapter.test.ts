@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { SteamInputMethodShape } from "../src/domain/steamInput/types";
 import { createSteamInputLayoutAdapter } from "../src/infra/steamInput/adapter";
+import { fingerprintSteamInputShape } from "../src/infra/steamInput/runtimeFingerprint";
 
 const appId = 123456789;
 const recognizedResponse = {
@@ -81,6 +83,73 @@ describe("read-only Steam Input adapter", () => {
 
     await expect(adapter.probe(appId)).resolves.toMatchObject({ status: "unavailable", diagnostic });
     expect(dependencies.calls.filter((call) => call !== "GetConfigForAppAndController")).toEqual([]);
+  });
+
+  it.each([
+    ["invalid primitive key", { ...recognizedResponse, "account id": "76561198000000000" }],
+    ["unbounded primitive key", { ...recognizedResponse, ["x".repeat(129)]: "secret-token" }],
+  ])("fails closed instead of omitting an %s", async (_name, response) => {
+    const dependencies = createDependencies(response);
+    const adapter = createSteamInputLayoutAdapter(dependencies);
+
+    await expect(adapter.probe(appId)).resolves.toEqual({
+      status: "unavailable",
+      diagnostic: "unknown_response_shape",
+    });
+    expect(dependencies.calls).toEqual(["GetConfigForAppAndController"]);
+  });
+
+  it("fingerprints bounded private structure without including account or token values", async () => {
+    const accountIdentifier = "76561198000000000";
+    const privateToken = "private-token-value";
+    const dependencies = createDependencies({
+      ...recognizedResponse,
+      account_id: accountIdentifier,
+      access_token: privateToken,
+    });
+    const adapter = createSteamInputLayoutAdapter(dependencies);
+
+    await expect(adapter.probe(appId)).resolves.toMatchObject({ status: "readonly" });
+
+    const fingerprintInput = new TextDecoder().decode(dependencies.digest.mock.calls[0][0]);
+    const shape = JSON.parse(fingerprintInput) as {
+      responsePrimitiveKeys: string[];
+      responsePrimitiveTypes: Record<string, string>;
+    };
+    expect(fingerprintInput).not.toContain(accountIdentifier);
+    expect(fingerprintInput).not.toContain(privateToken);
+    expect(shape.responsePrimitiveKeys).toEqual(["access_token", "account_id", "controller_type", "name", "url"]);
+    expect(shape.responsePrimitiveTypes).toEqual({
+      access_token: "string",
+      account_id: "string",
+      controller_type: "string",
+      name: "string",
+      url: "string",
+    });
+    expect(shape.responsePrimitiveKeys.every((key) => key.length <= 128 && /^[A-Za-z0-9_.-]+$/.test(key))).toBe(true);
+  });
+
+  it("rejects a runtime shape missing a primitive type for any response key", async () => {
+    const shape = {
+      getConfig: true,
+      exportConfig: false,
+      startEditing: false,
+      saveEditing: false,
+      stopEditing: false,
+      setActionSet: false,
+      setActivator: false,
+      setBinding: false,
+      setSourceMode: false,
+      setSelected: false,
+      showConfigurator: true,
+      responsePrimitiveKeys: ["controller_type", "url"],
+      responsePrimitiveTypes: { controller_type: "string" },
+      controllerClassification: "steam_deck_builtin",
+    } satisfies SteamInputMethodShape;
+    const digest = vi.fn(async (_value: Uint8Array) => new Uint8Array(32));
+
+    await expect(fingerprintSteamInputShape(shape, digest)).rejects.toMatchObject({ code: "invalid_runtime_shape" });
+    expect(digest).not.toHaveBeenCalled();
   });
 
   it("maps thrown and rejected reads to bounded unavailable results", async () => {

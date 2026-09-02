@@ -6,6 +6,7 @@ import type {
   SteamInputLayoutAdapter,
   SteamInputLayoutCreationResult,
   SteamInputMethodShape,
+  SteamInputPrimitiveType,
 } from "../../domain/steamInput/types";
 import { fingerprintSteamInputShape, SteamInputFingerprintError } from "./runtimeFingerprint";
 
@@ -57,15 +58,30 @@ const positiveSafeAppId = (value: number): number => {
   return value;
 };
 
+const primitiveTypeOf = (value: unknown): SteamInputPrimitiveType | undefined => {
+  if (value === null) return "null";
+  const type = typeof value;
+  if (
+    type === "string" ||
+    type === "number" ||
+    type === "boolean" ||
+    type === "bigint" ||
+    type === "symbol" ||
+    type === "undefined"
+  )
+    return type;
+  return undefined;
+};
+
 const methodShapeFor = (input: unknown, app: unknown, response: Record<string, unknown>): SteamInputMethodShape => {
   const responsePrimitiveKeys: string[] = [];
-  const responsePrimitiveTypes: Record<string, string> = {};
+  const responsePrimitiveTypes: Record<string, SteamInputPrimitiveType> = {};
   for (const [key, value] of Object.entries(response)) {
-    let type: string;
-    if (value === null) type = "null";
-    else type = typeof value;
-    if (!["string", "number", "boolean", "bigint", "symbol", "undefined", "null"].includes(type)) continue;
-    if (key.length < 1 || key.length > 128 || !/^[A-Za-z0-9_.-]+$/.test(key)) continue;
+    const type = primitiveTypeOf(value);
+    if (type === undefined) continue;
+    if (key.length < 1 || key.length > 128 || !/^[A-Za-z0-9_.-]+$/.test(key))
+      throw new SteamInputAdapterError("unknown_response_shape");
+    if (responsePrimitiveKeys.length >= 64) throw new SteamInputAdapterError("unknown_response_shape");
     responsePrimitiveKeys.push(key);
     responsePrimitiveTypes[key] = type;
   }

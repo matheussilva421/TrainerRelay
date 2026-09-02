@@ -14,7 +14,16 @@ export class SteamInputDecodeError extends Error {
 }
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
-const diagnosticPattern = /^[a-z0-9_]{1,64}$/;
+const capabilityDiagnostics = new Set([
+  "invalid_app_id",
+  "steam_input_method_unavailable",
+  "read_failed",
+  "unsupported_controller",
+  "unknown_response_shape",
+  "fingerprint_failed",
+  "probe_failed",
+  "unsupported_runtime",
+]);
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
 const timestampPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|\+00:00)$/;
 
@@ -183,7 +192,7 @@ export const decodeRadialLayoutRegistry = (value: unknown): RadialLayoutRegistry
 };
 
 const decodeDiagnostic = (value: unknown): string =>
-  typeof value === "string" && diagnosticPattern.test(value) ? value : fail("invalid_steam_input_capability");
+  typeof value === "string" && capabilityDiagnostics.has(value) ? value : fail("invalid_steam_input_capability");
 
 export const decodeSteamInputCapabilityResult = (value: unknown): SteamInputCapabilityResult => {
   if (!isRecord(value) || typeof value.status !== "string") return fail("invalid_steam_input_capability");

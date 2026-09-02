@@ -1967,3 +1967,30 @@ untested.
 - Runtime boundary remains explicit: this is static/unit-validated read-only
   probing only. No physical Steam Deck capture, writable profile, layout edit,
   save, selection, tag, or release was performed.
+
+### Steam Input radial-menu Task 3 fix round 1 — 2026-09-02
+
+- Hardened capability diagnostics from a lexical pattern to a finite public
+  allowlist; arbitrary lowercase/underscore tokens now fail closed.
+- Isolated RPC transport failures from decoder failures. Exported
+  `radialLayoutRpc.getRegistry()` and `.record()` now prove the exact Decky
+  callable names, and every transport exception becomes
+  `radial_layout_rpc_failed` without preserving private codes/details.
+- Made `responsePrimitiveTypes` mandatory and complete for every unique
+  primitive response key. Canonical fingerprints include every sorted key/type
+  pair and no private values.
+- Invalid or overlong primitive response-key names now reject the probe instead
+  of disappearing from the shape. Added account/token privacy coverage that
+  proves private values do not enter digest input.
+- Replaced the old registry freshness assertion with deep reference and
+  mutation independence checks.
+- TDD evidence: focused RED ran 31 tests with 25 pass/6 expected failures;
+  focused GREEN is 31/31. Final gates: frontend 261/261 across 34 suites,
+  production/test TSC, Biome across 85 files, Rollup, and `git diff --check`
+  passed.
+- Safety boundary unchanged: no writable authorization, no request validation
+  in `createSeparateLayout`, and zero export/edit/save/select/register calls.
+  The method remains unconditional `unsupported_runtime`; the adapter still
+  contains no `any`.
+- Detailed evidence is appended to
+  `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-3-report.md`.

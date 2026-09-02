@@ -1,8 +1,24 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@decky/api", () => ({ callable: () => async () => undefined }));
+const deckyMock = vi.hoisted(() => {
+  type Handler = (...args: unknown[]) => unknown;
+  const handlers = new Map<string, Handler>();
+  const registrations: string[] = [];
+  const invocations: Array<{ name: string; args: unknown[] }> = [];
+  const callable = vi.fn((name: string) => {
+    registrations.push(name);
+    return (...args: unknown[]) => {
+      invocations.push({ name, args });
+      const handler = handlers.get(name);
+      return handler === undefined ? Promise.resolve(undefined) : handler(...args);
+    };
+  });
+  return { callable, handlers, registrations, invocations };
+});
 
-import { createRadialLayoutRpc, RadialLayoutRpcError } from "../src/infra/radialLayoutRpc";
+vi.mock("@decky/api", () => ({ callable: deckyMock.callable }));
+
+import { createRadialLayoutRpc, RadialLayoutRpcError, radialLayoutRpc } from "../src/infra/radialLayoutRpc";
 
 const record = {
   appId: 123456789,
@@ -20,6 +36,40 @@ const record = {
 const registry = { schemaVersion: 1 as const, layouts: [record] };
 
 describe("radial layout RPC", () => {
+  beforeEach(() => {
+    deckyMock.handlers.clear();
+    deckyMock.invocations.length = 0;
+  });
+
+  it("registers and exercises the exact exported Decky callable names", async () => {
+    deckyMock.handlers.set("get_radial_layout_registry", () => Promise.resolve(registry));
+    deckyMock.handlers.set("record_generated_radial_layout", () => Promise.resolve(registry));
+
+    await expect(radialLayoutRpc.getRegistry()).resolves.toEqual(registry);
+    await expect(radialLayoutRpc.record(record)).resolves.toEqual(registry);
+
+    expect(deckyMock.registrations).toEqual(["get_radial_layout_registry", "record_generated_radial_layout"]);
+    expect(deckyMock.invocations).toEqual([
+      { name: "get_radial_layout_registry", args: [] },
+      { name: "record_generated_radial_layout", args: [record] },
+    ]);
+  });
+
+  it.each(["get", "record"] as const)("maps exported %s transport failures to one bounded code", async (operation) => {
+    deckyMock.handlers.set("get_radial_layout_registry", () =>
+      Promise.reject(new RadialLayoutRpcError("account_token_from_transport")),
+    );
+    deckyMock.handlers.set("record_generated_radial_layout", () =>
+      Promise.reject({ code: "private_backend_path", detail: "C:\\private\\account" }),
+    );
+
+    const result = operation === "get" ? radialLayoutRpc.getRegistry() : radialLayoutRpc.record(record);
+
+    await expect(result).rejects.toEqual(expect.objectContaining({ code: "radial_layout_rpc_failed" }));
+    await expect(result).rejects.not.toThrow("account_token_from_transport");
+    await expect(result).rejects.not.toThrow("private_backend_path");
+  });
+
   it("uses the exact Task 2 registry wire requests and decodes responses", async () => {
     const transport = {
       getRegistry: vi.fn().mockResolvedValue(registry),
@@ -46,7 +96,7 @@ describe("radial layout RPC", () => {
 
   it("maps transport failures to a bounded RadialLayoutRpcError", async () => {
     const transport = {
-      getRegistry: vi.fn().mockRejectedValue(new Error("/private/path account-token")),
+      getRegistry: vi.fn().mockRejectedValue(new RadialLayoutRpcError("private_transport_code")),
       record: vi.fn(),
     };
     const rpc = createRadialLayoutRpc(transport);

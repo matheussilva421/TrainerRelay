@@ -18,11 +18,20 @@ const validLayout = {
 const validRegistry = () => ({ schemaVersion: 1, layouts: [validLayout] });
 
 describe("Steam Input wire decoders", () => {
-  it("decodes the exact bounded registry shape into fresh data", () => {
-    const decoded = decodeRadialLayoutRegistry(validRegistry());
+  it("decodes the exact bounded registry shape into deeply independent data", () => {
+    const input = validRegistry();
+    const decoded = decodeRadialLayoutRegistry(input);
 
-    expect(decoded).toEqual(validRegistry());
-    expect(decoded).not.toBe(validRegistry());
+    expect(decoded).toEqual(input);
+    expect(decoded).not.toBe(input);
+    expect(decoded.layouts).not.toBe(input.layouts);
+    expect(decoded.layouts[0]).not.toBe(input.layouts[0]);
+
+    input.layouts[0].generatedLayoutName = "Mutated input";
+    expect(decoded.layouts[0].generatedLayoutName).toBe("Trainer Relay - BioShock 2 - aaaaaaaa - r1");
+
+    decoded.layouts[0].sourceLayoutId = "autosave://changed/decoded";
+    expect(input.layouts[0].sourceLayoutId).toBe("autosave://123/source");
   });
 
   it.each([
@@ -89,6 +98,9 @@ describe("Steam Input wire decoders", () => {
     );
     expect(() =>
       decodeSteamInputCapabilityResult({ status: "unavailable", diagnostic: "private payload" }),
+    ).toThrowError("invalid_steam_input_capability");
+    expect(() =>
+      decodeSteamInputCapabilityResult({ status: "unavailable", diagnostic: "plausible_but_unapproved" }),
     ).toThrowError("invalid_steam_input_capability");
   });
 });

@@ -55,6 +55,8 @@ export interface RadialLayoutRegistryV1 {
   layouts: GeneratedRadialLayoutV1[];
 }
 
+export type SteamInputPrimitiveType = "string" | "number" | "boolean" | "bigint" | "symbol" | "undefined" | "null";
+
 export interface SteamInputMethodShape {
   getConfig: boolean;
   exportConfig: boolean;
@@ -68,7 +70,7 @@ export interface SteamInputMethodShape {
   setSelected: boolean;
   showConfigurator: boolean;
   responsePrimitiveKeys: string[];
-  responsePrimitiveTypes?: Record<string, string>;
+  responsePrimitiveTypes: Record<string, SteamInputPrimitiveType>;
   controllerClassification?: "steam_deck_builtin" | "unknown";
 }
 
