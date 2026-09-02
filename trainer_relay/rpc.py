@@ -429,7 +429,7 @@ class RelayRpc:
         if outcome != "requested" and state != "unknown":
             raise RelayRpcError("invalid_cheat_response")
         diagnostic = cls._safe_cheat_diagnostic(value.get("diagnostic"))
-        if outcome == "requested" and diagnostic is not None or outcome != "requested" and diagnostic is None:
+        if outcome != "requested" and diagnostic is None:
             raise RelayRpcError("invalid_cheat_response")
         return {
             "commandId": command_id,

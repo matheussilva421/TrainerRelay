@@ -143,10 +143,6 @@ export const useCheatControls = (
             rpc.sendCheatCommand({
               identity,
               cheatId,
-              allowAuthoritativeState:
-                response?.status === "ready" &&
-                response.source === "cooperative" &&
-                response.capabilities.authoritativeState === true,
             }),
           (result) => setLastResults((current) => ({ ...current, [cheatId]: commandResultMessage(result) })),
         );

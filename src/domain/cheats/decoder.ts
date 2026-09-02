@@ -247,8 +247,7 @@ export const decodeCheatCommandResult = (
   if (state !== "unknown" && !options.allowAuthoritativeState) throw new CheatDecodeError("cheat_state_untrusted");
   if (input.outcome !== "requested" && state !== "unknown") throw new CheatDecodeError("cheat_state_untrusted");
   const diagnostic = decodeDiagnostic(input.diagnostic);
-  if ((input.outcome === "requested" && diagnostic !== null) || (input.outcome !== "requested" && diagnostic === null))
-    throw new CheatDecodeError("invalid_cheat_response");
+  if (input.outcome !== "requested" && diagnostic === null) throw new CheatDecodeError("invalid_cheat_response");
   return {
     commandId: input.commandId,
     identity: expectedIdentity,

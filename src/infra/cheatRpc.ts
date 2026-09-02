@@ -41,11 +41,7 @@ export interface CheatRpcClient {
     hotkey: SymbolicHotkey;
   }) => Promise<ManualCheatMutation>;
   removeManualCheatControl: (request: { identity: LaunchIdentity; cheatId: string }) => Promise<ManualCheatRemoval>;
-  sendCheatCommand: (request: {
-    identity: LaunchIdentity;
-    cheatId: string;
-    allowAuthoritativeState?: boolean;
-  }) => Promise<CheatCommandResult>;
+  sendCheatCommand: (request: { identity: LaunchIdentity; cheatId: string }) => Promise<CheatCommandResult>;
 }
 
 export class CheatRpcError extends Error {
@@ -65,41 +61,51 @@ const guarded = async <T>(operation: () => Promise<T>): Promise<T> => {
   }
 };
 
-export const createCheatRpc = (transport: CheatRpcTransport): CheatRpcClient => ({
-  getCheatControls(identity) {
-    return guarded(async () => {
-      const normalized = decodeLaunchIdentity(identity);
-      return decodeCheatControlsResponse(normalized, await transport.getCheatControls({ identity: normalized }));
-    });
-  },
-  addManualCheatControl(request) {
-    return guarded(async () => {
-      const normalized = {
-        identity: decodeLaunchIdentity(request.identity),
-        trainerSha256: decodeTrainerSha256(request.trainerSha256),
-        label: decodeLabel(request.label.trim()),
-        hotkey: decodeHotkey(request.hotkey),
-      };
-      return decodeManualMutation(normalized.identity, await transport.addManualCheatControl(normalized));
-    });
-  },
-  removeManualCheatControl(request) {
-    return guarded(async () => {
-      const identity = decodeLaunchIdentity(request.identity);
-      const cheatId = decodeCheatId(request.cheatId);
-      return decodeManualRemoval(identity, cheatId, await transport.removeManualCheatControl({ identity, cheatId }));
-    });
-  },
-  sendCheatCommand(request) {
-    return guarded(async () => {
-      const identity = decodeLaunchIdentity(request.identity);
-      const cheatId = decodeCheatId(request.cheatId);
-      return decodeCheatCommandResult(identity, cheatId, await transport.sendCheatCommand({ identity, cheatId }), {
-        allowAuthoritativeState: request.allowAuthoritativeState === true,
+export const createCheatRpc = (transport: CheatRpcTransport): CheatRpcClient => {
+  const cooperativeCheats = new Map<LaunchIdentity, ReadonlySet<string>>();
+  return {
+    getCheatControls(identity) {
+      return guarded(async () => {
+        const normalized = decodeLaunchIdentity(identity);
+        cooperativeCheats.delete(normalized);
+        const response = decodeCheatControlsResponse(
+          normalized,
+          await transport.getCheatControls({ identity: normalized }),
+        );
+        if (response.status === "ready" && response.source === "cooperative")
+          cooperativeCheats.set(normalized, new Set(response.cheats.map((cheat) => cheat.id)));
+        return response;
       });
-    });
-  },
-});
+    },
+    addManualCheatControl(request) {
+      return guarded(async () => {
+        const normalized = {
+          identity: decodeLaunchIdentity(request.identity),
+          trainerSha256: decodeTrainerSha256(request.trainerSha256),
+          label: decodeLabel(request.label.trim()),
+          hotkey: decodeHotkey(request.hotkey),
+        };
+        return decodeManualMutation(normalized.identity, await transport.addManualCheatControl(normalized));
+      });
+    },
+    removeManualCheatControl(request) {
+      return guarded(async () => {
+        const identity = decodeLaunchIdentity(request.identity);
+        const cheatId = decodeCheatId(request.cheatId);
+        return decodeManualRemoval(identity, cheatId, await transport.removeManualCheatControl({ identity, cheatId }));
+      });
+    },
+    sendCheatCommand(request) {
+      return guarded(async () => {
+        const identity = decodeLaunchIdentity(request.identity);
+        const cheatId = decodeCheatId(request.cheatId);
+        return decodeCheatCommandResult(identity, cheatId, await transport.sendCheatCommand({ identity, cheatId }), {
+          allowAuthoritativeState: cooperativeCheats.get(identity)?.has(cheatId) === true,
+        });
+      });
+    },
+  };
+};
 
 const getCheatControlsCall = callable<[{ identity: LaunchIdentity }], unknown>("get_cheat_controls");
 const addManualCheatControlCall = callable<

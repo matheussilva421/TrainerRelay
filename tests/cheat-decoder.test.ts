@@ -155,4 +155,10 @@ describe("cheat wire decoder", () => {
       }).state,
     ).toBe("enabled");
   });
+
+  it("preserves a bounded diagnostic when a cooperative request may have been sent", () => {
+    expect(
+      decodeCheatCommandResult(identity, "health", command({ diagnostic: { code: "cooperative_ack_stale" } })),
+    ).toMatchObject({ outcome: "requested", state: "unknown", diagnostic: { code: "cooperative_ack_stale" } });
+  });
 });

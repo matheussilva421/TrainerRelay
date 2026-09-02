@@ -175,7 +175,6 @@ describe("Quick Access cheat controls", () => {
     expect(rpc.sendCheatCommand).toHaveBeenCalledWith({
       identity,
       cheatId: "health",
-      allowAuthoritativeState: false,
     });
     expect(rpc.getCheatControls).toHaveBeenCalledOnce();
   });

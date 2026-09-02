@@ -104,4 +104,36 @@ describe("cheat RPC adapter", () => {
     await expect(rpc.getCheatControls(identity)).rejects.not.toThrow("trainer.exe");
     expect(new CheatRpcError("invalid_cheat_response")).toBeInstanceOf(Error);
   });
+
+  it("accepts stateful results only after a decoded cooperative control snapshot", async () => {
+    const cooperative = {
+      ...controlsResponse,
+      source: "cooperative",
+      cheats: [{ id: "health", label: "Health", operations: ["toggle"], state: "unknown", authoritative: false }],
+      capabilities: { commands: true, authoritativeState: false, toggles: false },
+    };
+    const transport = {
+      getCheatControls: vi.fn().mockResolvedValue(cooperative),
+      addManualCheatControl: vi.fn(),
+      removeManualCheatControl: vi.fn(),
+      sendCheatCommand: vi.fn().mockResolvedValue({
+        commandId: "22222222-2222-4222-8222-222222222222",
+        identity,
+        cheatId: "health",
+        outcome: "requested",
+        state: "enabled",
+        diagnostic: null,
+      }),
+    };
+    const rpc = createCheatRpc(transport);
+
+    await rpc.getCheatControls(identity);
+    await expect(rpc.sendCheatCommand({ identity, cheatId: "health" })).resolves.toMatchObject({ state: "enabled" });
+
+    transport.getCheatControls.mockResolvedValue(controlsResponse);
+    await rpc.getCheatControls(identity);
+    await expect(rpc.sendCheatCommand({ identity, cheatId: "health" })).rejects.toMatchObject({
+      code: "cheat_state_untrusted",
+    });
+  });
 });

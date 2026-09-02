@@ -331,6 +331,25 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         response = await rpc.get_cheat_controls({"identity": "gog:game"})
         self.assertEqual(response["cheats"][0]["state"], "disabled")
 
+    async def test_requested_unknown_may_carry_bounded_cooperative_uncertainty(self):
+        class CooperativeService:
+            async def send_cheat_command(self, request):
+                return {
+                    "commandId": "11111111-1111-4111-8111-111111111111",
+                    "identity": request["identity"],
+                    "cheatId": request["cheatId"],
+                    "outcome": "requested",
+                    "state": "unknown",
+                    "diagnostic": {"code": "cooperative_ack_stale"},
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=CooperativeService())
+
+        result = await rpc.send_cheat_command({"identity": "gog:game", "cheatId": "health"})
+
+        self.assertEqual(result["outcome"], "requested")
+        self.assertEqual(result["diagnostic"], {"code": "cooperative_ack_stale"})
+
     async def test_empty_manual_response_exposes_hash_without_command_authority(self):
         class ManualService:
             async def get_cheat_controls(self, identity):
