@@ -1939,3 +1939,31 @@ untested.
 - No production code was changed. Next gate: choose subagent-driven or inline
   execution. The recommended path is subagent-driven with review after each
   task and a hard stop after the probe build for Steam Deck evidence.
+
+### Steam Input radial-menu Task 3 complete — 2026-09-02
+
+- Implemented strict frontend decoding for `RadialLayoutRegistryV1`, bounded
+  capability snapshots, and generated-layout records in
+  `src/domain/steamInput/decoder.ts`; added the public Task 3 contracts to
+  `src/domain/steamInput/types.ts`.
+- Added `src/infra/radialLayoutRpc.ts` with exact `get_radial_layout_registry`
+  and `record_generated_radial_layout` transport boundaries and bounded RPC
+  errors.
+- Added `src/infra/steamInput/runtimeFingerprint.ts` and the fail-closed
+  `src/infra/steamInput/adapter.ts`. Probe/inspection only read
+  `GetConfigForAppAndController(appId, 0)`, configurator fallback only calls
+  `ShowControllerConfigurator(appId)`, and separate-layout creation makes no
+  Steam calls until a physically validated writable profile exists.
+- TDD evidence is recorded in
+  `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-3-report.md`:
+  missing-module RED (3 suites, 0 tests), then focused GREEN (24/24).
+- Final frontend validation: full Vitest 254/254, production and test TSC,
+  Biome across 85 files, Rollup, and `git diff --check` passed. No `any`
+  escapes the adapter, no forbidden Steam Input method was invoked, and
+  `.codex-remote-attachments/` remains preserved and unstaged.
+- Commit subject is fixed as
+  `feat: add fail-closed Steam Input probe adapter`; the final SHA and push
+  status are recorded in the session handoff after publication.
+- Runtime boundary remains explicit: this is static/unit-validated read-only
+  probing only. No physical Steam Deck capture, writable profile, layout edit,
+  save, selection, tag, or release was performed.
