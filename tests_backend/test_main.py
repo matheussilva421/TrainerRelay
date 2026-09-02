@@ -85,6 +85,13 @@ class FakeCheatRpc(FakeDiagnosticRpc):
         self.send_cheat_command = AsyncMock(return_value={"outcome": "requested", "state": "unknown"})
 
 
+class FakeRadialRpc(FakeDiagnosticRpc):
+    def __init__(self):
+        super().__init__()
+        self.get_radial_layout_registry = AsyncMock(return_value={"schemaVersion": 1, "layouts": []})
+        self.record_generated_radial_layout = AsyncMock(return_value={"schemaVersion": 1, "layouts": []})
+
+
 class MainWiringTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.settings = FakeSettings()
@@ -285,6 +292,17 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         rpc.add_manual_cheat_control.assert_awaited_once_with({"identity": "gog:game"})
         rpc.remove_manual_cheat_control.assert_awaited_once_with({"identity": "gog:game"})
         rpc.send_cheat_command.assert_awaited_once_with({"identity": "gog:game"})
+
+    async def test_plugin_delegates_both_radial_registry_rpcs(self):
+        rpc = FakeRadialRpc()
+        self.main._rpc = rpc
+        record = {"generatedLayoutId": "personal://123/generated"}
+
+        await self.main.Plugin.get_radial_layout_registry()
+        await self.main.Plugin.record_generated_radial_layout(record)
+
+        rpc.get_radial_layout_registry.assert_awaited_once_with()
+        rpc.record_generated_radial_layout.assert_awaited_once_with(record)
 
 
 if __name__ == "__main__":

@@ -183,6 +183,14 @@ class Plugin:
         return await _service().get_relay_config()
 
     @classmethod
+    async def get_radial_layout_registry(cls) -> dict[str, Any]:
+        return await _service().get_radial_layout_registry()
+
+    @classmethod
+    async def record_generated_radial_layout(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        return await _service().record_generated_radial_layout(data)
+
+    @classmethod
     async def set_relay_game_config(cls, data: Mapping[str, Any]) -> dict[str, Any]:
         return await _service().set_relay_game_config(data)
 

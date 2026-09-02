@@ -14,6 +14,15 @@ from .cheat_service import PUBLIC_CHEAT_DIAGNOSTIC_CODES
 from .config import DEFAULT_CONFIG_KEY, decode_relay_config, empty_relay_config, validate_game_config, validate_launch_identity
 from .diagnostic_settings import DIAGNOSTIC_SETTINGS_KEY, decode_diagnostic_settings
 from .hotkeys import normalize_hotkey
+from .radial_registry import (
+    RADIAL_LAYOUT_FIELDS,
+    RADIAL_LAYOUT_REGISTRY_KEY,
+    decode_radial_layout_registry,
+    empty_radial_layout_registry,
+    next_radial_layout_revision,
+    validate_generated_radial_layout,
+    validate_radial_layout_registry,
+)
 
 
 class RelayRpcError(ValueError):
@@ -125,6 +134,58 @@ class RelayRpc:
 
     async def get_relay_config(self) -> dict[str, Any]:
         return self._load()
+
+    def _load_radial_layout_registry(self) -> dict[str, Any]:
+        try:
+            value = self._settings.getSetting(RADIAL_LAYOUT_REGISTRY_KEY, empty_radial_layout_registry())
+        except Exception as error:
+            raise RelayRpcError("radial_registry_read_failed") from error
+        return decode_radial_layout_registry(value)
+
+    def _persist_radial_layout_registry(self, registry: dict[str, Any]) -> None:
+        try:
+            safe_registry = validate_radial_layout_registry(registry)
+            self._settings.setSetting(RADIAL_LAYOUT_REGISTRY_KEY, safe_registry)
+            self._settings.commit()
+        except Exception as error:
+            raise RelayRpcError("radial_registry_persistence_failed") from error
+
+    async def get_radial_layout_registry(self) -> dict[str, Any]:
+        return self._load_radial_layout_registry()
+
+    async def record_generated_radial_layout(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        request = self._strict_request(data, set(RADIAL_LAYOUT_FIELDS))
+        try:
+            layout = validate_generated_radial_layout(request)
+        except ValueError:
+            raise RelayRpcError("invalid_radial_layout") from None
+
+        registry = self._load_radial_layout_registry()
+        try:
+            expected_revision = next_radial_layout_revision(
+                registry,
+                layout["appId"],
+                layout["identity"],
+                layout["trainerSha256"],
+                layout["catalogFingerprint"],
+            )
+        except ValueError as error:
+            code = str(error)
+            if code == "radial_revision_exhausted":
+                raise RelayRpcError("radial_layout_revision_exhausted") from None
+            raise RelayRpcError("invalid_radial_layout") from None
+        if layout["revision"] != expected_revision:
+            raise RelayRpcError("radial_layout_revision_conflict")
+
+        candidate = decode_radial_layout_registry(
+            {"schemaVersion": 1, "layouts": [*registry["layouts"], layout]}
+        )
+        updated = validate_radial_layout_registry(candidate)
+        self._persist_radial_layout_registry(updated)
+        try:
+            return self._load_radial_layout_registry()
+        except RelayRpcError:
+            raise RelayRpcError("radial_registry_persistence_failed") from None
 
     async def set_relay_game_config(self, data: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(data, Mapping):

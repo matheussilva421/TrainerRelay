@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from trainer_relay.radial_registry import RADIAL_LAYOUT_REGISTRY_KEY
 from trainer_relay.rpc import RelayRpc, RelayRpcError
 
 
@@ -129,6 +130,20 @@ class FakeDiagnostics:
         return self.stats()
 
 
+RADIAL_LAYOUT = {
+    "appId": 123456789,
+    "identity": "gog:1482265668",
+    "trainerSha256": "a" * 64,
+    "catalogFingerprint": "b" * 64,
+    "steamRuntimeFingerprint": "c" * 64,
+    "sourceLayoutId": "autosave://123/source",
+    "generatedLayoutId": "personal://123/generated",
+    "generatedLayoutName": "Trainer Relay — BioShock 2 — aaaaaaaa — r1",
+    "revision": 1,
+    "createdAt": "2026-09-02T12:00:00Z",
+}
+
+
 class RpcTests(unittest.IsolatedAsyncioTestCase):
     def diagnostic_rpc(self, settings=None, diagnostics=None):
         return RelayRpc(
@@ -155,6 +170,71 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(settings.commit_calls, 1)
             self.assertEqual(watcher.configs, [config])
             self.assertEqual(await rpc.get_relay_config(), config)
+
+    async def test_radial_registry_reads_only_strict_safe_metadata(self):
+        settings = FakeSettings(None)
+        settings.values[RADIAL_LAYOUT_REGISTRY_KEY] = {
+            "schemaVersion": 1,
+            "layouts": [RADIAL_LAYOUT, {**RADIAL_LAYOUT, "command": "private"}],
+        }
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        registry = await rpc.get_radial_layout_registry()
+
+        self.assertEqual(registry, {"schemaVersion": 1, "layouts": [RADIAL_LAYOUT]})
+        self.assertNotIn("command", registry)
+        self.assertNotIn("controllerPayload", registry)
+
+    async def test_radial_registry_record_allocates_revision_persists_and_rereads(self):
+        settings = FakeSettings(None)
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        first = await rpc.record_generated_radial_layout(RADIAL_LAYOUT)
+        second_layout = {
+            **RADIAL_LAYOUT,
+            "generatedLayoutId": "personal://123/generated-r2",
+            "generatedLayoutName": "Trainer Relay — BioShock 2 — aaaaaaaa — r2",
+            "revision": 2,
+        }
+        second = await rpc.record_generated_radial_layout(second_layout)
+
+        self.assertEqual(first, {"schemaVersion": 1, "layouts": [RADIAL_LAYOUT]})
+        self.assertEqual(second, {"schemaVersion": 1, "layouts": [RADIAL_LAYOUT, second_layout]})
+        self.assertEqual([call[0] for call in settings.set_calls], [RADIAL_LAYOUT_REGISTRY_KEY, RADIAL_LAYOUT_REGISTRY_KEY])
+        self.assertEqual(settings.commit_calls, 2)
+
+    async def test_radial_registry_rejects_extra_fields_same_ids_payloads_commands_and_stale_revision(self):
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher())
+        cases = (
+            {**RADIAL_LAYOUT, "extra": "not-safe"},
+            {**RADIAL_LAYOUT, "sourceLayoutId": RADIAL_LAYOUT["generatedLayoutId"]},
+            {**RADIAL_LAYOUT, "controllerPayload": {"opaque": True}},
+            {**RADIAL_LAYOUT, "command": "send-hotkey"},
+        )
+        for data in cases:
+            with self.subTest(data=data):
+                with self.assertRaisesRegex(RelayRpcError, "invalid_request|invalid_radial_layout"):
+                    await rpc.record_generated_radial_layout(data)
+
+        await rpc.record_generated_radial_layout(RADIAL_LAYOUT)
+        stale = {
+            **RADIAL_LAYOUT,
+            "generatedLayoutId": "personal://123/stale",
+        }
+        with self.assertRaisesRegex(RelayRpcError, "radial_layout_revision_conflict"):
+            await rpc.record_generated_radial_layout(stale)
+
+    async def test_radial_registry_write_failures_use_bounded_persistence_code(self):
+        class FailingSettings(FakeSettings):
+            def setSetting(self, key, value):
+                raise OSError("/private/settings/path")
+
+        rpc = RelayRpc(FailingSettings(None), FakeWatcher())
+
+        with self.assertRaisesRegex(RelayRpcError, "radial_registry_persistence_failed") as raised:
+            await rpc.record_generated_radial_layout(RADIAL_LAYOUT)
+
+        self.assertNotIn("/private/settings/path", str(raised.exception))
 
     async def test_null_game_config_removes_entry(self):
         with tempfile.TemporaryDirectory() as directory:
