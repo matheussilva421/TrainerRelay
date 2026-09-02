@@ -164,6 +164,65 @@ def validate_radial_layout_registry(value: Any) -> dict[str, Any]:
     return _validate_registry_document(value)
 
 
+def _revision_scope(layout: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        layout["appId"],
+        layout["identity"],
+        layout["trainerSha256"],
+        layout["catalogFingerprint"],
+    )
+
+
+def append_generated_radial_layout(registry: Any, value: Any) -> dict[str, Any]:
+    """Append one record while retaining revision authority for every scope."""
+
+    current = validate_radial_layout_registry(registry)
+    submitted = validate_generated_radial_layout(value)
+    candidates = [*current["layouts"], submitted]
+
+    latest_by_scope: dict[tuple[Any, ...], int] = {}
+    for index, layout in enumerate(candidates):
+        scope = _revision_scope(layout)
+        previous_index = latest_by_scope.get(scope)
+        if previous_index is None or layout["revision"] >= candidates[previous_index]["revision"]:
+            latest_by_scope[scope] = index
+
+    required = set(latest_by_scope.values())
+    if len(required) > MAX_RADIAL_LAYOUTS:
+        raise ValueError("radial_registry_capacity_exhausted")
+
+    history = [index for index in range(len(candidates)) if index not in required]
+    history.sort(
+        key=lambda index: (
+            _parse_utc_timestamp(candidates[index]["createdAt"]),
+            candidates[index]["revision"],
+            index,
+        )
+    )
+    history_slots = MAX_RADIAL_LAYOUTS - len(required)
+    retained = set(required)
+    if history_slots:
+        retained.update(history[-history_slots:])
+    submitted_index = len(candidates) - 1
+    if submitted_index not in retained:
+        raise ValueError("radial_registry_submitted_record_evicted")
+
+    ordered_indices = sorted(
+        retained,
+        key=lambda index: (
+            _parse_utc_timestamp(candidates[index]["createdAt"]),
+            candidates[index]["revision"],
+            index,
+        ),
+    )
+    return validate_radial_layout_registry(
+        {
+            "schemaVersion": RADIAL_LAYOUT_REGISTRY_SCHEMA_VERSION,
+            "layouts": [candidates[index] for index in ordered_indices],
+        }
+    )
+
+
 def decode_radial_layout_registry(value: Any) -> dict[str, Any]:
     """Decode settings, dropping invalid records and retaining the newest 128."""
 

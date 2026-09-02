@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -144,6 +145,25 @@ RADIAL_LAYOUT = {
 }
 
 
+def radial_layout(
+    *,
+    scope="1482265668",
+    app_id=123456789,
+    revision=1,
+    created_at="2026-09-02T12:00:00Z",
+):
+    return {
+        **RADIAL_LAYOUT,
+        "appId": app_id,
+        "identity": f"gog:{scope}",
+        "sourceLayoutId": f"autosave://{scope}/source/{revision}",
+        "generatedLayoutId": f"personal://{scope}/generated/{revision}",
+        "generatedLayoutName": f"Trainer Relay — {scope} — r{revision}",
+        "revision": revision,
+        "createdAt": created_at,
+    }
+
+
 class RpcTests(unittest.IsolatedAsyncioTestCase):
     def diagnostic_rpc(self, settings=None, diagnostics=None):
         return RelayRpc(
@@ -203,6 +223,132 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([call[0] for call in settings.set_calls], [RADIAL_LAYOUT_REGISTRY_KEY, RADIAL_LAYOUT_REGISTRY_KEY])
         self.assertEqual(settings.commit_calls, 2)
 
+    async def test_radial_registry_serializes_concurrent_writers_with_one_owned_lock(self):
+        settings = FakeSettings(None)
+        rpc = RelayRpc(settings, FakeWatcher())
+        first = radial_layout(scope="concurrent", revision=1)
+        second = radial_layout(scope="concurrent", revision=2)
+
+        async with rpc._radial_registry_lock:
+            first_task = asyncio.create_task(rpc.record_generated_radial_layout(first))
+            second_task = asyncio.create_task(rpc.record_generated_radial_layout(second))
+            await asyncio.sleep(0)
+            self.assertFalse(first_task.done())
+            self.assertFalse(second_task.done())
+
+        first_result, second_result = await asyncio.gather(first_task, second_task)
+
+        self.assertEqual(first_result["layouts"], [first])
+        self.assertEqual(second_result["layouts"], [first, second])
+        self.assertEqual(settings.commit_calls, 2)
+
+    async def test_radial_registry_retention_preserves_each_scopes_latest_revision(self):
+        settings = FakeSettings(None)
+        preserved = radial_layout(
+            scope="preserved",
+            app_id=11,
+            revision=7,
+            created_at="2020-01-01T00:00:00Z",
+        )
+        dense_history = [
+            radial_layout(scope="dense", app_id=12, revision=revision)
+            for revision in range(1, 128)
+        ]
+        settings.values[RADIAL_LAYOUT_REGISTRY_KEY] = {
+            "schemaVersion": 1,
+            "layouts": [preserved, *dense_history],
+        }
+        submitted = radial_layout(
+            scope="new-scope",
+            app_id=13,
+            revision=1,
+            created_at="2027-01-01T00:00:00Z",
+        )
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        registry = await rpc.record_generated_radial_layout(submitted)
+
+        self.assertEqual(len(registry["layouts"]), 128)
+        self.assertIn(preserved, registry["layouts"])
+        self.assertIn(dense_history[-1], registry["layouts"])
+        self.assertIn(submitted, registry["layouts"])
+        self.assertEqual(
+            next(
+                layout["revision"]
+                for layout in registry["layouts"]
+                if layout["identity"] == "gog:preserved"
+            ),
+            7,
+        )
+
+    async def test_old_caller_timestamp_cannot_evict_submitted_latest_revision(self):
+        settings = FakeSettings(None)
+        history = [
+            radial_layout(scope="timestamp", app_id=21, revision=revision)
+            for revision in range(1, 129)
+        ]
+        settings.values[RADIAL_LAYOUT_REGISTRY_KEY] = {
+            "schemaVersion": 1,
+            "layouts": history,
+        }
+        submitted = radial_layout(
+            scope="timestamp",
+            app_id=21,
+            revision=129,
+            created_at="2020-01-01T00:00:00Z",
+        )
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        registry = await rpc.record_generated_radial_layout(submitted)
+
+        self.assertEqual(len(registry["layouts"]), 128)
+        self.assertIn(submitted, registry["layouts"])
+        self.assertEqual(
+            max(layout["revision"] for layout in registry["layouts"] if layout["identity"] == "gog:timestamp"),
+            129,
+        )
+
+    async def test_radial_registry_fails_closed_when_128_scopes_have_no_evictable_history(self):
+        settings = FakeSettings(None)
+        settings.values[RADIAL_LAYOUT_REGISTRY_KEY] = {
+            "schemaVersion": 1,
+            "layouts": [
+                radial_layout(scope=f"scope-{index}", app_id=index + 1)
+                for index in range(128)
+            ],
+        }
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        with self.assertRaisesRegex(RelayRpcError, "radial_registry_capacity_exhausted"):
+            await rpc.record_generated_radial_layout(radial_layout(scope="scope-129", app_id=129))
+
+        self.assertEqual(settings.set_calls, [])
+        self.assertEqual(settings.commit_calls, 0)
+
+    async def test_radial_registry_evicts_only_history_when_all_128_authority_slots_are_needed(self):
+        settings = FakeSettings(None)
+        shared_history = [
+            radial_layout(scope="shared", app_id=1000, revision=revision)
+            for revision in (1, 2)
+        ]
+        distinct_authorities = [
+            radial_layout(scope=f"authority-{index}", app_id=2000 + index)
+            for index in range(126)
+        ]
+        settings.values[RADIAL_LAYOUT_REGISTRY_KEY] = {
+            "schemaVersion": 1,
+            "layouts": [*shared_history, *distinct_authorities],
+        }
+        submitted = radial_layout(scope="authority-new", app_id=5000)
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        registry = await rpc.record_generated_radial_layout(submitted)
+
+        self.assertEqual(len(registry["layouts"]), 128)
+        self.assertNotIn(shared_history[0], registry["layouts"])
+        self.assertIn(shared_history[1], registry["layouts"])
+        self.assertIn(submitted, registry["layouts"])
+
     async def test_radial_registry_rejects_extra_fields_same_ids_payloads_commands_and_stale_revision(self):
         rpc = RelayRpc(FakeSettings(None), FakeWatcher())
         cases = (
@@ -235,6 +381,69 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
             await rpc.record_generated_radial_layout(RADIAL_LAYOUT)
 
         self.assertNotIn("/private/settings/path", str(raised.exception))
+
+    async def test_radial_registry_commit_and_readback_failures_use_bounded_persistence_code(self):
+        class CommitFailingSettings(FakeSettings):
+            def commit(self):
+                raise OSError("private commit failure")
+
+        class ReadBackFailingSettings(FakeSettings):
+            def __init__(self):
+                super().__init__(None)
+                self.radial_reads = 0
+
+            def getSetting(self, key, default):
+                if key == RADIAL_LAYOUT_REGISTRY_KEY:
+                    self.radial_reads += 1
+                    if self.radial_reads == 2:
+                        raise OSError("private read-back failure")
+                return super().getSetting(key, default)
+
+        for settings in (CommitFailingSettings(None), ReadBackFailingSettings()):
+            with self.subTest(settings=type(settings).__name__):
+                with self.assertRaisesRegex(RelayRpcError, "radial_registry_persistence_failed") as raised:
+                    await RelayRpc(settings, FakeWatcher()).record_generated_radial_layout(RADIAL_LAYOUT)
+                self.assertNotIn("private", str(raised.exception))
+
+    async def test_radial_registry_noop_write_fails_post_write_verification(self):
+        class NoOpSettings(FakeSettings):
+            def setSetting(self, key, value):
+                self.set_calls.append((key, value))
+                return value
+
+        settings = NoOpSettings(None)
+        rpc = RelayRpc(settings, FakeWatcher())
+
+        with self.assertRaisesRegex(RelayRpcError, "radial_registry_persistence_failed"):
+            await rpc.record_generated_radial_layout(RADIAL_LAYOUT)
+
+        self.assertEqual(settings.commit_calls, 1)
+
+    async def test_radial_registry_initial_read_failures_are_bounded(self):
+        class ReadFailingSettings(FakeSettings):
+            def getSetting(self, key, default):
+                if key == RADIAL_LAYOUT_REGISTRY_KEY:
+                    raise OSError("private read failure")
+                return super().getSetting(key, default)
+
+        with self.assertRaisesRegex(RelayRpcError, "radial_registry_read_failed") as raised:
+            await RelayRpc(ReadFailingSettings(None), FakeWatcher()).get_radial_layout_registry()
+
+        self.assertNotIn("private", str(raised.exception))
+
+    async def test_radial_registry_does_not_mask_programming_errors_as_settings_failures(self):
+        class BrokenGetSettings(FakeSettings):
+            def getSetting(self, key, default):
+                raise TypeError("programming error in get")
+
+        class BrokenSetSettings(FakeSettings):
+            def setSetting(self, key, value):
+                raise TypeError("programming error in set")
+
+        with self.assertRaisesRegex(TypeError, "programming error in get"):
+            await RelayRpc(BrokenGetSettings(None), FakeWatcher()).get_radial_layout_registry()
+        with self.assertRaisesRegex(TypeError, "programming error in set"):
+            await RelayRpc(BrokenSetSettings(None), FakeWatcher()).record_generated_radial_layout(RADIAL_LAYOUT)
 
     async def test_null_game_config_removes_entry(self):
         with tempfile.TemporaryDirectory() as directory:
