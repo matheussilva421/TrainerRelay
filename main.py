@@ -145,7 +145,7 @@ class Plugin:
                         if inspect.isawaitable(result):
                             await result
                 except Exception:
-                    pass
+                    return
             if task is not None:
                 task.cancel()
                 try:

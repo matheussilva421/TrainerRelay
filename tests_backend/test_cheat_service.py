@@ -20,6 +20,13 @@ IDENTITY = "gog:game"
 HOTKEY = {"modifiers": ["shift", "ctrl"], "key": "F1"}
 
 
+class _BoundedCooperativeProvider:
+    cooperative_command_contract = {"deadline_seconds": 1.0, "cancel_deadline_seconds": 1.0}
+
+    def cancel_command(self, _descriptor, _command_id):
+        return None
+
+
 def _cheat(cheat_id="health", label="Infinite health", key="F1"):
     hotkey = {"modifiers": [], "key": key}
     return CheatDescriptor(cheat_id, label, hotkey, (hotkey,))
@@ -328,7 +335,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
             expected_reentry_bus=context.expected_reentry_bus,
         )
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -380,7 +387,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_fresh_cooperative_ack_is_the_only_source_of_authoritative_state(self):
         from trainer_relay.cheat_service import CheatControlService
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -475,7 +482,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
             (CooperativeCheatDescriptor("health", "Health", ("toggle",), "enabled"),),
         )
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return forged
 
@@ -489,7 +496,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
         from trainer_relay.cheat_service import CheatControlService
         from trainer_relay.cooperative import CooperativeAck
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -537,7 +544,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_fresh_negative_cooperative_ack_has_bounded_rejection_diagnostic(self):
         from trainer_relay.cheat_service import CheatControlService
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -608,7 +615,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
 
         watcher = LeaseWatcher()
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -655,7 +662,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_cooperative_ack_falls_back_to_independent_adapter_command(self):
         from trainer_relay.cheat_service import CheatControlService
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -708,7 +715,7 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_malformed_cooperative_ack_after_send_never_falls_back_to_helper(self):
         from trainer_relay.cheat_service import CheatControlService
 
-        class CooperativeProvider:
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def descriptor_for(self, _context):
                 return {
                     "protocol": "TrainerRelay Cooperative Control v1",
@@ -743,10 +750,106 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["diagnostic"], {"code": "cooperative_ack_non_authoritative"})
         self.assertEqual(runner.calls, [])
 
-    async def test_cancelled_cooperative_coroutine_keeps_worker_owned_until_close_drains_it(self):
+    async def test_cooperative_provider_without_bounded_contract_is_rejected_before_send(self):
         from trainer_relay.cheat_service import CheatControlService
 
         class CooperativeProvider:
+            def __init__(self):
+                self.send_calls = 0
+
+            def descriptor_for(self, _context):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": 1,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+            def send_command(self, _descriptor, _command_id, _cheat_id, _operation):
+                self.send_calls += 1
+                raise AssertionError("ineligible cooperative provider was invoked")
+
+        provider = CooperativeProvider()
+        runner = Runner()
+        service = CheatControlService(
+            Settings(),
+            Watcher(_cooperative_context()),
+            runner,
+            catalog=Catalog(_adapter()),
+            cooperative=provider,
+            helper_paths={"x86": "/helper.exe"},
+        )
+
+        result = await service.send_cheat_command(IDENTITY, "health")
+
+        self.assertEqual(result["outcome"], "rejected")
+        self.assertEqual(result["state"], "unknown")
+        self.assertEqual(result["diagnostic"], {"code": "cooperative_provider_ineligible"})
+        self.assertEqual(provider.send_calls, 0)
+        self.assertEqual(runner.calls, [])
+
+    async def test_unload_fails_closed_when_cooperative_worker_ignores_cancel(self):
+        from trainer_relay.cheat_service import CheatControlService, CheatServiceError
+
+        class IgnoringProvider:
+            cooperative_command_contract = {"deadline_seconds": 0.02, "cancel_deadline_seconds": 0.02}
+
+            def __init__(self):
+                self.started = threading.Event()
+                self.released = threading.Event()
+                self.finished = threading.Event()
+                self.cancel_calls = 0
+
+            def descriptor_for(self, _context):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": 1,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+            def send_command(self, _descriptor, _command_id, _cheat_id, _operation):
+                self.started.set()
+                self.released.wait(4)
+                self.finished.set()
+                return {"malformed": True}
+
+            def cancel_command(self, _descriptor, _command_id):
+                self.cancel_calls += 1
+
+        provider = IgnoringProvider()
+        service = CheatControlService(Settings(), Watcher(_cooperative_context()), Runner(), cooperative=provider)
+        dispatch = asyncio.create_task(service.send_cheat_command(IDENTITY, "health"))
+        self.assertTrue(await asyncio.to_thread(provider.started.wait, 1))
+
+        with self.assertRaises(CheatServiceError) as error:
+            await service.close()
+
+        self.assertEqual(error.exception.code, "cooperative_worker_drain_failed")
+        self.assertGreaterEqual(provider.cancel_calls, 1)
+        self.assertFalse(provider.finished.is_set())
+        self.assertTrue(any(not worker.done() for worker in service._cooperative_workers))
+
+        provider.released.set()
+        await asyncio.wait_for(dispatch, 1)
+        await asyncio.wait_for(service.close(), 1)
+
+    async def test_cancelled_cooperative_coroutine_keeps_worker_owned_until_close_drains_it(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class CooperativeProvider(_BoundedCooperativeProvider):
             def __init__(self):
                 self.started = threading.Event()
                 self.released = threading.Event()

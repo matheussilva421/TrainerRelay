@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import re
 import time
 import uuid
@@ -99,6 +100,9 @@ _PUBLIC_CODES = frozenset(
         "cooperative_unavailable",
         "cooperative_ack_stale",
         "cooperative_ack_non_authoritative",
+        "cooperative_provider_ineligible",
+        "cooperative_command_timeout",
+        "cooperative_worker_drain_failed",
         "cooperative_command_rejected",
         "command_runner_failed",
         "command_busy",
@@ -143,6 +147,18 @@ class _CooperativeDispatch:
     diagnostic: str | None = None
 
 
+@dataclass(frozen=True)
+class _CooperativeContract:
+    deadline_seconds: float
+    cancel_deadline_seconds: float
+    cancel: Callable[..., Any]
+
+
+_COOPERATIVE_CONTRACT_KEYS = frozenset({"deadline_seconds", "cancel_deadline_seconds"})
+_MAX_COOPERATIVE_DEADLINE_SECONDS = 5.0
+_MAX_COOPERATIVE_CANCEL_DEADLINE_SECONDS = 1.0
+
+
 def _safe_identity(value: Any) -> str:
     try:
         return validate_launch_identity(value)
@@ -173,6 +189,41 @@ def _safe_public_code(value: Any, default: str) -> str:
 
 def _mapping_result(value: Any) -> Mapping[str, Any] | None:
     return value if isinstance(value, Mapping) else None
+
+
+def _sync_callable(value: Any) -> bool:
+    return callable(value) and not (
+        inspect.iscoroutinefunction(value)
+        or inspect.iscoroutinefunction(getattr(value, "__call__", None))
+    )
+
+
+def _bounded_seconds(value: Any, maximum: float) -> float | None:
+    if type(value) not in {int, float}:
+        return None
+    result = float(value)
+    if not math.isfinite(result) or not 0.0 < result <= maximum:
+        return None
+    return result
+
+
+def _cooperative_contract(provider: Any, sender: Any) -> _CooperativeContract | None:
+    raw = getattr(provider, "cooperative_command_contract", None)
+    if not isinstance(raw, Mapping) or set(raw) != _COOPERATIVE_CONTRACT_KEYS:
+        return None
+    deadline_seconds = _bounded_seconds(raw.get("deadline_seconds"), _MAX_COOPERATIVE_DEADLINE_SECONDS)
+    cancel_deadline_seconds = _bounded_seconds(
+        raw.get("cancel_deadline_seconds"), _MAX_COOPERATIVE_CANCEL_DEADLINE_SECONDS
+    )
+    cancel = getattr(provider, "cancel_command", None)
+    if (
+        deadline_seconds is None
+        or cancel_deadline_seconds is None
+        or not _sync_callable(sender)
+        or not _sync_callable(cancel)
+    ):
+        return None
+    return _CooperativeContract(deadline_seconds, cancel_deadline_seconds, cancel)
 
 
 def _session_for_diagnostics(context: Any) -> Any | None:
@@ -216,7 +267,7 @@ class CheatControlService:
         self._revision_state: dict[str, tuple[str, tuple[int, int], int]] = {}
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
         self._dispatch_guard = asyncio.Lock()
-        self._cooperative_workers: dict[asyncio.Task[Any], tuple[CooperativeDescriptor, str]] = {}
+        self._cooperative_workers: dict[asyncio.Task[Any], tuple[CooperativeDescriptor, str, _CooperativeContract]] = {}
         self._close_lock = asyncio.Lock()
         self._closing = False
 
@@ -650,39 +701,50 @@ class CheatControlService:
                     await asyncio.to_thread(cancel_all)
                 except Exception:
                     pass
-            await self._cancel_and_drain_cooperative_workers()
+            if not await self._cancel_and_drain_cooperative_workers():
+                raise CheatServiceError("cooperative_worker_drain_failed")
             if dispatches:
                 await asyncio.gather(*dispatches, return_exceptions=True)
-            await self._cancel_and_drain_cooperative_workers()
+            if not await self._cancel_and_drain_cooperative_workers():
+                raise CheatServiceError("cooperative_worker_drain_failed")
 
     def _forget_cooperative_worker(self, worker: asyncio.Task[Any]) -> None:
         self._cooperative_workers.pop(worker, None)
 
-    async def _cancel_and_drain_cooperative_workers(self) -> None:
+    async def _cancel_and_drain_cooperative_workers(self) -> bool:
         workers = tuple(self._cooperative_workers.items())
         provider = self._cooperative
-        cancel = getattr(provider, "cancel_command", None) if provider is not None else None
-        if callable(cancel):
-            async def request_cancel(descriptor: CooperativeDescriptor, command_id: str) -> None:
-                try:
-                    await asyncio.wait_for(
-                        asyncio.shield(asyncio.to_thread(cancel, descriptor, command_id)),
-                        timeout=1.0,
-                    )
-                except Exception:
-                    return
+        if provider is None:
+            return not any(not worker.done() for worker, _metadata in workers)
 
-            await asyncio.gather(
-                *(request_cancel(descriptor, command_id) for worker, (descriptor, command_id) in workers if not worker.done()),
-                return_exceptions=True,
-            )
+        async def request_cancel(
+            descriptor: CooperativeDescriptor, command_id: str, contract: _CooperativeContract
+        ) -> bool:
+            cancel_task = asyncio.create_task(asyncio.to_thread(contract.cancel, descriptor, command_id))
+            try:
+                await asyncio.wait_for(asyncio.shield(cancel_task), timeout=contract.cancel_deadline_seconds)
+                return True
+            except Exception:
+                return False
+
+        cancellations = await asyncio.gather(
+            *(
+                request_cancel(descriptor, command_id, contract)
+                for worker, (descriptor, command_id, contract) in workers
+                if not worker.done()
+            ),
+            return_exceptions=True,
+        )
         for worker, _metadata in workers:
             if worker.done():
                 continue
             try:
-                await asyncio.wait_for(asyncio.shield(worker), timeout=2.0)
+                await asyncio.wait_for(asyncio.shield(worker), timeout=_metadata[2].cancel_deadline_seconds)
             except Exception:
-                continue
+                return False
+        if any(result is not True for result in cancellations):
+            return False
+        return True
 
     def _cooperative_send_sync(
         self,
@@ -742,6 +804,14 @@ class CheatControlService:
         operation: str,
         previous_revision: int | None,
     ) -> _CooperativeDispatch:
+        provider = self._cooperative
+        sender = getattr(provider, "send_command", None) if provider is not None else None
+        if sender is not None:
+            contract = _cooperative_contract(provider, sender)
+            if contract is None:
+                raise CheatServiceError("cooperative_provider_ineligible")
+        else:
+            return _CooperativeDispatch(False, None)
         worker = asyncio.create_task(
             asyncio.to_thread(
                 self._cooperative_send_sync,
@@ -754,10 +824,20 @@ class CheatControlService:
                 previous_revision,
             )
         )
-        self._cooperative_workers[worker] = (descriptor, command_id)
+        self._cooperative_workers[worker] = (descriptor, command_id, contract)
         worker.add_done_callback(self._forget_cooperative_worker)
         try:
-            return await asyncio.shield(worker)
+            return await asyncio.wait_for(asyncio.shield(worker), timeout=contract.deadline_seconds)
+        except asyncio.TimeoutError:
+            cancel_task = asyncio.create_task(asyncio.to_thread(contract.cancel, descriptor, command_id))
+            try:
+                await asyncio.wait_for(asyncio.shield(cancel_task), timeout=contract.cancel_deadline_seconds)
+            except Exception:
+                return _CooperativeDispatch(True, None, "cooperative_worker_drain_failed")
+            try:
+                return await asyncio.wait_for(asyncio.shield(worker), timeout=contract.cancel_deadline_seconds)
+            except Exception:
+                return _CooperativeDispatch(True, None, "cooperative_worker_drain_failed")
         except asyncio.CancelledError:
             raise
 
@@ -807,7 +887,11 @@ class CheatControlService:
                             self._previous_revision(context),
                         )
                     except CheatServiceError as error:
-                        if error.code in {"command_context_changed", "command_context_unavailable"}:
+                        if error.code in {
+                            "command_context_changed",
+                            "command_context_unavailable",
+                            "cooperative_provider_ineligible",
+                        }:
                             await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": error.code})
                             return self._command_result(command_id, identity, cheat_id, "rejected", error.code)
                         dispatch_result = _CooperativeDispatch(False, None, None)

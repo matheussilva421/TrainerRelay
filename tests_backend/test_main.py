@@ -239,6 +239,23 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(service.close_calls, 1)
         self.assertEqual(watcher.stop_calls, 1)
 
+    async def test_unload_does_not_stop_watcher_when_service_close_fails_closed(self):
+        watcher = FakeWatcher({})
+
+        class FailingCheatService:
+            async def close(self):
+                raise ValueError("cooperative_worker_drain_failed")
+
+        service = FailingCheatService()
+        self.main._watcher = watcher
+        self.main._cheat_service = service
+
+        await self.main.Plugin._unload()
+
+        self.assertEqual(watcher.stop_calls, 0)
+        self.assertIs(self.main._watcher, watcher)
+        self.assertIs(self.main._cheat_service, service)
+
     async def test_plugin_delegates_all_five_diagnostic_rpcs(self):
         rpc = FakeDiagnosticRpc()
         self.main._rpc = rpc
