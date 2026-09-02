@@ -9,7 +9,7 @@ Trainer Relay is complementary to [CheatDeck](https://github.com/SheffeyG/CheatD
 
 ## Status and scope
 
-The current release candidate is `v0.1.0-experimental.19`. It remains experimental pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4. This build also requires UMU's exact re-entry confirmation before reporting the trainer as running.
+The current release candidate is `v0.1.0-experimental.20`. It remains experimental pending validation on a physical Steam Deck. The v1 contract uses the same Wine prefix plus the explicit container re-entry path implemented by UniFiDeck's bundled UMU 1.4.4. This build also requires UMU's exact re-entry confirmation before reporting the trainer as running.
 
 Supported:
 
@@ -26,7 +26,7 @@ Not supported in v1:
 ## Installation
 
 1. Enable Developer Mode in Steam Deck settings.
-2. Download **`TrainerRelay.zip`** from the [experimental release](https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.19).
+2. Download the locally produced **`TrainerRelay.zip`** artifact. A GitHub release/tag for `v0.1.0-experimental.20` will be published only after the physical Steam Deck gate passes.
 3. In Decky Loader's developer settings, install the downloaded ZIP.
 
 Download the plugin archive, not GitHub's automatically generated `Source code.zip`. Do not try to install or validate the Decky ZIP on Windows; use the package-layout checks in this repository and install it only on the Steam Deck.
@@ -60,6 +60,27 @@ re-reads AppDetails and enables the new configuration only when the expected
 text is confirmed.
 
 If CheatDeck reintroduces either legacy variable, Trainer Relay fails closed and reports `invalid_config`. Remove or migrate the legacy options before trying again. If the proposed trainer is not the one intended for the shortcut, cancel the migration and configure the path manually.
+
+## Cheat controls
+
+When a supported UniFiDeck game is running, the routed game page and Quick
+Access panel show the trainer's available controls. Recognized FLiNG builds are
+matched by the selected trainer's exact SHA-256; unknown builds expose a manual
+fallback bound to that same hash. Manual entries accept a label plus a finite
+symbolic key/modifier selector—never raw virtual-key numbers, trainer arguments,
+scripts, or shell text.
+
+FLiNG and manual buttons launch a tiny native Win32 `SendInput` helper through
+the already verified UMU context. The helper releases the full chord and exits;
+it is not a resident third executable. A successful request is displayed as
+**Comando enviado; estado desconhecido** because input acceptance cannot prove
+that a closed trainer applied the cheat. Only a fresh acknowledgement from a
+cooperative trainer may render an authoritative enabled/disabled toggle.
+
+No XTest, X11/Wayland injection, `uinput`, root flag, DLL injection, arbitrary
+memory writes, or free-form command input is used. If the running app, trainer
+hash, process session, prefix, container bus, helper hash, or cooperative state
+cannot be revalidated, the control fails closed and the game is left intact.
 
 ## Runtime safety
 
@@ -98,6 +119,11 @@ Experimental `.13` adds a separate **Diagnostics** page. Diagnostic mode is off 
 **Export TXT** writes a timestamped report atomically to `/home/deck/Downloads`. **Clear logs** removes only Trainer Relay's rotating journal and metadata after confirmation; it does not remove exported TXT files. While diagnostic mode is enabled, the same sanitized events appear in CEF DevTools under the filter `[TrainerRelay:diagnostic]`.
 
 Allowed technical values are limited to identity/session anchors, expected and observed executable/prefix paths, trainer and `umu-run` paths, `GAMEID`, `STORE`, `WINEPREFIX`, `PROTONPATH`, bounded counts, exit codes, and timing. The journal rejects complete environments, complete command lines, credentials, cookies, tokens, authorization data, and legacy debug-command content. When a spawned process exits, it may retain at most a 1,024-character sanitized tail from each inherited UMU stdout/stderr pipe; because Proton/Wine children can inherit those pipes, review that small tail before sharing an export. The environment copied to the trainer is a separate explicit allowlist; `PROTON_REMOTE_DEBUG_CMD` is never copied, the UMU-derived `STEAM_COMPAT_CLIENT_INSTALL_PATH` is not replayed, and `PROTON_VERB=runinprefix` is set last.
+
+Cheat-command diagnostics record only bounded event/result codes, command and
+cheat identifiers, the existing session anchor, source category, revision and
+timing. Capability tokens, full helper output, complete environments, arbitrary
+paths supplied by a response, and cooperative endpoint details are not exposed.
 
 For the physical-device checklist, see [`docs/STEAM-DECK-VALIDATION.md`](docs/STEAM-DECK-VALIDATION.md). For the architectural decision, see [`docs/adr/0001-session-watcher.md`](docs/adr/0001-session-watcher.md).
 

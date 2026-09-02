@@ -1776,3 +1776,61 @@ untested.
 - Next: finish the strict TypeScript decoder/RPC and add controller/touch cheat
   rows to the routed page and Quick Access sidebar. Native helper delivery still
   requires physical Steam Deck validation.
+
+### Cheat controls Task 5 complete — routed page and Quick Access
+
+- Added strict TypeScript decoders and typed RPC calls for cheat discovery,
+  manual add/remove, and command dispatch. Extra fields, invalid identities,
+  uppercase/invalid hashes, arbitrary hotkeys, unsafe diagnostics and
+  untrusted state claims fail closed before rendering or transport.
+- Added controller/touch-native `ButtonItem` command rows, authoritative
+  cooperative toggles only when all authority flags/state/operations agree,
+  a finite manual key/modifier editor, bounded labels and busy serialization.
+- Quick Access now polls `Router.MainRunningApp.appid`, reads AppDetails and
+  reuses the strict UniFiDeck Epic/GOG classifier. Unsupported/racing apps expose
+  no controls. Browser timers are bound and cleaned up to avoid the prior CEF
+  `Illegal invocation` failure.
+- Unknown trainer hashes expose an empty manual editor bound to the current
+  SHA-256 with command authority disabled until the first entry is added. A
+  changed hash hides all entries from the previous build.
+- FLiNG/manual success displays exactly `Comando enviado; estado desconhecido`.
+  No fake toggle or inferred state is shown. Manual add/remove is available in
+  both the routed page and Quick Access when the source is manual.
+- TDD evidence: decoder/RPC RED for missing modules, component RED for missing
+  Decky rows/editor, production Quick Access RED for missing active identity,
+  and backend/frontend RED for the initially unreachable empty manual fallback.
+  Final focused Task 5 matrix: 30 frontend files / 215 tests; complete backend:
+  256/256. Biome, both TypeScript checks and Rollup build pass.
+- Commit `fe5dcde` contains Task 5. It remains local until its independent Luna
+  review is accepted together with the `.20` packaging block.
+- The first Task 5 review found two Important boundary mismatches. Commit
+  `ba6bacf` now accepts bounded diagnostics for cooperative requests that may
+  already have been sent, and removes caller-controlled state authority. The
+  typed RPC derives enabled/disabled permission only from its own previously
+  decoded cooperative identity+cheat snapshot; manual/adapter/error refreshes
+  clear that permission.
+
+### Experimental .20 artifact prepared — physical gate pending
+
+- Version synchronized to `0.1.0-experimental.20` in `package.json`, backend and
+  package tests. Documentation now covers exact-hash FLiNG controls, manual
+  fallback, unknown-state semantics, ephemeral helper behavior, no XTest/root,
+  diagnostics privacy, rollback and the physical validation checklist.
+- Full local gates pass: backend 257/257; frontend 30 files / 217 tests;
+  packaging 7/7; compileall; Biome; both TypeScript checks; Rollup; and
+  `git diff --check`.
+- Deterministic artifact: `TrainerRelay.zip`, 33 entries, SHA-256
+  `AAFB2EFCFAB88FEFFD2C5D611AD16590F2903BA586677F70DA11A5A748DCEEE0`.
+  Packaged helper hashes: x86
+  `f0fc0379b78717ca9b27080f60c10ef11f8c53ff935bdf0f8ed1857ecaadbbf4`;
+  x64 `58379c547c7f3c5475f77a9a998e8a88bccc5f0439427111a8d0bb5eefb7737b`.
+- No tag or GitHub Release has been created. Physical Steam Deck checks remain:
+  known FLiNG button by A/touch, unknown-build manual add/send/remove, no stuck
+  modifiers, helper process/group cleanup, rapid-click serialization, game and
+  trainer survival on failure/unload, and diagnostics privacy. Cooperative
+  enabled/disabled state remains unvalidated until an owned trainer implements
+  the v1 endpoint.
+- Installation after final commit/push: copy `TrainerRelay.zip` to the Deck,
+  install it through Decky developer ZIP installation, restart Decky/Steam,
+  launch the UniFiDeck game, then open Trainer Relay in Quick Access. Roll back
+  by disabling/uninstalling the plugin; the game remains independently launchable.

@@ -39,9 +39,35 @@ new session.
 
 The existing CheatDeck launch-option assignments, especially `PROTON_REMOTE_DEBUG_CMD` and `PRESSURE_VESSEL_FILESYSTEMS_RW`, which may be migrated only after explicit confirmation and persistence verification.
 
+## Cheat Command
+
+A one-shot request for a symbolic hotkey already resolved by an exact trainer
+SHA-256 adapter or by a hash-bound manual entry. The request revalidates the
+Game Session, Prefix Anchor, selected trainer hash/architecture and Container
+Re-entry before starting the packaged Win32 helper. For FLiNG/manual controls,
+`requested` means only that the input helper completed; state remains `unknown`.
+
+## Cooperative State
+
+An enabled/disabled state accepted only from a versioned trainer endpoint with
+matching identity, trainer hash, Game Session, capability token, command ID,
+monotonic revision and a fresh bounded acknowledgement. Legacy FLiNG trainers
+do not implement this contract and therefore never expose an authoritative
+toggle.
+
+## Manual Cheat Control
+
+A label and finite symbolic hotkey persisted separately from RelayConfigV1 and
+bound to the current trainer SHA-256. A changed trainer hash exposes an empty
+manual editor and hides the previous hash's entries; no old command is reused.
+
 ## Implementation references
 
 - Frontend contract and typed RPC adapter: `src/domain/relay/` and `src/infra/relayRpc.ts`.
+- Cheat frontend and RPC boundary: `src/domain/cheats/`,
+  `src/infra/cheatRpc.ts`, and `src/hooks/useCheatControls.ts`.
+- Backend cheat authority: `trainer_relay/cheat_service.py`,
+  `trainer_relay/cooperative.py`, and `trainer_relay/command_runner.py`.
 - Backend watcher and process ownership: `trainer_relay/watcher.py`, `trainer_relay/process.py`, and `trainer_relay/runner.py`.
 - Packaging entry point: `scripts/package_trainer_relay.py`.
 - Architecture decision: `docs/adr/0001-session-watcher.md`.

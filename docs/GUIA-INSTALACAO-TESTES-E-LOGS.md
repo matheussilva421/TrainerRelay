@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.19`
+Versão deste guia: `v0.1.0-experimental.20`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay-v0.1.0-experimental.19.zip`.
+- O arquivo `TrainerRelay.zip` gerado localmente para `v0.1.0-experimental.20`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -30,7 +30,7 @@ repetir exatamente esse valor. Se divergirem, não instale o arquivo.
 Depois de copiar o ZIP para `Downloads` no Steam Deck, abra o Konsole e rode:
 
 ```bash
-sha256sum "$HOME/Downloads/TrainerRelay-v0.1.0-experimental.19.zip"
+sha256sum "$HOME/Downloads/TrainerRelay.zip"
 ```
 
 O valor mostrado precisa ser exatamente o SHA-256 do kit. Não instale o arquivo
@@ -46,7 +46,7 @@ O valor mostrado precisa ser exatamente o SHA-256 do kit. Não instale o arquivo
 4. Abra o Decky Loader e suas configurações.
 5. Ative as opções de desenvolvedor, se a instalação local não estiver visível.
 6. Escolha **Install Plugin from ZIP** ou o nome equivalente da sua versão.
-7. Selecione `TrainerRelay-v0.1.0-experimental.19.zip` em Downloads.
+7. Selecione `TrainerRelay.zip` em Downloads.
 8. Recarregue o Decky ou reinicie o Steam Deck se o plugin não aparecer.
 
 Os nomes exatos das opções podem variar entre versões do Decky. Sempre use o
@@ -57,7 +57,26 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-https://github.com/matheussilva421/TrainerRelay/releases/download/v0.1.0-experimental.19/TrainerRelay.zip
+Não há URL de release para `.20` antes da validação física. Use o ZIP local entregue com este build.
+
+### Controles de cheat da `.20`
+
+Com o jogo UniFiDeck em execução, abra o Quick Access e selecione Trainer Relay.
+Um trainer FLiNG reconhecido pelo SHA-256 mostra automaticamente seus cheats e
+teclas. Pressione **A** ou toque na linha para enviar o atalho. A mensagem correta
+para FLiNG é **Comando enviado; estado desconhecido**: ela confirma o helper, não
+o estado interno do trainer.
+
+Se o trainer não for reconhecido, use **Manual controls** na própria sidebar:
+digite um nome de até 80 caracteres, escolha a tecla e a combinação finita de
+modificadores, e adicione. Não existe campo para VK, comando, argumento ou script.
+Trocar o `.exe` muda o SHA-256 e esconde os controles antigos automaticamente.
+
+O executável `TrainerRelay.InputHelper` aparece apenas durante o clique, libera
+as teclas e termina. Não use XTest, não adicione permissões root e não deixe o
+helper rodando manualmente. Estados reais **Ativado/Desativado** só aparecerão
+para trainers cooperativos que confirmem o protocolo v1; trainers FLiNG atuais
+permanecem honestamente como estado desconhecido.
 ```
 
 Não use URLs de outras versões. A `experimental.3` falha ao abrir a tela no
@@ -350,7 +369,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.19
+Trainer Relay: v0.1.0-experimental.20
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -413,6 +432,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Release recomendada: https://github.com/matheussilva421/TrainerRelay/releases/tag/v0.1.0-experimental.19
+- Build de validação: `v0.1.0-experimental.20` (sem tag/release até o gate físico)
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.19
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.20
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -85,6 +85,28 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Start a duplicate candidate and confirm the state becomes `ambiguous` without starting a trainer.
 - [ ] Confirm stopping Trainer Relay does not stop the game, `wineserver`, global UMU, or another trainer.
 - [ ] Review the plugin log for status/diagnostic codes only; confirm no environment dump, credential, cookie, or token is present.
+
+## Cheat controls and ephemeral helper
+
+- [ ] With the known BioShock 2 FLiNG SHA-256, confirm automatic cheat names and
+  symbolic hotkeys appear in both the routed page and Quick Access while the
+  game is running.
+- [ ] Activate one adapter control with **A** and touch. Confirm the helper exits,
+  no modifier remains pressed, the game and trainer stay alive, and the UI says
+  `Comando enviado; estado desconhecido` rather than claiming enabled/disabled.
+- [ ] Select an unknown trainer build, add one manual label/chord directly in
+  Quick Access, invoke it, remove it, and confirm the entry is bound to that
+  exact SHA-256. Replacing the trainer must expose an empty editor and must not
+  reuse the previous entry.
+- [ ] Confirm rapid repeated activation is serialized/disabled while busy and
+  never leaves more than one input-helper command group alive.
+- [ ] Confirm an invalid helper hash, changed game PID/starttime, changed trainer
+  hash, missing re-entry bus, or plugin unload rejects/cancels the command while
+  leaving the game and trainer intact.
+- [ ] Confirm no XTest/X11/Wayland/uinput/root permission is requested and the
+  helper process is absent after each request.
+- [ ] Cooperative enabled/disabled UI remains **PENDING** until an owned trainer
+  implements and physically validates the v1 acknowledgement protocol.
 
 ## Persistent diagnostic mode
 
