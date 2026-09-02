@@ -399,6 +399,35 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response"):
             await rpc.get_cheat_controls({"identity": "gog:game"})
 
+    async def test_cooperative_toggles_require_authoritative_state_capability(self):
+        class Unsafe:
+            async def get_cheat_controls(self, identity):
+                return {
+                    "identity": identity,
+                    "status": "ready",
+                    "trainerSha256": "a" * 64,
+                    "source": "cooperative",
+                    "trainerLabel": "Owned trainer",
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                    "capabilities": {"commands": True, "authoritativeState": False, "toggles": True},
+                    "diagnostic": None,
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with self.assertRaisesRegex(RelayRpcError, "invalid_cheat_response"):
+            await rpc.get_cheat_controls({"identity": "gog:game"})
+
+    async def test_cheat_rpc_maps_unknown_service_exception_codes_to_generic_code(self):
+        class Unsafe:
+            async def get_cheat_controls(self, _identity):
+                from trainer_relay.cheat_service import CheatServiceError
+
+                raise CheatServiceError("private_internal_code")
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=Unsafe())
+        with self.assertRaisesRegex(RelayRpcError, "cheat_service_failed"):
+            await rpc.get_cheat_controls({"identity": "gog:game"})
+
 
 if __name__ == "__main__":
     unittest.main()

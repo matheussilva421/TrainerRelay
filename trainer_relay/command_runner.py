@@ -84,6 +84,12 @@ class CommandExecution:
         }
 
 
+@dataclass
+class _ActiveCommand:
+    cancel_event: threading.Event
+    process: Any | None = None
+
+
 class _CaptureBudget:
     def __init__(self, limit: int):
         self._limit = limit
@@ -221,12 +227,28 @@ class OneShotCommandRunner:
         self._kill_process_group = kill_process_group
         self._process_group_members = process_group_members
         self._busy: set[str] = set()
+        self._active: dict[str, _ActiveCommand] = {}
         self._busy_lock = threading.Lock()
 
     @property
     def busy_identities(self) -> frozenset[str]:
         with self._busy_lock:
             return frozenset(self._busy)
+
+    def cancel(self, identity: str) -> bool:
+        with self._busy_lock:
+            active = self._active.get(identity)
+            if active is None:
+                return False
+            active.cancel_event.set()
+            return True
+
+    def cancel_all(self) -> int:
+        with self._busy_lock:
+            active = tuple(self._active.values())
+            for command in active:
+                command.cancel_event.set()
+            return len(active)
 
     @staticmethod
     def _result(
@@ -319,27 +341,42 @@ class OneShotCommandRunner:
         process: Any,
         deadline: float,
         overflow_event: threading.Event | None = None,
-    ) -> tuple[bool, int | None, bool]:
+        cancel_event: threading.Event | None = None,
+    ) -> tuple[bool, int | None, bool, bool]:
         while True:
+            if cancel_event is not None and cancel_event.is_set():
+                return False, self._returncode(process), False, True
             if overflow_event is not None and overflow_event.is_set():
-                return False, self._returncode(process), True
+                return False, self._returncode(process), True, False
             remaining = max(0.0, deadline - self._monotonic())
             if remaining <= 0.0:
-                return True, None, False
-            wait_timeout = min(remaining, 0.05) if overflow_event is not None else remaining
+                return True, None, False, False
+            wait_timeout = min(remaining, 0.05) if overflow_event is not None or cancel_event is not None else remaining
             try:
                 returncode = process.wait(timeout=wait_timeout)
             except subprocess.TimeoutExpired:
+                if cancel_event is not None and cancel_event.is_set():
+                    return False, self._returncode(process), False, True
                 if overflow_event is not None and overflow_event.is_set():
-                    return False, self._returncode(process), True
+                    return False, self._returncode(process), True, False
                 if self._monotonic() >= deadline:
-                    return True, None, False
+                    return True, None, False, False
                 continue
             except (OSError, ValueError):
-                return False, None, False
+                return False, None, False, False
             if type(returncode) is int:
-                return False, returncode, bool(overflow_event and overflow_event.is_set())
-            return False, self._returncode(process), bool(overflow_event and overflow_event.is_set())
+                return (
+                    False,
+                    returncode,
+                    bool(overflow_event and overflow_event.is_set()),
+                    bool(cancel_event and cancel_event.is_set()),
+                )
+            return (
+                False,
+                self._returncode(process),
+                bool(overflow_event and overflow_event.is_set()),
+                bool(cancel_event and cancel_event.is_set()),
+            )
 
     def _close_captures(self, captures: tuple[_BoundedCapture, ...], readers: list[threading.Thread]) -> bool:
         for capture in captures:
@@ -409,7 +446,11 @@ class OneShotCommandRunner:
             if identity in self._busy:
                 return self._result("rejected", "command_busy", started_at, self._monotonic)
             self._busy.add(identity)
+            active = _ActiveCommand(threading.Event())
+            self._active[identity] = active
         try:
+            if active.cancel_event.is_set():
+                return self._result("rejected", "command_cancelled", started_at, self._monotonic)
             argument_error = self._validate_arguments(vk, modifiers, hold_ms)
             if argument_error is not None:
                 return self._result("rejected", argument_error, started_at, self._monotonic)
@@ -436,6 +477,8 @@ class OneShotCommandRunner:
                 with lease_factory() as refreshed_context:
                     if not self._same_authority(context, refreshed_context):
                         return self._result("rejected", "command_context_changed", started_at, self._monotonic)
+                    if active.cancel_event.is_set():
+                        return self._result("rejected", "command_cancelled", started_at, self._monotonic)
                     try:
                         process = self._popen(
                             [
@@ -457,6 +500,7 @@ class OneShotCommandRunner:
                             stderr=subprocess.PIPE,
                             bufsize=0,
                         )
+                        active.process = process
                     except (OSError, TypeError, ValueError):
                         return self._result("failed", "helper_spawn_failed", started_at, self._monotonic)
             except Exception:
@@ -474,11 +518,16 @@ class OneShotCommandRunner:
             for reader in readers:
                 reader.start()
             try:
-                timed_out, exit_code, output_overflowed = self._wait_for_process(
+                timed_out, exit_code, output_overflowed, cancelled = self._wait_for_process(
                     process,
                     started_at + COMMAND_TIMEOUT_SECONDS,
                     stdout_capture.overflow_event,
+                    active.cancel_event,
                 )
+                if cancelled:
+                    cleanup_ok = self._terminate_process_group(process, captures, readers)
+                    diagnostic = "command_cancelled" if cleanup_ok else "command_cancel_cleanup_failed"
+                    return self._result("failed", diagnostic, started_at, self._monotonic)
                 if timed_out:
                     cleanup_ok = self._terminate_process_group(process, captures, readers)
                     diagnostic = "command_timeout" if cleanup_ok else "command_timeout_cleanup_failed"
@@ -518,6 +567,8 @@ class OneShotCommandRunner:
         finally:
             with self._busy_lock:
                 self._busy.discard(identity)
+                if self._active.get(identity) is active:
+                    self._active.pop(identity, None)
 
 
 __all__ = ["CommandExecution", "OneShotCommandRunner", "process_group_members_from_proc"]

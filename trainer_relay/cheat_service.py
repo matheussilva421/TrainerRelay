@@ -60,6 +60,8 @@ _RUNNER_CODES = {
     "helper_output_cleanup_failed",
     "command_context_changed",
     "command_context_revalidation_failed",
+    "command_cancelled",
+    "command_cancel_cleanup_failed",
 }
 _CONTEXT_CODES = {
     "invalid_config_identity",
@@ -77,13 +79,48 @@ _CONTEXT_CODES = {
     "command_context_unavailable",
     "container_reentry_bus_missing",
 }
+_PUBLIC_CODES = frozenset(
+    {
+        "invalid_identity",
+        "invalid_cheat_id",
+        "invalid_request",
+        "relay_not_running",
+        "unknown_trainer_hash",
+        "cheat_unavailable",
+        "cheat_not_found",
+        "too_many_manual_cheats",
+        "invalid_manual_cheat",
+        "trainer_hash_changed",
+        "cheat_config_read_failed",
+        "cheat_config_invalid",
+        "cheat_config_persist_failed",
+        "helper_unavailable",
+        "invalid_hotkey",
+        "cooperative_unavailable",
+        "cooperative_ack_stale",
+        "cooperative_command_rejected",
+        "command_runner_failed",
+        "command_busy",
+        "command_context_changed",
+        "command_context_revalidation_failed",
+        "command_cancelled",
+        "command_cancel_cleanup_failed",
+        "service_closing",
+        "cheat_service_failed",
+        "trainer_architecture_mismatch",
+        "status_unavailable",
+        *_RUNNER_CODES,
+        *_CONTEXT_CODES,
+    }
+)
+PUBLIC_CHEAT_DIAGNOSTIC_CODES = _PUBLIC_CODES
 
 
 class CheatServiceError(ValueError):
     """A bounded error safe to return through the Decky RPC boundary."""
 
     def __init__(self, code: str) -> None:
-        self.code = code if _SAFE_CODE.fullmatch(code) else "cheat_service_failed"
+        self.code = code if isinstance(code, str) and code in _PUBLIC_CODES else "cheat_service_failed"
         super().__init__(self.code)
 
 
@@ -120,6 +157,10 @@ def _safe_context_code(error: BaseException) -> str:
     if isinstance(code, str) and code in _CONTEXT_CODES:
         return code
     return "command_context_unavailable"
+
+
+def _safe_public_code(value: Any, default: str) -> str:
+    return value if isinstance(value, str) and value in _PUBLIC_CODES else default
 
 
 def _mapping_result(value: Any) -> Mapping[str, Any] | None:
@@ -163,6 +204,12 @@ class CheatControlService:
         self._clock = clock
         self._identity_locks: dict[str, asyncio.Lock] = {}
         self._identity_locks_guard = asyncio.Lock()
+        self._catalog_lock = asyncio.Lock()
+        self._revision_state: dict[str, tuple[str, tuple[int, int], int]] = {}
+        self._dispatch_tasks: set[asyncio.Task[Any]] = set()
+        self._dispatch_guard = asyncio.Lock()
+        self._close_lock = asyncio.Lock()
+        self._closing = False
 
     async def _thread_call(self, function: Callable[..., Any], *args: Any) -> Any:
         value = await asyncio.to_thread(function, *args)
@@ -170,7 +217,7 @@ class CheatControlService:
             return await value
         return value
 
-    def _record(
+    async def _record(
         self,
         event: str,
         outcome: str,
@@ -182,7 +229,8 @@ class CheatControlService:
         if self._diagnostics is None:
             return
         try:
-            self._diagnostics.record(
+            awaitable = await asyncio.to_thread(
+                self._diagnostics.record,
                 "command",
                 event,
                 outcome,
@@ -190,6 +238,8 @@ class CheatControlService:
                 session=_session_for_diagnostics(context),
                 details=details or {},
             )
+            if inspect.isawaitable(awaitable):
+                await awaitable
         except (OSError, ValueError, TypeError):
             return
 
@@ -222,6 +272,33 @@ class CheatControlService:
         async with self._identity_locks_guard:
             return self._identity_locks.setdefault(identity, asyncio.Lock())
 
+    @staticmethod
+    def _session_key(value: Any) -> tuple[int, int]:
+        if isinstance(value, Mapping):
+            pid, start_time = value.get("pid"), value.get("startTime")
+        else:
+            pid, start_time = getattr(value, "pid", None), getattr(value, "start_time", None)
+            if pid is None and isinstance(value, (tuple, list)) and len(value) == 2:
+                pid, start_time = value
+        if type(pid) is not int or type(start_time) is not int:
+            raise ValueError("cooperative_session_invalid")
+        return pid, start_time
+
+    def _previous_revision(self, context: CommandContext) -> int | None:
+        binding = (context.trainer_sha256, self._session_key(context.session))
+        previous = self._revision_state.get(context.identity)
+        if previous is None or previous[:2] != binding:
+            self._revision_state.pop(context.identity, None)
+            return None
+        return previous[2]
+
+    def _remember_revision(self, context: CommandContext, revision: int) -> None:
+        binding = (context.trainer_sha256, self._session_key(context.session))
+        previous = self._revision_state.get(context.identity)
+        if previous is not None and previous[:2] == binding and revision < previous[2]:
+            raise ValueError("cooperative_revision_invalid")
+        self._revision_state[context.identity] = (*binding, revision)
+
     async def _status(self, identity: str) -> Mapping[str, Any]:
         try:
             value = await self._thread_call(self._watcher.status, identity)
@@ -247,15 +324,23 @@ class CheatControlService:
             raise CheatServiceError("command_context_unavailable")
         return context
 
-    def _catalog_or_none(self) -> CheatCatalog | Any | None:
+    async def _catalog_or_none(self) -> CheatCatalog | Any | None:
         if self._catalog is not None:
             return self._catalog
-        try:
-            self._catalog = load_packaged_catalog()
-            self._record("catalog_loaded", "accepted", details={"adapter_count": len(self._catalog.adapters)})
-        except Exception:
-            self._record("catalog_rejected", "rejected", details={"reason": "invalid_cheat_catalog"})
-            self._catalog = False
+        async with self._catalog_lock:
+            if self._catalog is not None:
+                return self._catalog
+            try:
+                self._catalog = await asyncio.to_thread(load_packaged_catalog)
+                adapter_count = getattr(self._catalog, "adapters", ())
+                await self._record(
+                    "catalog_loaded",
+                    "accepted",
+                    details={"adapter_count": len(adapter_count) if hasattr(adapter_count, "__len__") else 0},
+                )
+            except Exception:
+                await self._record("catalog_rejected", "rejected", details={"reason": "invalid_cheat_catalog"})
+                self._catalog = False
         return self._catalog if self._catalog is not False else None
 
     def _manual_controls(self, config: Mapping[str, Any], identity: str, trainer_sha256: str) -> tuple[Mapping[str, Any], ...]:
@@ -276,14 +361,17 @@ class CheatControlService:
                 return None
             if isinstance(raw, CooperativeDescriptor):
                 raw = raw.to_wire()
-            return decode_cooperative_descriptor(
+            decoded = decode_cooperative_descriptor(
                 raw,
                 expected_identity=context.identity,
                 expected_trainer_sha256=context.trainer_sha256,
                 expected_session=context.session,
+                previous_revision=self._previous_revision(context),
             )
+            self._remember_revision(context, decoded.revision)
+            return decoded
         except Exception:
-            self._record(
+            await self._record(
                 "cooperative_descriptor_rejected",
                 "rejected",
                 identity=context.identity,
@@ -341,7 +429,7 @@ class CheatControlService:
                 cooperative,
             )
         adapter = None
-        catalog = self._catalog_or_none()
+        catalog = await self._catalog_or_none()
         if catalog is not None:
             try:
                 adapter = catalog.resolve(context.trainer_sha256, context.identity)
@@ -408,18 +496,19 @@ class CheatControlService:
         if status.get("state") != "running":
             diagnostic = status.get("diagnostic")
             code = diagnostic.get("code") if isinstance(diagnostic, Mapping) else None
-            if not isinstance(code, str) or not _SAFE_CODE.fullmatch(code):
-                code = "relay_not_running"
+            code = _safe_public_code(code, "relay_not_running")
             transient = status.get("state") in {"waiting_for_game", "launching", "retrying"}
             return self._not_ready(identity, CHEAT_STATUS_WAITING if transient else CHEAT_STATUS_UNAVAILABLE, code)
-        try:
-            context = await self._context(identity)
-            resolved = await self._resolve(context)
-        except CheatServiceError as error:
-            return self._not_ready(identity, CHEAT_STATUS_UNAVAILABLE, error.code)
-        if resolved is None:
-            return self._not_ready(identity, CHEAT_STATUS_UNAVAILABLE, "unknown_trainer_hash")
-        return self._ready_response(identity, resolved)
+        lock = await self._identity_lock(identity)
+        async with lock:
+            try:
+                context = await self._context(identity)
+                resolved = await self._resolve(context)
+            except CheatServiceError as error:
+                return self._not_ready(identity, CHEAT_STATUS_UNAVAILABLE, error.code)
+            if resolved is None:
+                return self._not_ready(identity, CHEAT_STATUS_UNAVAILABLE, "unknown_trainer_hash")
+            return self._ready_response(identity, resolved)
 
     @staticmethod
     def _request_values(identity_or_request: Any, trainer_sha256: Any, label: Any, hotkey: Any) -> tuple[str, Any, Any, Any]:
@@ -444,21 +533,23 @@ class CheatControlService:
             control = new_manual_cheat_control(raw_label, raw_hotkey)
         except ValueError as error:
             raise CheatServiceError(str(error) if _SAFE_CODE.fullmatch(str(error)) else "invalid_manual_cheat") from None
-        current_context = await self._context(identity)
-        if current_context.trainer_sha256 != trainer_sha256:
-            raise CheatServiceError("trainer_hash_changed")
-        config = await self._load()
-        games = dict(config["games"])
-        game = dict(games.get(identity, {"trainerSha256": trainer_sha256, "cheats": []}))
-        if game.get("trainerSha256") != trainer_sha256:
-            game = {"trainerSha256": trainer_sha256, "cheats": []}
-        cheats = list(game.get("cheats", []))
-        if len(cheats) >= 64:
-            raise CheatServiceError("too_many_manual_cheats")
-        cheats.append(control)
-        games[identity] = {"trainerSha256": trainer_sha256, "cheats": cheats}
-        await self._persist({"schemaVersion": CHEAT_CONFIG_SCHEMA_VERSION, "games": games})
-        self._record("manual_control_added", "accepted", identity=identity, details={"cheat_id": control["id"], "control_count": len(cheats)})
+        lock = await self._identity_lock(identity)
+        async with lock:
+            current_context = await self._context(identity)
+            if current_context.trainer_sha256 != trainer_sha256:
+                raise CheatServiceError("trainer_hash_changed")
+            config = await self._load()
+            games = dict(config["games"])
+            game = dict(games.get(identity, {"trainerSha256": trainer_sha256, "cheats": []}))
+            if game.get("trainerSha256") != trainer_sha256:
+                game = {"trainerSha256": trainer_sha256, "cheats": []}
+            cheats = list(game.get("cheats", []))
+            if len(cheats) >= 64:
+                raise CheatServiceError("too_many_manual_cheats")
+            cheats.append(control)
+            games[identity] = {"trainerSha256": trainer_sha256, "cheats": cheats}
+            await self._persist({"schemaVersion": CHEAT_CONFIG_SCHEMA_VERSION, "games": games})
+        await self._record("manual_control_added", "accepted", identity=identity, details={"cheat_id": control["id"], "control_count": len(cheats)})
         return {"identity": identity, "trainerSha256": trainer_sha256, "cheat": control}
 
     async def remove_manual_cheat_control(self, identity_or_request: Any, cheat_id: Any = None) -> dict[str, Any]:
@@ -471,41 +562,148 @@ class CheatControlService:
             raw_identity = identity_or_request
         identity = _safe_identity(raw_identity)
         cheat_id = _safe_cheat_id(cheat_id)
-        config = await self._load()
-        games = dict(config["games"])
-        game = games.get(identity)
-        if not isinstance(game, Mapping):
-            raise CheatServiceError("cheat_not_found")
-        cheats = [value for value in game.get("cheats", []) if isinstance(value, Mapping) and value.get("id") != cheat_id]
-        if len(cheats) == len(game.get("cheats", [])):
-            raise CheatServiceError("cheat_not_found")
-        games[identity] = {"trainerSha256": game["trainerSha256"], "cheats": cheats}
-        await self._persist({"schemaVersion": CHEAT_CONFIG_SCHEMA_VERSION, "games": games})
-        self._record("manual_control_removed", "accepted", identity=identity, details={"cheat_id": cheat_id, "control_count": len(cheats)})
+        lock = await self._identity_lock(identity)
+        async with lock:
+            config = await self._load()
+            games = dict(config["games"])
+            game = games.get(identity)
+            if not isinstance(game, Mapping):
+                raise CheatServiceError("cheat_not_found")
+            cheats = [value for value in game.get("cheats", []) if isinstance(value, Mapping) and value.get("id") != cheat_id]
+            if len(cheats) == len(game.get("cheats", [])):
+                raise CheatServiceError("cheat_not_found")
+            games[identity] = {"trainerSha256": game["trainerSha256"], "cheats": cheats}
+            await self._persist({"schemaVersion": CHEAT_CONFIG_SCHEMA_VERSION, "games": games})
+        await self._record("manual_control_removed", "accepted", identity=identity, details={"cheat_id": cheat_id, "control_count": len(cheats)})
         return {"identity": identity, "cheatId": cheat_id, "removed": True}
 
-    async def _command_lock(self, identity: str) -> asyncio.Lock:
-        return await self._identity_lock(identity)
+    @staticmethod
+    def _same_context(left: CommandContext, right: Any) -> bool:
+        if not isinstance(right, CommandContext):
+            return False
+        try:
+            left_session = CheatControlService._session_key(left.session)
+            right_session = CheatControlService._session_key(right.session)
+        except ValueError:
+            return False
+        return (
+            left.identity == right.identity
+            and left_session == right_session
+            and left.trainer_sha256 == right.trainer_sha256
+            and left.trainer_arch == right.trainer_arch
+            and dict(left.environment) == dict(right.environment)
+            and left.umu_run == right.umu_run
+            and left.expected_reentry_bus == right.expected_reentry_bus
+        )
 
-    async def _cooperative_send(
+    @staticmethod
+    def _command_result(
+        command_id: str,
+        identity: str,
+        cheat_id: str,
+        outcome: str,
+        diagnostic: str | None = None,
+        state: str = "unknown",
+    ) -> dict[str, Any]:
+        return {
+            "commandId": command_id,
+            "identity": identity,
+            "cheatId": cheat_id,
+            "outcome": outcome,
+            "state": state,
+            "diagnostic": {"code": diagnostic} if diagnostic is not None else None,
+        }
+
+    async def _register_dispatch(self) -> asyncio.Task[Any] | None:
+        task = asyncio.current_task()
+        async with self._dispatch_guard:
+            if self._closing:
+                return None
+            if task is not None:
+                self._dispatch_tasks.add(task)
+        return task
+
+    async def _unregister_dispatch(self, task: asyncio.Task[Any] | None) -> None:
+        if task is None:
+            return
+        async with self._dispatch_guard:
+            self._dispatch_tasks.discard(task)
+
+    async def close(self) -> None:
+        async with self._close_lock:
+            async with self._dispatch_guard:
+                self._closing = True
+                current = asyncio.current_task()
+                dispatches = tuple(task for task in self._dispatch_tasks if task is not current)
+            cancel_all = getattr(self._runner, "cancel_all", None)
+            if callable(cancel_all):
+                try:
+                    await asyncio.to_thread(cancel_all)
+                except Exception:
+                    pass
+            if dispatches:
+                await asyncio.gather(*dispatches, return_exceptions=True)
+
+    def _cooperative_send_sync(
         self,
+        identity: str,
+        context: CommandContext,
         descriptor: CooperativeDescriptor,
         command_id: str,
         cheat: Mapping[str, Any],
         operation: str,
+        previous_revision: int | None,
     ) -> CooperativeAck | None:
         provider = self._cooperative
         sender = getattr(provider, "send_command", None) if provider is not None else None
         if sender is None:
             return None
-        raw = await self._thread_call(sender, descriptor, command_id, cheat["id"], operation)
-        if isinstance(raw, CooperativeAck):
-            raw = raw.to_wire()
-        return decode_cooperative_ack(
-            raw,
-            descriptor=descriptor,
-            expected_command_id=command_id,
-            now=self._clock(),
+        lease_factory = getattr(self._watcher, "command_context_lease", None)
+        if not callable(lease_factory):
+            raise CheatServiceError("command_context_unavailable")
+        with lease_factory(identity) as refreshed_context:
+            if not self._same_context(context, refreshed_context):
+                raise CheatServiceError("command_context_changed")
+            if (
+                descriptor.identity != refreshed_context.identity
+                or descriptor.trainer_sha256 != refreshed_context.trainer_sha256
+                or self._session_key(descriptor.session) != self._session_key(refreshed_context.session)
+            ):
+                raise CheatServiceError("command_context_changed")
+            raw = sender(descriptor, command_id, cheat["id"], operation)
+            if inspect.isawaitable(raw):
+                if inspect.iscoroutine(raw):
+                    raw.close()
+                raise ValueError("cooperative_transport_invalid")
+            if isinstance(raw, CooperativeAck):
+                raw = raw.to_wire()
+            return decode_cooperative_ack(
+                raw,
+                descriptor=descriptor,
+                expected_command_id=command_id,
+                now=self._clock(),
+                previous_revision=previous_revision,
+            )
+
+    async def _cooperative_send(
+        self,
+        identity: str,
+        context: CommandContext,
+        descriptor: CooperativeDescriptor,
+        command_id: str,
+        cheat: Mapping[str, Any],
+        operation: str,
+        previous_revision: int | None,
+    ) -> CooperativeAck | None:
+        return await asyncio.to_thread(
+            self._cooperative_send_sync,
+            identity,
+            context,
+            descriptor,
+            command_id,
+            cheat,
+            operation,
+            previous_revision,
         )
 
     async def send_cheat_command(self, identity_or_request: Any, cheat_id: Any = None) -> dict[str, Any]:
@@ -519,150 +717,120 @@ class CheatControlService:
         identity = _safe_identity(raw_identity)
         cheat_id = _safe_cheat_id(cheat_id)
         command_id = str(self._uuid_factory()).lower()
-        lock = await self._command_lock(identity)
-        if lock.locked():
-            self._record("command_rejected", "rejected", identity=identity, details={"command_id": command_id, "cheat_id": cheat_id, "reason": "command_busy"})
-            return {
-                "commandId": command_id,
-                "identity": identity,
-                "cheatId": cheat_id,
-                "outcome": "rejected",
-                "state": "unknown",
-                "diagnostic": {"code": "command_busy"},
-            }
-        async with lock:
-            try:
-                context = await self._context(identity)
-                resolved = await self._resolve(context)
-            except CheatServiceError as error:
-                self._record("command_rejected", "rejected", identity=identity, details={"command_id": command_id, "cheat_id": cheat_id, "reason": error.code})
-                return {
-                    "commandId": command_id,
-                    "identity": identity,
-                    "cheatId": cheat_id,
-                    "outcome": "rejected",
-                    "state": "unknown",
-                    "diagnostic": {"code": error.code},
-                }
-            if resolved is None or cheat_id not in resolved.by_id:
-                self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": "cheat_unavailable"})
-                return {
-                    "commandId": command_id,
-                    "identity": identity,
-                    "cheatId": cheat_id,
-                    "outcome": "rejected",
-                    "state": "unknown",
-                    "diagnostic": {"code": "cheat_unavailable"},
-                }
-            cheat = resolved.by_id[cheat_id]
-            if resolved.source == "cooperative" and resolved.cooperative is not None:
-                operation = "toggle"
-                operations = resolved.by_id[cheat_id].get("operations")
-                if isinstance(operations, list) and "toggle" not in operations:
-                    operation = str(operations[0]) if operations else "toggle"
+        dispatch = await self._register_dispatch()
+        if dispatch is None:
+            return self._command_result(command_id, identity, cheat_id, "rejected", "service_closing")
+        try:
+            lock = await self._identity_lock(identity)
+            if lock.locked():
+                await self._record("command_rejected", "rejected", identity=identity, details={"command_id": command_id, "cheat_id": cheat_id, "reason": "command_busy"})
+                return self._command_result(command_id, identity, cheat_id, "rejected", "command_busy")
+            async with lock:
                 try:
-                    ack = await self._cooperative_send(resolved.cooperative, command_id, cheat, operation)
-                except Exception:
-                    ack = None
-                if ack is not None:
-                    self._record(
-                        "cooperative_acknowledged" if ack.fresh else "cooperative_stale",
-                        "accepted" if ack.fresh and ack.accepted else "rejected",
-                        identity=identity,
-                        context=context,
-                        details={"command_id": command_id, "cheat_id": cheat_id, "revision": ack.revision},
-                    )
-                    return {
-                        "commandId": command_id,
-                        "identity": identity,
-                        "cheatId": cheat_id,
-                        "outcome": "requested" if ack.accepted and ack.fresh else "rejected",
-                        "state": ack.state if ack.fresh and ack.accepted else "unknown",
-                        "diagnostic": None
-                        if ack.fresh and ack.accepted
-                        else {"code": "cooperative_command_rejected" if ack.fresh else "cooperative_ack_stale"},
-                    }
-                resolved = await self._resolve(context, allow_cooperative=False)
-                if resolved is None:
-                    code = "cooperative_unavailable"
-                    self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": code})
-                    return {
-                        "commandId": command_id,
-                        "identity": identity,
-                        "cheatId": cheat_id,
-                        "outcome": "rejected",
-                        "state": "unknown",
-                        "diagnostic": {"code": code},
-                    }
-                if cheat_id not in resolved.by_id:
-                    code = "cheat_unavailable"
-                    return {
-                        "commandId": command_id,
-                        "identity": identity,
-                        "cheatId": cheat_id,
-                        "outcome": "rejected",
-                        "state": "unknown",
-                        "diagnostic": {"code": code},
-                    }
+                    context = await self._context(identity)
+                    resolved = await self._resolve(context)
+                except CheatServiceError as error:
+                    await self._record("command_rejected", "rejected", identity=identity, details={"command_id": command_id, "cheat_id": cheat_id, "reason": error.code})
+                    return self._command_result(command_id, identity, cheat_id, "rejected", error.code)
+                if resolved is None or cheat_id not in resolved.by_id:
+                    await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": "cheat_unavailable"})
+                    return self._command_result(command_id, identity, cheat_id, "rejected", "cheat_unavailable")
                 cheat = resolved.by_id[cheat_id]
-            helper = self._helper_paths.get(context.trainer_arch)
-            if not isinstance(helper, (str, Path)) or not str(helper):
-                code = "helper_unavailable"
-                self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": code})
-                return {
-                    "commandId": command_id,
-                    "identity": identity,
-                    "cheatId": cheat_id,
-                    "outcome": "rejected",
-                    "state": "unknown",
-                    "diagnostic": {"code": code},
-                }
-            try:
-                vk, modifiers = hotkey_to_vk(cheat["hotkey"])
-            except (KeyError, TypeError, ValueError):
-                code = "invalid_hotkey"
-                self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": code})
-                return {
-                    "commandId": command_id,
-                    "identity": identity,
-                    "cheatId": cheat_id,
-                    "outcome": "rejected",
-                    "state": "unknown",
-                    "diagnostic": {"code": code},
-                }
-            self._record("helper_spawned", "accepted", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "source": resolved.source})
-            started_at = self._clock()
-            try:
-                result = await asyncio.to_thread(
-                    self._runner.run,
-                    context,
-                    helper,
-                    vk,
-                    modifiers,
-                    lease_factory=lambda: self._watcher.command_context_lease(identity),
-                )
-            except Exception:
-                result = None
-            duration_ms = max(0, int((self._clock() - started_at) * 1000))
-            if result is None:
-                outcome, diagnostic = "failed", "command_runner_failed"
-            else:
-                raw_outcome = getattr(result, "outcome", None)
-                outcome = raw_outcome if raw_outcome in {"requested", "failed", "rejected"} else "failed"
-                diagnostic = _safe_runner_code(getattr(result, "diagnostic", None), "command_runner_failed") if outcome != "requested" else None
-            if diagnostic == "command_timeout":
-                self._record("helper_timeout", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id})
-            self._record("helper_completed", "accepted" if outcome == "requested" else "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "source": resolved.source, "outcome": outcome, "duration_ms": duration_ms})
-            return {
-                "commandId": command_id,
-                "identity": identity,
-                "cheatId": cheat_id,
-                "outcome": outcome,
-                "state": "unknown",
-                "diagnostic": None if outcome == "requested" else {"code": diagnostic},
-            }
+                if resolved.source == "cooperative" and resolved.cooperative is not None:
+                    operation = "toggle"
+                    operations = resolved.by_id[cheat_id].get("operations")
+                    if isinstance(operations, list) and "toggle" not in operations:
+                        operation = str(operations[0]) if operations else "toggle"
+                    try:
+                        ack = await self._cooperative_send(
+                            identity,
+                            context,
+                            resolved.cooperative,
+                            command_id,
+                            cheat,
+                            operation,
+                            self._previous_revision(context),
+                        )
+                    except CheatServiceError as error:
+                        if error.code in {"command_context_changed", "command_context_unavailable"}:
+                            await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": error.code})
+                            return self._command_result(command_id, identity, cheat_id, "rejected", error.code)
+                        ack = None
+                    except Exception:
+                        ack = None
+                    if ack is not None:
+                        self._remember_revision(context, ack.revision)
+                        await self._record(
+                            "cooperative_acknowledged" if ack.fresh else "cooperative_stale",
+                            "accepted" if ack.fresh and ack.accepted else "rejected",
+                            identity=identity,
+                            context=context,
+                            details={"command_id": command_id, "cheat_id": cheat_id, "revision": ack.revision},
+                        )
+                        if ack.fresh:
+                            return self._command_result(
+                                command_id,
+                                identity,
+                                cheat_id,
+                                "requested" if ack.accepted else "rejected",
+                                None if ack.accepted else "cooperative_command_rejected",
+                                ack.state if ack.accepted else "unknown",
+                            )
+                    try:
+                        context = await self._context(identity)
+                        resolved = await self._resolve(context, allow_cooperative=False)
+                    except CheatServiceError as error:
+                        await self._record("command_rejected", "rejected", identity=identity, details={"command_id": command_id, "cheat_id": cheat_id, "reason": error.code})
+                        return self._command_result(command_id, identity, cheat_id, "rejected", error.code)
+                    if resolved is None:
+                        code = "cooperative_unavailable"
+                        await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": code})
+                        return self._command_result(command_id, identity, cheat_id, "rejected", code)
+                    if cheat_id not in resolved.by_id:
+                        code = "cheat_unavailable"
+                        return self._command_result(command_id, identity, cheat_id, "rejected", code)
+                    cheat = resolved.by_id[cheat_id]
+                if self._closing:
+                    return self._command_result(command_id, identity, cheat_id, "rejected", "service_closing")
+                helper = self._helper_paths.get(context.trainer_arch)
+                if not isinstance(helper, (str, Path)) or not str(helper):
+                    code = "helper_unavailable"
+                    await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": code})
+                    return self._command_result(command_id, identity, cheat_id, "rejected", code)
+                try:
+                    vk, modifiers = hotkey_to_vk(cheat["hotkey"])
+                except (KeyError, TypeError, ValueError):
+                    code = "invalid_hotkey"
+                    await self._record("command_rejected", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "reason": code})
+                    return self._command_result(command_id, identity, cheat_id, "rejected", code)
+                await self._record("helper_spawned", "accepted", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "source": resolved.source})
+                started_at = self._clock()
+                try:
+                    result = await asyncio.to_thread(
+                        self._runner.run,
+                        context,
+                        helper,
+                        vk,
+                        modifiers,
+                        lease_factory=lambda: self._watcher.command_context_lease(identity),
+                    )
+                except Exception:
+                    result = None
+                duration_ms = max(0, int((self._clock() - started_at) * 1000))
+                if result is None:
+                    outcome, diagnostic = "failed", "command_runner_failed"
+                else:
+                    raw_outcome = getattr(result, "outcome", None)
+                    outcome = raw_outcome if raw_outcome in {"requested", "failed", "rejected"} else "failed"
+                    diagnostic = _safe_runner_code(getattr(result, "diagnostic", None), "command_runner_failed") if outcome != "requested" else None
+                if diagnostic == "command_timeout":
+                    await self._record("helper_timeout", "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id})
+                await self._record("helper_completed", "accepted" if outcome == "requested" else "rejected", identity=identity, context=context, details={"command_id": command_id, "cheat_id": cheat_id, "source": resolved.source, "outcome": outcome, "duration_ms": duration_ms})
+                return self._command_result(command_id, identity, cheat_id, outcome, None if outcome == "requested" else diagnostic)
+        finally:
+            await self._unregister_dispatch(dispatch)
 
 
 CheatService = CheatControlService
 
-__all__ = ["CheatControlService", "CheatService", "CheatServiceError"]
+__all__ = ["CheatControlService", "CheatService", "CheatServiceError", "PUBLIC_CHEAT_DIAGNOSTIC_CODES"]

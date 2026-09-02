@@ -397,6 +397,43 @@ class OneShotCommandRunnerTests(unittest.TestCase):
         self.assertEqual(second.diagnostic, "command_busy")
         self.assertEqual(first_result[0].outcome, "requested")
 
+    def test_cancel_all_stops_only_the_owned_helper_group_and_drains_run(self):
+        process = FakeProcess(self._output(), self.marker, block=True)
+        signals = []
+
+        def kill_group(group, signum):
+            signals.append((group, signum))
+            process.group_alive = False
+            process.descendants.clear()
+            process.released.set()
+
+        runner, _ = self._runner(
+            process,
+            kill_group=kill_group,
+            process_group_members=lambda _pid: tuple(process.descendants),
+        )
+        results = []
+        thread = threading.Thread(
+            target=lambda: results.append(
+                runner.run(self.context, self.helper, 65, 5, lease_factory=self._lease_factory())
+            )
+        )
+        thread.start()
+        deadline = time.monotonic() + 1.0
+        while (not runner.busy_identities or not runner._active) and time.monotonic() < deadline:
+            time.sleep(0.001)
+        while not runner._active["gog:game"].process and time.monotonic() < deadline:
+            time.sleep(0.001)
+
+        runner.cancel_all()
+        thread.join(timeout=2.0)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(results[0].diagnostic, "command_cancelled")
+        self.assertEqual(signals, [(process.pid, getattr(signal, "SIGKILL", 9))])
+        self.assertFalse(process.process_kill_called)
+        self.assertEqual(process.descendants, set())
+
     def test_manifest_rejection_happens_before_popen(self):
         process = FakeProcess(self._output(), self.marker)
         runner, calls = self._runner(process)

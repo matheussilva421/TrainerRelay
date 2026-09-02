@@ -133,6 +133,21 @@ class CooperativeProtocolTests(unittest.TestCase):
         boundary = CooperativeControlBoundary()
         self.assertIsNone(boundary.client_for(None))
 
+    def test_descriptor_and_ack_reject_unbounded_revision_and_freshness(self):
+        from trainer_relay.cooperative import decode_cooperative_ack, decode_cooperative_descriptor
+
+        with self.assertRaisesRegex(ValueError, "cooperative_revision_invalid"):
+            decode_cooperative_descriptor({**descriptor(), "revision": 2**63})
+
+        protocol_descriptor = decode_cooperative_descriptor(descriptor())
+        with self.assertRaisesRegex(ValueError, "cooperative_freshness_invalid"):
+            decode_cooperative_ack(
+                {**ack(), "freshUntil": 10**1000},
+                descriptor=protocol_descriptor,
+                expected_command_id="11111111-1111-4111-8111-111111111111",
+                now=10.0,
+            )
+
     def test_boundary_revalidates_dataclass_descriptors_before_returning_a_client(self):
         from trainer_relay.cooperative import CooperativeControlBoundary, CooperativeDescriptor
 

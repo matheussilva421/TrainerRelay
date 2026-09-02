@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 from pathlib import Path
@@ -36,6 +37,7 @@ _watcher_task: asyncio.Task[Any] | None = None
 _rpc: RelayRpc | None = None
 _cheat_service: CheatControlService | None = None
 _diagnostics: DiagnosticRecorder | None = None
+_unload_lock = asyncio.Lock()
 
 PLUGIN_VERSION = "0.1.0-experimental.19"
 
@@ -130,36 +132,47 @@ class Plugin:
     @classmethod
     async def _unload(cls) -> None:
         global _watcher, _watcher_task, _rpc, _cheat_service, _diagnostics
-        watcher = _watcher
-        task = _watcher_task
-        diagnostics = _diagnostics
-        _watcher_task = None
-        _rpc = None
-        _cheat_service = None
-        if task is not None:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        if watcher is not None:
-            try:
-                await watcher.stop()
-            except (OSError, RuntimeError, ValueError):
-                pass
-        if diagnostics is not None:
-            try:
-                diagnostics.record(
-                    "lifecycle",
-                    "plugin_unloaded",
-                    "info",
-                    details={"version": PLUGIN_VERSION},
-                )
-            except (OSError, ValueError):
-                pass
-            diagnostics.flush()
-        _watcher = None
-        _diagnostics = None
+        async with _unload_lock:
+            watcher = _watcher
+            task = _watcher_task
+            cheat_service = _cheat_service
+            diagnostics = _diagnostics
+            if cheat_service is not None:
+                try:
+                    close = getattr(cheat_service, "close", None)
+                    if callable(close):
+                        result = close()
+                        if inspect.isawaitable(result):
+                            await result
+                except Exception:
+                    pass
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            if watcher is not None:
+                try:
+                    await watcher.stop()
+                except (OSError, RuntimeError, ValueError):
+                    pass
+            if diagnostics is not None:
+                try:
+                    diagnostics.record(
+                        "lifecycle",
+                        "plugin_unloaded",
+                        "info",
+                        details={"version": PLUGIN_VERSION},
+                    )
+                except (OSError, ValueError):
+                    pass
+                diagnostics.flush()
+            _watcher = None
+            _watcher_task = None
+            _rpc = None
+            _cheat_service = None
+            _diagnostics = None
 
     @classmethod
     async def _uninstall(cls) -> None:

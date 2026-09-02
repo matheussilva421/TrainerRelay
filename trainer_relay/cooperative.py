@@ -26,6 +26,8 @@ MAX_ENDPOINT_ADDRESS_LENGTH = 256
 MAX_CAPABILITY_TOKEN_LENGTH = 512
 MAX_CHEATS = 64
 MAX_OPERATIONS = 3
+MAX_REVISION = 2**63 - 1
+MAX_FRESHNESS_SECONDS = 300.0
 _IDENTIFIER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _OPERATIONS = frozenset({"enable", "disable", "toggle"})
@@ -239,7 +241,12 @@ def decode_cooperative_descriptor(
         descriptor["capabilityToken"], maximum=MAX_CAPABILITY_TOKEN_LENGTH, code="cooperative_capability_invalid"
     )
     revision = descriptor["revision"]
-    if type(revision) is not int or revision < 0 or previous_revision is not None and revision < previous_revision:
+    if (
+        type(revision) is not int
+        or not 0 <= revision <= MAX_REVISION
+        or previous_revision is not None
+        and revision < previous_revision
+    ):
         _error("cooperative_revision_invalid")
     operations = _validate_operations(descriptor["operations"], code="cooperative_operations_invalid")
     raw_cheats = descriptor["cheats"]
@@ -319,7 +326,10 @@ def _validate_command_id(value: Any) -> str:
 def _validate_number(value: Any, code: str) -> float:
     if type(value) not in {int, float}:
         _error(code)
-    result = float(value)
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        _error(code)
     if result != result or result in {float("inf"), float("-inf")}:
         _error(code)
     return result
@@ -390,6 +400,7 @@ def decode_cooperative_ack(
     revision = ack["revision"]
     if (
         type(revision) is not int
+        or not 0 <= revision <= MAX_REVISION
         or revision < descriptor.revision
         or previous_revision is not None
         and revision < previous_revision
@@ -397,6 +408,8 @@ def decode_cooperative_ack(
         _error("cooperative_revision_invalid")
     fresh_until = _validate_number(ack["freshUntil"], "cooperative_freshness_invalid")
     observed_now = time.monotonic() if now is None else _validate_number(now, "cooperative_freshness_invalid")
+    if fresh_until > observed_now + MAX_FRESHNESS_SECONDS:
+        _error("cooperative_freshness_invalid")
     fresh = fresh_until > observed_now
     reason = None
     if "reason" in ack:

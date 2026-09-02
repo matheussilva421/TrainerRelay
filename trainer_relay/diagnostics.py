@@ -22,6 +22,25 @@ DEFAULT_MAX_FILES = 5
 _CATEGORIES = {"config", "games_map", "process", "umu", "trainer", "lifecycle", "command"}
 _OUTCOMES = {"info", "accepted", "rejected", "warning", "error"}
 _FORBIDDEN_KEY_PARTS = ("token", "secret", "password", "cookie", "authorization", "credential")
+_EXPORT_REDACTED_DETAIL_KEYS = frozenset(
+    {
+        "trainer_path",
+        "map_path",
+        "expected_executable",
+        "observed_executable",
+        "expected_prefix",
+        "observed_prefix",
+        "wineprefix",
+        "protonpath",
+        "umu_path",
+        "steam_compat_data_path",
+        "stdout_tail",
+        "stderr_tail",
+        "runtime_flags",
+        "group_member_names",
+        "observed_descendant_names",
+    }
+)
 
 EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "diagnostic_mode_changed": frozenset({"enabled"}),
@@ -675,7 +694,10 @@ class DiagnosticRecorder:
             fields.append(f"startTime={self._text_value(session.get('startTime'))}")
         details = event.get("details")
         if isinstance(details, Mapping):
-            fields.extend(f"{key}={self._text_value(details[key])}" for key in sorted(details))
+            fields.extend(
+                f"{key}=redacted" if key in _EXPORT_REDACTED_DETAIL_KEYS else f"{key}={self._text_value(details[key])}"
+                for key in sorted(details)
+            )
         return " ".join(fields)
 
     def _next_export_path(self, downloads_dir: Path) -> Path:
@@ -704,7 +726,7 @@ class DiagnosticRecorder:
                 f"Diagnostic mode: {'enabled' if self.enabled else 'disabled'}\n"
                 f"Journal bytes: {current_stats['bytesUsed']} / {current_stats['byteLimit']}\n"
                 "Privacy: sanitized allowlisted events only; no complete environment, command line, credentials, "
-                "or legacy debug-command content; includes bounded sanitized UMU process output tails.\n"
+                "paths, raw environment values, raw helper output, or legacy debug-command content.\n"
                 "\n"
             )
             with tempfile.NamedTemporaryFile(

@@ -210,6 +210,35 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diagnostics.flush_calls, 1)
         self.assertIsNone(self.main._diagnostics)
 
+    async def test_concurrent_unload_awaits_service_close_before_stopping_watcher(self):
+        watcher = FakeWatcher({})
+
+        class BlockingCheatService:
+            def __init__(self):
+                self.close_calls = 0
+                self.close_started = asyncio.Event()
+                self.release = asyncio.Event()
+
+            async def close(self):
+                self.close_calls += 1
+                self.close_started.set()
+                await self.release.wait()
+
+        service = BlockingCheatService()
+        self.main._watcher = watcher
+        self.main._cheat_service = service
+
+        first = asyncio.create_task(self.main.Plugin._unload())
+        await asyncio.wait_for(service.close_started.wait(), 1.0)
+        second = asyncio.create_task(self.main.Plugin._unload())
+        await asyncio.sleep(0)
+        self.assertEqual(watcher.stop_calls, 0)
+        service.release.set()
+        await asyncio.gather(first, second)
+
+        self.assertEqual(service.close_calls, 1)
+        self.assertEqual(watcher.stop_calls, 1)
+
     async def test_plugin_delegates_all_five_diagnostic_rpcs(self):
         rpc = FakeDiagnosticRpc()
         self.main._rpc = rpc

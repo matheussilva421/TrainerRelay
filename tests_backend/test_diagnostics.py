@@ -331,10 +331,10 @@ class DiagnosticRecorderTests(unittest.TestCase):
         text = Path(first["path"]).read_text(encoding="utf-8")
         self.assertIn("Trainer Relay diagnostic export", text)
         self.assertIn("Privacy: sanitized allowlisted events only", text)
-        self.assertIn("bounded sanitized UMU process output tails", text)
+        self.assertIn("raw helper output", text)
         self.assertLess(text.index("#1 process rejected candidate_rejected"), text.index("#2 lifecycle info plugin_unloaded"))
         self.assertIn("identity=gog:game pid=123 startTime=456", text)
-        self.assertIn("expected_prefix=/a observed_prefix=/b reason=prefix_mismatch", text)
+        self.assertIn("expected_prefix=redacted observed_prefix=redacted reason=prefix_mismatch", text)
 
     def test_export_failure_preserves_journal_and_prior_export(self):
         recorder = self.recorder()
@@ -419,6 +419,64 @@ class DiagnosticRecorderTests(unittest.TestCase):
             with self.subTest(event=event, details=details):
                 with self.assertRaisesRegex(ValueError, "diagnostic_event_rejected"):
                     recorder.record("command", event, "rejected", details=details)
+
+    def test_export_redacts_path_environment_and_raw_output_values(self):
+        recorder = self.recorder()
+        marker_path = "/private/trainer-marker.exe"
+        marker_environment = "/private/prefix-marker"
+        marker_output = "private-output-marker"
+        recorder.record(
+            "process",
+            "candidate_rejected",
+            "rejected",
+            details={
+                "reason": "prefix_mismatch",
+                "expected_prefix": marker_environment,
+                "observed_prefix": marker_environment,
+                "wineprefix": marker_environment,
+                "protonpath": marker_path,
+            },
+        )
+        recorder.record(
+            "trainer",
+            "trainer_spawned",
+            "accepted",
+            details={
+                "trainer_path": marker_path,
+                "process_group_id": 7,
+                "wineprefix": marker_environment,
+                "steam_compat_data_path": marker_environment,
+                "proton_verb": "runinprefix",
+                "container_reentry": "enabled",
+                "environment_key_count": 2,
+                "runtime_flags": marker_output,
+            },
+        )
+        recorder.record(
+            "umu",
+            "umu_exit_diagnostics",
+            "warning",
+            details={
+                "stdout_bytes": 1,
+                "stderr_bytes": 1,
+                "stdout_truncated": False,
+                "stderr_truncated": False,
+                "stdout_tail": marker_output,
+                "stderr_tail": marker_output,
+                "failure_class": "wine",
+                "group_member_count": 0,
+                "group_member_names": marker_path,
+                "observed_descendant_count": 0,
+                "observed_descendant_names": marker_path,
+            },
+        )
+
+        export = recorder.export_text(Path(self.directory.name) / "Downloads", "test")
+        exported = Path(export["path"]).read_text(encoding="utf-8")
+
+        self.assertNotIn(marker_path, exported)
+        self.assertNotIn(marker_environment, exported)
+        self.assertNotIn(marker_output, exported)
 
 
 if __name__ == "__main__":

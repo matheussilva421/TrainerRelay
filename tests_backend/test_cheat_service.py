@@ -1,9 +1,12 @@
 import asyncio
+import copy
 import threading
+import time
 import unittest
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
+from unittest.mock import patch
 
 from trainer_relay.cheat_catalog import AdapterDescriptor, CheatDescriptor
 from trainer_relay.cheat_config import DEFAULT_CONFIG_KEY
@@ -111,6 +114,18 @@ def _context(sha256=HASH):
     return CommandContext(
         identity=IDENTITY,
         session=(10, 20),
+        trainer_sha256=sha256,
+        trainer_arch="x86",
+        environment={"WINEPREFIX": "/prefix"},
+        umu_run="/umu-run",
+        expected_reentry_bus="com.example.bus",
+    )
+
+
+def _cooperative_context(sha256=HASH, session=SessionIdentity(10, 20)):
+    return CommandContext(
+        identity=IDENTITY,
+        session=session,
         trainer_sha256=sha256,
         trainer_arch="x86",
         environment={"WINEPREFIX": "/prefix"},
@@ -569,6 +584,235 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await service.send_cheat_command(IDENTITY, "health")
         self.assertEqual(result["outcome"], "rejected")
         self.assertEqual(result["diagnostic"], {"code": "cooperative_command_rejected"})
+
+    async def test_cooperative_dispatch_holds_authority_lease_through_send_and_ack(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        context = _cooperative_context()
+        events = []
+
+        class LeaseWatcher(Watcher):
+            def __init__(self):
+                super().__init__(context)
+                self.lease_active = False
+
+            @contextmanager
+            def command_context_lease(self, identity):
+                events.append("enter")
+                self.lease_active = True
+                try:
+                    yield self.context
+                finally:
+                    self.lease_active = False
+                    events.append("exit")
+
+        watcher = LeaseWatcher()
+
+        class CooperativeProvider:
+            def descriptor_for(self, _context):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": 1,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+            def send_command(self, _descriptor, command_id, cheat_id, operation):
+                events.append("send")
+                if not watcher.lease_active:
+                    raise AssertionError("cooperative send escaped authority lease")
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "capabilityToken": "token",
+                    "commandId": command_id,
+                    "cheatId": cheat_id,
+                    "operation": operation,
+                    "accepted": True,
+                    "state": "enabled",
+                    "revision": 2,
+                    "freshUntil": 100.0,
+                }
+
+        service = CheatControlService(
+            Settings(), watcher, Runner(), catalog=Catalog(), cooperative=CooperativeProvider(), clock=lambda: 10.0
+        )
+
+        result = await service.send_cheat_command(IDENTITY, "health")
+
+        self.assertEqual(result["state"], "enabled")
+        self.assertEqual(events, ["enter", "send", "exit"])
+
+    async def test_stale_cooperative_ack_falls_back_to_independent_adapter_command(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class CooperativeProvider:
+            def descriptor_for(self, _context):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": 1,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+            def send_command(self, _descriptor, command_id, cheat_id, operation):
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": {"pid": 10, "startTime": 20},
+                    "capabilityToken": "token",
+                    "commandId": command_id,
+                    "cheatId": cheat_id,
+                    "operation": operation,
+                    "accepted": True,
+                    "state": "enabled",
+                    "revision": 2,
+                    "freshUntil": 10.0,
+                }
+
+        runner = Runner()
+        service = CheatControlService(
+            Settings(),
+            Watcher(_cooperative_context()),
+            runner,
+            catalog=Catalog(_adapter()),
+            cooperative=CooperativeProvider(),
+            helper_paths={"x86": "/helper.exe"},
+            clock=lambda: 10.1,
+        )
+
+        result = await service.send_cheat_command(IDENTITY, "health")
+
+        self.assertEqual(result["outcome"], "requested")
+        self.assertEqual(result["state"], "unknown")
+        self.assertIsNone(result["diagnostic"])
+        self.assertEqual(len(runner.calls), 1)
+
+    async def test_cooperative_revision_regression_is_rejected_per_session_binding(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class CooperativeProvider:
+            def __init__(self):
+                self.revisions = iter((2, 1))
+
+            def descriptor_for(self, context):
+                revision = next(self.revisions)
+                session = {"pid": context.session.pid, "startTime": context.session.start_time}
+                return {
+                    "protocol": "TrainerRelay Cooperative Control v1",
+                    "schemaVersion": 1,
+                    "identity": IDENTITY,
+                    "trainerSha256": HASH,
+                    "session": session,
+                    "endpoint": {"transport": "unix", "address": "@trainer-relay-test"},
+                    "capabilityToken": "token",
+                    "revision": revision,
+                    "operations": ["toggle"],
+                    "cheats": [{"id": "health", "label": "Health", "operations": ["toggle"], "state": "unknown"}],
+                }
+
+        watcher = Watcher(_cooperative_context())
+        service = CheatControlService(
+            Settings(), watcher, Runner(), catalog=Catalog(), cooperative=CooperativeProvider()
+        )
+
+        first = await service.get_cheat_controls(IDENTITY)
+        second = await service.get_cheat_controls(IDENTITY)
+
+        self.assertEqual(first["source"], "cooperative")
+        self.assertNotEqual(second["status"], "ready")
+
+    async def test_catalog_and_diagnostic_recording_leave_the_event_loop(self):
+        from trainer_relay import cheat_service as module
+        from trainer_relay.cheat_service import CheatControlService
+
+        caller_thread = threading.get_ident()
+        catalog_threads = []
+        diagnostic_threads = []
+
+        class Diagnostics:
+            def record(self, *_args, **_kwargs):
+                diagnostic_threads.append(threading.get_ident())
+
+        def load_catalog():
+            catalog_threads.append(threading.get_ident())
+            return Catalog(_adapter())
+
+        with patch.object(module, "load_packaged_catalog", side_effect=load_catalog):
+            service = CheatControlService(
+                Settings(), Watcher(_context()), Runner(), diagnostics=Diagnostics()
+            )
+            response = await service.get_cheat_controls(IDENTITY)
+
+        self.assertEqual(response["status"], "ready")
+        self.assertTrue(catalog_threads)
+        self.assertTrue(diagnostic_threads)
+        self.assertNotEqual(catalog_threads[0], caller_thread)
+        self.assertNotEqual(diagnostic_threads[0], caller_thread)
+
+    async def test_concurrent_manual_mutations_are_serialized_per_identity(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class SlowSettings(Settings):
+            def getSetting(self, key, default):
+                time.sleep(0.03)
+                return copy.deepcopy(super().getSetting(key, default))
+
+        service = CheatControlService(
+            SlowSettings(), Watcher(_context()), Runner(), catalog=Catalog(), helper_paths={"x86": "/helper.exe"}
+        )
+        first = asyncio.create_task(
+            service.add_manual_cheat_control(IDENTITY, HASH, "First", {"modifiers": [], "key": "F1"})
+        )
+        second = asyncio.create_task(
+            service.add_manual_cheat_control(IDENTITY, HASH, "Second", {"modifiers": [], "key": "F2"})
+        )
+
+        await asyncio.gather(first, second)
+
+        self.assertEqual(len(service._load_sync()["games"][IDENTITY]["cheats"]), 2)
+
+    async def test_close_cancels_and_drains_a_running_dispatch(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        class CancellableRunner(Runner):
+            def __init__(self):
+                super().__init__(block=True)
+                self.cancel_calls = 0
+
+            def cancel_all(self):
+                self.cancel_calls += 1
+                self.release.set()
+
+        runner = CancellableRunner()
+        service = CheatControlService(
+            Settings(), Watcher(_context()), runner, catalog=Catalog(_adapter()), helper_paths={"x86": "/helper.exe"}
+        )
+        dispatch = asyncio.create_task(service.send_cheat_command(IDENTITY, "health"))
+        await asyncio.to_thread(runner.started.wait, 1)
+
+        await service.close()
+        result = await dispatch
+
+        self.assertEqual(runner.cancel_calls, 1)
+        self.assertIn(result["outcome"], {"requested", "failed", "rejected"})
 
 
 if __name__ == "__main__":

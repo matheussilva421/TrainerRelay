@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .cheat_config import validate_label, validate_trainer_sha256
+from .cheat_service import PUBLIC_CHEAT_DIAGNOSTIC_CODES
 from .config import DEFAULT_CONFIG_KEY, decode_relay_config, empty_relay_config, validate_game_config, validate_launch_identity
 from .diagnostic_settings import DIAGNOSTIC_SETTINGS_KEY, decode_diagnostic_settings
 from .hotkeys import normalize_hotkey
@@ -264,7 +265,7 @@ class RelayRpc:
         if not isinstance(value, Mapping) or set(value) != {"code"}:
             raise RelayRpcError("invalid_cheat_response")
         code = value.get("code")
-        if not isinstance(code, str) or _SAFE_CODE.fullmatch(code) is None:
+        if not isinstance(code, str) or code not in PUBLIC_CHEAT_DIAGNOSTIC_CODES:
             raise RelayRpcError("invalid_cheat_response")
         return {"code": code}
 
@@ -369,6 +370,8 @@ class RelayRpc:
             raise RelayRpcError("invalid_cheat_response")
         if value["source"] != "cooperative" and (capabilities["authoritativeState"] or capabilities["toggles"]):
             raise RelayRpcError("invalid_cheat_response")
+        if capabilities["toggles"] and not capabilities["authoritativeState"]:
+            raise RelayRpcError("invalid_cheat_response")
         if value["source"] != "cooperative" and any(cheat.get("authoritative") is True for cheat in safe_cheats):
             raise RelayRpcError("invalid_cheat_response")
         if value["source"] == "cooperative" and not capabilities["authoritativeState"]:
@@ -449,7 +452,7 @@ class RelayRpc:
             raise
         except Exception as error:
             code = getattr(error, "code", None)
-            if not isinstance(code, str) or _SAFE_CODE.fullmatch(code) is None:
+            if not isinstance(code, str) or code not in PUBLIC_CHEAT_DIAGNOSTIC_CODES:
                 code = "cheat_service_failed"
             raise RelayRpcError(code) from None
 
