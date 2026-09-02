@@ -331,6 +331,29 @@ class RpcTests(unittest.IsolatedAsyncioTestCase):
         response = await rpc.get_cheat_controls({"identity": "gog:game"})
         self.assertEqual(response["cheats"][0]["state"], "disabled")
 
+    async def test_empty_manual_response_exposes_hash_without_command_authority(self):
+        class ManualService:
+            async def get_cheat_controls(self, identity):
+                return {
+                    "identity": identity,
+                    "status": "ready",
+                    "trainerSha256": "a" * 64,
+                    "source": "manual",
+                    "trainerLabel": "Manual controls",
+                    "cheats": [],
+                    "capabilities": {"commands": False, "authoritativeState": False, "toggles": False},
+                    "diagnostic": None,
+                }
+
+        rpc = RelayRpc(FakeSettings(None), FakeWatcher(), cheat_service=ManualService())
+
+        response = await rpc.get_cheat_controls({"identity": "gog:game"})
+
+        self.assertEqual(response["source"], "manual")
+        self.assertEqual(response["trainerSha256"], "a" * 64)
+        self.assertEqual(response["cheats"], [])
+        self.assertFalse(response["capabilities"]["commands"])
+
     async def test_cheat_rpc_rejects_overlong_diagnostic_codes(self):
         class Unsafe:
             async def get_cheat_controls(self, identity):

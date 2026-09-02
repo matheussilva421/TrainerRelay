@@ -205,9 +205,31 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ready["trainerSha256"], HASH)
 
         watcher.context = _context(OTHER_HASH)
-        unavailable = await service.get_cheat_controls(IDENTITY)
-        self.assertNotEqual(unavailable["status"], "ready")
-        self.assertNotIn("Manual health", str(unavailable))
+        empty_manual = await service.get_cheat_controls(IDENTITY)
+        self.assertEqual(empty_manual["status"], "ready")
+        self.assertEqual(empty_manual["source"], "manual")
+        self.assertEqual(empty_manual["trainerSha256"], OTHER_HASH)
+        self.assertEqual(empty_manual["cheats"], [])
+        self.assertFalse(empty_manual["capabilities"]["commands"])
+        self.assertNotIn("Manual health", str(empty_manual))
+
+    async def test_unknown_hash_without_manual_controls_exposes_empty_hash_bound_editor(self):
+        from trainer_relay.cheat_service import CheatControlService
+
+        service = CheatControlService(
+            Settings(), Watcher(_context(HASH)), Runner(), catalog=Catalog(), helper_paths={"x86": "/helper.exe"}
+        )
+
+        response = await service.get_cheat_controls(IDENTITY)
+
+        self.assertEqual(response["status"], "ready")
+        self.assertEqual(response["source"], "manual")
+        self.assertEqual(response["trainerSha256"], HASH)
+        self.assertEqual(response["cheats"], [])
+        self.assertEqual(
+            response["capabilities"],
+            {"commands": False, "authoritativeState": False, "toggles": False},
+        )
 
     async def test_zero_multiple_and_non_running_sessions_never_become_ready(self):
         from trainer_relay.cheat_service import CheatControlService
@@ -490,7 +512,9 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
             Settings(), Watcher(context), Runner(), catalog=Catalog(), cooperative=CooperativeProvider()
         )
         response = await service.get_cheat_controls(IDENTITY)
-        self.assertNotEqual(response["status"], "ready")
+        self.assertEqual(response["source"], "manual")
+        self.assertEqual(response["cheats"], [])
+        self.assertFalse(response["capabilities"]["commands"])
 
     async def test_cooperative_dataclass_ack_cannot_authorize_unvalidated_state(self):
         from trainer_relay.cheat_service import CheatControlService
@@ -986,7 +1010,9 @@ class CheatServiceTests(unittest.IsolatedAsyncioTestCase):
         second = await service.get_cheat_controls(IDENTITY)
 
         self.assertEqual(first["source"], "cooperative")
-        self.assertNotEqual(second["status"], "ready")
+        self.assertEqual(second["source"], "manual")
+        self.assertEqual(second["cheats"], [])
+        self.assertFalse(second["capabilities"]["commands"])
 
     async def test_catalog_and_diagnostic_recording_leave_the_event_loop(self):
         from trainer_relay import cheat_service as module

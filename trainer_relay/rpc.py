@@ -358,7 +358,7 @@ class RelayRpc:
         except ValueError:
             raise RelayRpcError("invalid_cheat_response") from None
         cheats = value.get("cheats")
-        if type(cheats) is not list or not 1 <= len(cheats) <= 64:
+        if type(cheats) is not list or len(cheats) > 64 or not cheats and value["source"] != "manual":
             raise RelayRpcError("invalid_cheat_response")
         safe_cheats = [cls._safe_cheat_descriptor(cheat, source=value["source"]) for cheat in cheats]
         if len({cheat["id"] for cheat in safe_cheats}) != len(safe_cheats):
@@ -371,6 +371,8 @@ class RelayRpc:
         if value["source"] != "cooperative" and (capabilities["authoritativeState"] or capabilities["toggles"]):
             raise RelayRpcError("invalid_cheat_response")
         if capabilities["toggles"] and not capabilities["authoritativeState"]:
+            raise RelayRpcError("invalid_cheat_response")
+        if not safe_cheats and capabilities["commands"]:
             raise RelayRpcError("invalid_cheat_response")
         if value["source"] != "cooperative" and any(cheat.get("authoritative") is True for cheat in safe_cheats):
             raise RelayRpcError("invalid_cheat_response")

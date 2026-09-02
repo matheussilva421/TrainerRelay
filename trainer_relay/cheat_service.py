@@ -511,25 +511,23 @@ class CheatControlService:
                 {str(value["id"]): value for value in controls},
             )
         controls = self._manual_controls(config, context.identity, context.trainer_sha256)
-        if controls:
-            safe_controls = tuple(
-                {
-                    "id": str(value["id"]),
-                    "label": str(value["label"]),
-                    "hotkey": {"modifiers": list(value["hotkey"]["modifiers"]), "key": value["hotkey"]["key"]},
-                    "state": "unknown",
-                }
-                for value in controls
-            )
-            return _ResolvedControl(
-                "manual",
-                context.trainer_sha256,
-                "Manual controls",
-                context.trainer_arch,
-                safe_controls,
-                {str(value["id"]): value for value in safe_controls},
-            )
-        return None
+        safe_controls = tuple(
+            {
+                "id": str(value["id"]),
+                "label": str(value["label"]),
+                "hotkey": {"modifiers": list(value["hotkey"]["modifiers"]), "key": value["hotkey"]["key"]},
+                "state": "unknown",
+            }
+            for value in controls
+        )
+        return _ResolvedControl(
+            "manual",
+            context.trainer_sha256,
+            "Manual controls",
+            context.trainer_arch,
+            safe_controls,
+            {str(value["id"]): value for value in safe_controls},
+        )
 
     @staticmethod
     def _ready_response(identity: str, resolved: _ResolvedControl) -> dict[str, Any]:
@@ -542,7 +540,7 @@ class CheatControlService:
             "trainerLabel": resolved.trainer_label,
             "cheats": [dict(value) for value in resolved.cheats],
             "capabilities": {
-                "commands": True,
+                "commands": bool(resolved.cheats),
                 "authoritativeState": authoritative,
                 "toggles": authoritative,
             },

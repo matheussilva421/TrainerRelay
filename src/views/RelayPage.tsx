@@ -1,10 +1,13 @@
 import { ConfirmModal, DialogButton, Field, Focusable, showModal, TextField, ToggleField } from "@decky/ui";
 import type { FC } from "react";
 import { FaArrowsRotate, FaShieldHalved } from "react-icons/fa6";
+import { CheatControlList } from "../components/CheatControlList";
+import { ManualCheatEditor } from "../components/ManualCheatEditor";
 import { TrainerFilePicker } from "../components/TrainerFilePicker";
 import type { LegacyMigrationPlan } from "../domain/relay/migration";
 import type { LaunchIdentity } from "../domain/relay/types";
 import { formatRelayStatus } from "../domain/relay/viewModel";
+import { useCheatControls } from "../hooks/useCheatControls";
 import { useRelayPageController } from "../hooks/useRelayPageController";
 
 const migrationDescription = (plan: LegacyMigrationPlan): string => {
@@ -34,6 +37,8 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
     retry,
     migrate,
   } = controller;
+  const cheatIdentity = model.kind === "supported" ? model.identity : undefined;
+  const cheatControls = useCheatControls(cheatIdentity);
 
   const confirmMigration = (
     supportedIdentity: LaunchIdentity,
@@ -105,6 +110,37 @@ const RelayPage: FC<{ appid: number }> = ({ appid }) => {
         padding="standard"
         bottomSeparator="standard"
       />
+      {cheatControls.response?.status === "ready" ? (
+        <>
+          <CheatControlList
+            controls={cheatControls.response}
+            busy={cheatControls.busy || busy || migrationBusy}
+            onCommand={(cheatId) => cheatControls.sendCommand(cheatId)}
+            lastResults={cheatControls.lastResults}
+          />
+          {cheatControls.response.source === "manual" && (
+            <ManualCheatEditor
+              ready={true}
+              trainerSha256={cheatControls.response.trainerSha256}
+              busy={cheatControls.busy || busy || migrationBusy}
+              cheats={cheatControls.response.cheats}
+              onAdd={(label, hotkey) => cheatControls.addManualCheatControl(label, hotkey)}
+              onRemove={(cheatId) => cheatControls.removeManualCheatControl(cheatId)}
+            />
+          )}
+        </>
+      ) : (
+        <Field
+          label="Cheat controls"
+          description={
+            cheatControls.error
+              ? `Controles indisponíveis (${cheatControls.error}). Nenhum comando foi enviado.`
+              : "Aguardando uma resposta segura do Trainer Relay."
+          }
+          padding="standard"
+          bottomSeparator="standard"
+        />
+      )}
       {configState.status === "error" && (
         <Field
           description="Relay configuration is unavailable. Nothing can be changed."

@@ -48,8 +48,24 @@ const controller = vi.hoisted(() => ({
   migrate: vi.fn(),
 }));
 
+const cheatControls = vi.hoisted(() => ({
+  response: undefined as unknown,
+  status: "unavailable" as const,
+  error: null as string | null,
+  busy: false,
+  lastResults: {} as Record<string, string>,
+  refresh: vi.fn(),
+  sendCommand: vi.fn(),
+  addManualCheatControl: vi.fn(),
+  removeManualCheatControl: vi.fn(),
+}));
+
 vi.mock("../src/hooks/useRelayPageController", () => ({
   useRelayPageController: () => controller,
+}));
+
+vi.mock("../src/hooks/useCheatControls", () => ({
+  useCheatControls: () => cheatControls,
 }));
 
 vi.mock("@decky/ui", () => {
@@ -58,6 +74,7 @@ vi.mock("@decky/ui", () => {
     ButtonItem: component("ButtonItem"),
     ConfirmModal: component("ConfirmModal"),
     DialogButton: component("DialogButton"),
+    DropdownItem: component("DropdownItem"),
     Field: component("Field"),
     Focusable: component("Focusable"),
     Navigation: { CloseSideMenus: vi.fn(), NavigateToExternalWeb: vi.fn() },
@@ -75,6 +92,8 @@ vi.mock("react-icons/fa6", () => ({
   FaShieldHalved: "FaShieldHalved",
 }));
 
+import { CheatControlList } from "../src/components/CheatControlList";
+import { ManualCheatEditor } from "../src/components/ManualCheatEditor";
 import { TrainerFilePicker } from "../src/components/TrainerFilePicker";
 import type { TrainerRelayViewModel } from "../src/domain/relay/viewModel";
 import RelayPage from "../src/views/RelayPage";
@@ -148,6 +167,31 @@ describe("Trainer Relay page", () => {
 
     expect(page?.type).toBe("Focusable");
     expect(nodes.some((node) => node.type === "PanelSection" || node.type === "PanelSectionRow")).toBe(false);
+  });
+
+  it("receives the safe identity and renders the routed cheat controls", () => {
+    const previousResponse = cheatControls.response;
+    const previousStatus = cheatControls.status;
+    cheatControls.response = {
+      identity: "gog:1482265568",
+      status: "ready",
+      trainerSha256: "a".repeat(64),
+      source: "manual",
+      trainerLabel: "Manual trainer",
+      cheats: [{ id: "health", label: "Health", hotkey: { modifiers: [], key: "F1" }, state: "unknown" }],
+      capabilities: { commands: true, authoritativeState: false, toggles: false },
+      diagnostic: null,
+    };
+    (cheatControls as { status: string }).status = "ready";
+
+    try {
+      const nodes = descendants(RelayPage({ appid: 48_226_5568 }));
+      expect(nodes.some((node) => node.type === CheatControlList)).toBe(true);
+      expect(nodes.some((node) => node.type === ManualCheatEditor)).toBe(true);
+    } finally {
+      cheatControls.response = previousResponse;
+      (cheatControls as { status: string }).status = previousStatus;
+    }
   });
 
   it("renders no actionable controls for an unsupported shortcut", () => {
