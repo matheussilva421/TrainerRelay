@@ -1867,3 +1867,26 @@ untested.
   tag or publish a stable release until the checklist in
   `docs/STEAM-DECK-VALIDATION.md` passes on a known FLiNG build and on the manual
   unknown-build fallback.
+
+### Steam Input radial-menu automation research — 2026-09-02
+
+- Researched whether Trainer Relay can automatically reproduce the user's
+  manually configured Steam Input radial menu for UniFiDeck shortcuts. Findings
+  are recorded in
+  `docs/research/2026-09-02-steam-input-radial-menu-automation.md`.
+- Valve documents developer export/dump/bundled-manifest flows, but no supported
+  public API for a Decky plugin to mutate a user's active personal layout for a
+  non-Steam shortcut. Decky's typed Steam-client surface exposes internal edit,
+  save and selection calls, but payloads are opaque/unstable and include an
+  explicit warning around controller-configuration messages.
+- Decision recommendation, pending user approval: keep Trainer Relay's dynamic
+  Quick Access controls as the reliable primary route. Add an optional assisted
+  action that generates a separate radial-menu layout and opens Steam's normal
+  configurator for explicit review/application. Do not overwrite the active VDF
+  or silently apply an internal protobuf configuration.
+- A fully automatic apply path remains an experimental follow-up only after
+  live Deck capture proves the exact Steam-client payload/lifecycle and after
+  backup, rollback, feature detection and Steam Cloud behavior are validated.
+- No production code was changed and no implementation was authorized. Research
+  validation: `git diff --check` passed. The attachment directory remains
+  user-owned and untracked.
