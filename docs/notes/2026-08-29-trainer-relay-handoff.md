@@ -1834,3 +1834,36 @@ untested.
   install it through Decky developer ZIP installation, restart Decky/Steam,
   launch the UniFiDeck game, then open Trainer Relay in Quick Access. Roll back
   by disabling/uninstalling the plugin; the game remains independently launchable.
+
+### Final local revalidation on 2026-09-02
+
+- Revalidated the exact clean tree at commit
+  `ab1e85bf9cc6add6ca1ee5aaba991c2460373631`. The branch and remote were aligned
+  before this handoff-only update (`origin/feat/trainer-relay...HEAD = 0/0`).
+- Fresh gates: backend 257/257; frontend 30 files / 217 tests; packaging 7/7;
+  Biome checked 75 files; production and test TypeScript checks passed; Rollup
+  build passed; compileall passed; and `git diff --check` passed.
+- `pnpm run test` could not start because Corepack/pnpm attempted registry
+  signature verification while the registry was unreachable. This was a tool
+  bootstrap failure, not a test failure. The locked local Vitest 4.1.10 binary
+  was then run directly and passed all 217 tests; local Biome, TypeScript and
+  Rollup binaries were likewise used without changing dependencies or lockfiles.
+- Rebuilt and reinspected `TrainerRelay.zip`: 33 entries, packaged version
+  `0.1.0-experimental.20`, SHA-256
+  `AAFB2EFCFAB88FEFFD2C5D611AD16590F2903BA586677F70DA11A5A748DCEEE0`.
+- The focused independent Task 5 re-review was approved with no
+  Critical/Important findings. It confirmed bounded diagnostics for the
+  `requested + unknown` cooperative uncertainty path and confirmed that
+  enabled/disabled authority is derived only from a matching decoded
+  cooperative snapshot, never from adapter/manual input or a public caller flag.
+- A later whole-diff review was interrupted before collecting evidence and is
+  explicitly not counted as an approval. Direct final source inspection still
+  confirmed no XTest/X11/uinput/root execution path: the packaged native input
+  path is the one-shot Win32 `SendInput` helper, invoked with `shell=False` in
+  the verified `runinprefix` context. Frontend/backend decoders reject
+  enabled/disabled state for adapter/manual sources, and the UI renders a
+  toggle only for a cooperative, authoritative, operation-compatible snapshot.
+- Remaining release boundary is physical Steam Deck validation. Do not promote,
+  tag or publish a stable release until the checklist in
+  `docs/STEAM-DECK-VALIDATION.md` passes on a known FLiNG build and on the manual
+  unknown-build fallback.
