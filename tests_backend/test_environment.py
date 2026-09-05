@@ -2,6 +2,25 @@ import os
 import stat
 import tempfile
 import unittest
+
+
+class NestedSteamIdentityTests(unittest.TestCase):
+    def test_nested_umu_restores_original_shortcut_id(self):
+        original = str((3212345678 << 32) | 0x02000000)
+        env = build_sanitized_environment({'SteamGameId': '0', 'UMU_STEAM_GAME_ID': original})
+        self.assertEqual(env['SteamGameId'], original)
+        self.assertEqual(env['UMU_STEAM_GAME_ID'], original)
+
+    def test_invalid_original_id_does_not_override_current_identity(self):
+        for invalid in ('', '0', '-1', 'abc', str(1 << 65), '123'):
+            with self.subTest(invalid=invalid):
+                env = build_sanitized_environment({'SteamGameId': '456', 'UMU_STEAM_GAME_ID': invalid})
+                self.assertEqual(env['SteamGameId'], '456')
+
+    def test_conflicting_nonzero_identity_is_preserved(self):
+        original = str((3212345678 << 32) | 0x02000000)
+        env = build_sanitized_environment({'SteamGameId': '456', 'UMU_STEAM_GAME_ID': original})
+        self.assertEqual(env['SteamGameId'], '456')
 from pathlib import Path
 
 from trainer_relay.environment import build_sanitized_environment

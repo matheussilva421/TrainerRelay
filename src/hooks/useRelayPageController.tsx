@@ -118,7 +118,7 @@ export const useRelayPageController = (appid: number) => {
       logger.info("[TrainerRelay:picker] persistence-result", { status: result.status });
       if (result.status === "persisted_disabled") {
         updateGameConfig(model.identity, result.config);
-        setMigrationMessage("Trainer selected. Prepare UMU container re-entry before enabling it.");
+        setMigrationMessage("Trainer selected and saved disabled. Review launch preparation below, then enable it.");
       } else {
         sendNotice("Trainer path could not be saved; relay remains disabled.");
       }
@@ -140,8 +140,10 @@ export const useRelayPageController = (appid: number) => {
       const result = enabled
         ? await enableTrainerRelay(relayRpc, model.identity, current, model.migration)
         : await disableTrainerRelay(relayRpc, model.identity, current);
-      if (result.status === "enabled" || result.status === "disabled") updateGameConfig(model.identity, result.config);
-      else if (result.status === "blocked")
+      if (result.status === "enabled" || result.status === "disabled") {
+        updateGameConfig(model.identity, result.config);
+        setMigrationMessage(undefined);
+      } else if (result.status === "blocked")
         sendNotice("Choose a valid .exe and complete launch-option preparation first.");
       else sendNotice("Relay configuration could not be saved; it remains disabled.");
     } finally {

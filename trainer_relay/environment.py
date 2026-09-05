@@ -66,6 +66,16 @@ def build_sanitized_environment(source: Mapping[str, str], prefix_anchor: str | 
     # A launcher service inherited from the game points at the existing UMU
     # process. umu-run must resolve the service itself for this invocation.
     result.pop("STEAM_COMPAT_LAUNCHER_SERVICE", None)
+    # UMU saves the incoming SteamGameId, then replaces it with its own game
+    # ID (usually zero). Restore the saved shortcut ID before the nested UMU
+    # invocation, which otherwise overwrites that saved identity with zero.
+    original = result.get("UMU_STEAM_GAME_ID", "")
+    if (original.isascii() and original.isdecimal() and len(original) <= 20
+            and result.get("SteamGameId", "0") in {"0", original}):
+        shortcut = int(original)
+        if (shortcut < (1 << 64) and shortcut >> 32 >= 0x80000000
+                and shortcut & 0xffffffff == 0x02000000):
+            result["SteamGameId"] = original
     if prefix_anchor is not None:
         umu_prefix = _umu_prefix_root(prefix_anchor)
         result["WINEPREFIX"] = umu_prefix

@@ -39,7 +39,7 @@ _cheat_service: CheatControlService | None = None
 _diagnostics: DiagnosticRecorder | None = None
 _unload_lock = asyncio.Lock()
 
-PLUGIN_VERSION = "0.1.0-experimental.21.windows.2"
+PLUGIN_VERSION = "0.1.0-experimental.22"
 
 
 def _host_user_home() -> str:
