@@ -42,3 +42,19 @@ Next: install .22, restart plugin/Steam, start a fresh Epic session and inspect
 STEAM window list. Export persistent TXT. If absent, obtain bounded original
 Steam IDs and installed UMU window monitor behavior before applying window
 properties. Do not present this candidate correction as physically verified.
+
+## .22 device capture: 20260905-214616
+
+Export header confirms .22. Separate historical 21:26 events from new session:
+21:44:08.301 trainer spawned, group 31250; re-entry confirmed in 1113 ms;
+21:44:11.850 running; 21:44:18.645 snapshot on :1, ok_tree, 26 windows,
+truncated=true. Window 0x3600001 has PID 31304 and Normal state; process events
+identify PID 31304 as Mortal Shell trainer. Game window 0x2600003 has PID 31186.
+PID 31332 is EOS overlay. Session ended 21:45:59.935, owned group SIGTERM at
+21:46:00.005. No evidence here of failed spawn or premature trainer process exit.
+
+No numerical STEAM_GAME value captured; active_window unknown. Therefore this
+export does not establish whether .22 changed Steam's switchable-window list,
+nor whether the retained-ID correction was exercised. User-visible outcome is
+pending. Ask whether trainer appeared in STEAM menu during this specific test.
+Only handoff updated; no code/package changes or test rerun for this analysis.
