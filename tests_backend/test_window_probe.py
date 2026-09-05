@@ -1,11 +1,115 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from trainer_relay import window_probe
+from trainer_relay.process import ProcessDiscoverer, SessionIdentity
 from trainer_relay.window_probe import collect_window_snapshot
 
 
 class WindowProbeTests(unittest.TestCase):
+    def test_default_process_verifier_reads_proc_before_mutating_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process = root / '31304'
+            process.mkdir()
+            stat = '31304 (trainer.exe) S ' + ' '.join(['0'] * 18) + ' 9001 0 0'
+            (process / 'stat').write_text(stat, encoding='utf-8')
+            (process / 'cmdline').write_bytes(b'wine\0/games/trainers/mortal-shell.exe\0')
+            (process / 'environ').write_bytes(b'WINEPREFIX=/prefixes/mortal-shell/pfx\0')
+            properties = iter((
+                '_NET_WM_PID(CARDINAL) = 31304\n',
+                '_NET_WM_PID(CARDINAL) = 31304\n',
+                '_NET_WM_PID(CARDINAL) = 31304\nSTEAM_GAME(CARDINAL) = 2476768691\n',
+            ))
+            writes = []
+
+            with patch.object(
+                window_probe,
+                '_OWNED_PROCESS_DISCOVERER',
+                ProcessDiscoverer(root),
+            ):
+                result = window_probe.associate_owned_windows(
+                    {'DISPLAY': ':1'},
+                    '/games/trainers/mortal-shell.exe',
+                    '/prefixes/mortal-shell',
+                    str((2476768691 << 32) | 0x02000000),
+                    list_windows=lambda _: ('0x20',),
+                    read_properties=lambda *_: next(properties),
+                    set_steam_game=lambda *args: writes.append(args) or True,
+                )
+
+            self.assertEqual(result['association_status'], 'associated')
+            self.assertEqual(len(writes), 1)
+
+    def test_associates_service_launched_trainer_by_exact_process_identity_not_outer_group(self):
+        steam_game_id = str((2476768691 << 32) | 0x02000000)
+        properties = {
+            '0x20': iter((
+                '_NET_WM_PID(CARDINAL) = 31304\n',
+                '_NET_WM_PID(CARDINAL) = 31304\n',
+                '_NET_WM_PID(CARDINAL) = 31304\nSTEAM_GAME(CARDINAL) = 2476768691\n',
+            )),
+            '0x21': iter(('_NET_WM_PID(CARDINAL) = 31186\n',)),
+        }
+        writes = []
+
+        def verify_process(pid, executable, prefix, expected_session=None):
+            self.assertEqual(executable, '/games/trainers/mortal-shell.exe')
+            self.assertEqual(prefix, '/prefixes/mortal-shell')
+            if pid != 31304:
+                return None
+            session = SessionIdentity(31304, 9001)
+            return session if expected_session in (None, session) else None
+
+        result = window_probe.associate_owned_windows(
+            {'DISPLAY': ':1'},
+            '/games/trainers/mortal-shell.exe',
+            '/prefixes/mortal-shell',
+            steam_game_id,
+            list_windows=lambda _: ('0x20', '0x21'),
+            read_properties=lambda _, window: next(properties[window]),
+            set_steam_game=lambda environment, window, appid: writes.append(
+                (environment, window, appid)
+            ) or True,
+            verify_process=verify_process,
+        )
+
+        self.assertEqual(result['association_status'], 'associated')
+        self.assertEqual(result['owned_window_count'], 1)
+        self.assertEqual(writes, [({'DISPLAY': ':1'}, '0x20', 2476768691)])
+
+    def test_fails_closed_before_writes_when_distinct_matching_trainer_processes_are_ambiguous(self):
+        properties = {
+            '0x20': iter((
+                '_NET_WM_PID(CARDINAL) = 31304\n',
+                '_NET_WM_PID(CARDINAL) = 31304\n',
+                '_NET_WM_PID(CARDINAL) = 31304\nSTEAM_GAME(CARDINAL) = 2476768691\n',
+            )),
+            '0x22': iter((
+                '_NET_WM_PID(CARDINAL) = 31400\n',
+                '_NET_WM_PID(CARDINAL) = 31400\n',
+                '_NET_WM_PID(CARDINAL) = 31400\nSTEAM_GAME(CARDINAL) = 2476768691\n',
+            )),
+        }
+        writes = []
+
+        result = window_probe.associate_owned_windows(
+            {'DISPLAY': ':1'},
+            '/games/trainers/mortal-shell.exe',
+            '/prefixes/mortal-shell',
+            str((2476768691 << 32) | 0x02000000),
+            list_windows=lambda _: ('0x20', '0x22'),
+            read_properties=lambda _, window: next(properties[window]),
+            set_steam_game=lambda *args: writes.append(args) or True,
+            verify_process=lambda pid, *_args: SessionIdentity(pid, pid + 100),
+        )
+
+        self.assertEqual(result['association_status'], 'ambiguous_owned_windows')
+        self.assertEqual(result['owned_window_count'], 2)
+        self.assertEqual(writes, [])
+
     def test_steam_game_write_uses_shell_free_xprop_boundary(self):
         environment = {'DISPLAY': ':1'}
 
@@ -40,14 +144,15 @@ class WindowProbeTests(unittest.TestCase):
 
         result = associate(
             {'DISPLAY': ':1'},
-            999,
+            '/games/trainers/mortal-shell.exe',
+            '/prefixes/mortal-shell',
             steam_game_id,
             list_windows=lambda _: ('0x20', '0x21'),
             read_properties=lambda _, window: next(properties[window]),
             set_steam_game=lambda environment, window, appid: writes.append(
                 (environment, window, appid)
             ) or True,
-            get_process_group=lambda pid: {31304: 999, 31186: 777}[pid],
+            verify_process=lambda pid, *_args: SessionIdentity(31304, 9001) if pid == 31304 else None,
         )
 
         self.assertEqual(
@@ -72,12 +177,13 @@ class WindowProbeTests(unittest.TestCase):
 
         result = associate(
             {'DISPLAY': ':1'},
-            999,
+            '/games/trainers/mortal-shell.exe',
+            '/prefixes/mortal-shell',
             str((2476768691 << 32) | 0x02000000),
             list_windows=lambda _: ('0x21',),
             read_properties=lambda *_: '_NET_WM_PID(CARDINAL) = 31186\n',
             set_steam_game=lambda *args: writes.append(args) or True,
-            get_process_group=lambda _: 777,
+            verify_process=lambda *_args: None,
         )
 
         self.assertEqual(result['association_status'], 'no_owned_windows')
@@ -93,12 +199,36 @@ class WindowProbeTests(unittest.TestCase):
 
         result = associate(
             {'DISPLAY': ':1'},
-            999,
+            '/games/trainers/mortal-shell.exe',
+            '/prefixes/mortal-shell',
             '2476768691',
             list_windows=lambda _: enumerations.append(True) or (),
         )
 
         self.assertEqual(result['association_status'], 'invalid_steam_game_id')
+        self.assertEqual(enumerations, [])
+
+    def test_rejects_relative_trainer_or_prefix_before_window_enumeration(self):
+        enumerations = []
+        steam_game_id = str((2476768691 << 32) | 0x02000000)
+
+        trainer_result = window_probe.associate_owned_windows(
+            {'DISPLAY': ':1'},
+            'trainer.exe',
+            '/prefixes/mortal-shell',
+            steam_game_id,
+            list_windows=lambda _: enumerations.append(True) or (),
+        )
+        prefix_result = window_probe.associate_owned_windows(
+            {'DISPLAY': ':1'},
+            '/games/trainers/mortal-shell.exe',
+            'relative-prefix',
+            steam_game_id,
+            list_windows=lambda _: enumerations.append(True) or (),
+        )
+
+        self.assertEqual(trainer_result['association_status'], 'invalid_trainer_path')
+        self.assertEqual(prefix_result['association_status'], 'invalid_prefix')
         self.assertEqual(enumerations, [])
 
     def test_does_not_rewrite_an_already_associated_owned_window(self):
@@ -111,14 +241,15 @@ class WindowProbeTests(unittest.TestCase):
 
         result = associate(
             {'DISPLAY': ':1'},
-            999,
+            '/games/trainers/mortal-shell.exe',
+            '/prefixes/mortal-shell',
             str((2476768691 << 32) | 0x02000000),
             list_windows=lambda _: ('0x20',),
             read_properties=lambda *_: (
                 '_NET_WM_PID(CARDINAL) = 31304\nSTEAM_GAME(CARDINAL) = 2476768691\n'
             ),
             set_steam_game=lambda *args: writes.append(args) or True,
-            get_process_group=lambda _: 999,
+            verify_process=lambda *_args: SessionIdentity(31304, 9001),
         )
 
         self.assertEqual(result['association_status'], 'already_associated')
@@ -136,11 +267,12 @@ class WindowProbeTests(unittest.TestCase):
         with patch('trainer_relay.window_probe.time.monotonic', side_effect=(0.0, 0.1, 3.0)):
             result = associate(
                 {'DISPLAY': ':1'},
-                999,
+                '/games/trainers/mortal-shell.exe',
+                '/prefixes/mortal-shell',
                 str((2476768691 << 32) | 0x02000000),
                 list_windows=lambda _: ('0x20', '0x21'),
                 read_properties=lambda *_: associated,
-                get_process_group=lambda _: 999,
+                verify_process=lambda *_args: SessionIdentity(31304, 9001),
             )
 
         self.assertEqual(result['owned_window_count'], 1)

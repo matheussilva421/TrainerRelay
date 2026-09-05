@@ -51,6 +51,102 @@ def write_candidate(
 
 
 class ProcessDiscoveryTests(unittest.TestCase):
+    def test_verifies_exact_sidecar_executable_prefix_and_stable_pid_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                31304,
+                start_time=9001,
+                executable="/games/trainers/mortal-shell.exe",
+                prefix="/prefixes/mortal-shell/pfx",
+                game_id="umu-0",
+                store="gog",
+                comm="mortal-shell.ex",
+            )
+            discoverer = ProcessDiscoverer(root)
+
+            verifier = getattr(discoverer, "verify_executable_session", None)
+            result = (
+                verifier(
+                    31304,
+                    "/games/trainers/mortal-shell.exe",
+                    "/prefixes/mortal-shell",
+                )
+                if verifier is not None
+                else None
+            )
+
+            self.assertEqual(result, SessionIdentity(31304, 9001))
+
+    def test_sidecar_verification_rejects_wrong_executable_prefix_or_pinned_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                31304,
+                start_time=9001,
+                executable="/games/trainers/mortal-shell.exe",
+                prefix="/prefixes/mortal-shell/pfx",
+                game_id="umu-0",
+                store="gog",
+            )
+            discoverer = ProcessDiscoverer(root)
+
+            self.assertIsNone(
+                discoverer.verify_executable_session(
+                    31304,
+                    "/games/trainers/other.exe",
+                    "/prefixes/mortal-shell",
+                )
+            )
+            self.assertIsNone(
+                discoverer.verify_executable_session(
+                    31304,
+                    "/games/trainers/mortal-shell.exe",
+                    "/prefixes/other",
+                )
+            )
+            self.assertIsNone(
+                discoverer.verify_executable_session(
+                    31304,
+                    "/games/trainers/mortal-shell.exe",
+                    "/prefixes/mortal-shell",
+                    SessionIdentity(31304, 9000),
+                )
+            )
+
+    def test_sidecar_verification_rejects_pid_reuse_during_proc_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_candidate(
+                root,
+                31304,
+                start_time=9001,
+                executable="/games/trainers/mortal-shell.exe",
+                prefix="/prefixes/mortal-shell/pfx",
+                game_id="umu-0",
+                store="gog",
+            )
+            stat_path = root / "31304" / "stat"
+            reads = 0
+
+            def read_bytes(path: Path) -> bytes:
+                nonlocal reads
+                if path == stat_path:
+                    reads += 1
+                    if reads == 2:
+                        return proc_stat(31304, "trainer.exe", 9002).encode()
+                return path.read_bytes()
+
+            result = ProcessDiscoverer(root, read_bytes=read_bytes).verify_executable_session(
+                31304,
+                "/games/trainers/mortal-shell.exe",
+                "/prefixes/mortal-shell",
+            )
+
+            self.assertIsNone(result)
+
     def discover_one(self, root: Path):
         return ProcessDiscoverer(root).discover(
             "gog:game",

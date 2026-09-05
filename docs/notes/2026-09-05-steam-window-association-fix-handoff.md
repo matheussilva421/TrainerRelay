@@ -1,5 +1,7 @@
 # TrainerRelay experimental.23 — Steam window association handoff
 
+> **SUPERSEDED — DO NOT INSTALL experimental.23.** Primary-source review after this handoff showed that `steam-runtime-launcher-service` creates the launched trainer in a new session/process group, so the PGID ownership premise below is false for the re-entry path. Continue from `2026-09-05-steam-window-association-fix-v24-handoff.md`.
+
 ## Scope and boundary
 
 This work addresses the reported Steam/Gamescope window-switcher failure for the Mortal Shell Epic session. The user-observed GOG experimental.19 success remains a baseline, not a controlled regression comparison. Experimental.23 is a code-level candidate correction and must not be described as a physical runtime fix until a fresh Deck session passes the gate below.

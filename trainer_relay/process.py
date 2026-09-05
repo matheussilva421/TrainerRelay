@@ -105,6 +105,46 @@ class ProcessDiscoverer:
     def _read(self, path: Path) -> bytes:
         return self._read_bytes(path)
 
+    def verify_executable_session(
+        self,
+        pid: int,
+        expected_executable: str,
+        expected_prefix: str,
+        expected_session: SessionIdentity | None = None,
+    ) -> SessionIdentity | None:
+        """Verify an exact executable-owning PID without relying on process groups."""
+
+        if type(pid) is not int or pid <= 0:
+            return None
+        process_dir = self.proc_root / str(pid)
+        try:
+            first_start = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
+            command_line = self._read(process_dir / "cmdline")
+            environment = _parse_nul_mapping(self._read(process_dir / "environ"))
+            second_start = parse_proc_stat_start_time(self._read(process_dir / "stat").decode("utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            return None
+        if first_start != second_start:
+            return None
+        session = SessionIdentity(pid, first_start)
+        if expected_session is not None and session != expected_session:
+            return None
+
+        wineprefix = environment.get("WINEPREFIX", "")
+        expected_prefix_normalized = normalize_wine_path(expected_prefix).rstrip("/")
+        observed_prefix = normalize_wine_path(wineprefix) if wineprefix else ""
+        if observed_prefix not in {expected_prefix_normalized, expected_prefix_normalized + "/pfx"}:
+            return None
+
+        expected_normalized = normalize_wine_path(expected_executable).casefold()
+        command_matches = any(
+            self._resolve_executable_argument(argument.decode("utf-8", errors="ignore"), wineprefix).casefold()
+            == expected_normalized
+            for argument in command_line.split(b"\0")
+            if argument
+        )
+        return session if command_matches else None
+
     @staticmethod
     def _store_matches(scheme: str, store: str) -> bool:
         normalized = store.casefold()

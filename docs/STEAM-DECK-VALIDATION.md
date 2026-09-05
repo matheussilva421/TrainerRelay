@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.23
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.24
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -88,12 +88,13 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 
 ## Steam window association
 
-- [ ] Install experimental.23, restart the plugin/Steam as required, and start a fresh Epic game session. Do not reuse the experimental.22 trainer process.
+- [ ] Install experimental.24, restart the plugin/Steam as required, and start a fresh Epic game session. Do not reuse an experimental.22/.23 trainer process.
 - [ ] Wait at least 15 seconds after `container_reentry_confirmed`. Confirm a bounded `window_association` event reports `associated` or `already_associated`, with no foreign-window writes.
 - [ ] If an early attempt reports `no_owned_windows`, allow the bounded retries to continue. If the final attempt still reports it, preserve the evidence and stop: no matching owned window was found and no window was changed.
+- [ ] If the event reports `ambiguous_owned_windows`, stop: more than one stable PID owns windows for the exact trainer executable/prefix, and no window was changed.
 - [ ] In Steam's window switcher, confirm both the game and trainer appear under the same shortcut AppID and that selecting the trainer visibly switches to it.
 - [ ] Confirm the game remains controllable and closing it still terminates only the owned trainer group.
-- [ ] Repeat the GOG experimental.19 baseline with experimental.23 to detect a regression.
+- [ ] Repeat the GOG experimental.19 baseline with experimental.24 to detect a regression.
 
 ## Cheat controls and ephemeral helper
 

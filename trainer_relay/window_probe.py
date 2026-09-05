@@ -1,15 +1,19 @@
 """Bounded X11 metadata and guarded association for owned trainer windows."""
 
-import os
+import ntpath
+import posixpath
 import re
 import shutil
 import subprocess
 import tempfile
 import time
 
+from .process import ProcessDiscoverer
+
 
 _X11_PATH = '/usr/bin:/bin'
 _MAX_ASSOCIATION_WINDOWS = 64
+_OWNED_PROCESS_DISCOVERER = ProcessDiscoverer()
 
 
 def _safe_x11_environment(environment):
@@ -77,30 +81,39 @@ def _shortcut_appid(steam_game_id):
     return appid if 0x80000000 <= appid <= 0xffffffff else None
 
 
-def _get_process_group(pid):
-    getpgid = getattr(os, 'getpgid', None)
-    if getpgid is None:
-        raise OSError('process_groups_unavailable')
-    return getpgid(pid)
+def _is_absolute_path(value):
+    return isinstance(value, str) and bool(value) and (posixpath.isabs(value) or ntpath.isabs(value))
+
+
+def _verify_process_identity(pid, expected_executable, expected_prefix, expected_session=None):
+    return _OWNED_PROCESS_DISCOVERER.verify_executable_session(
+        pid,
+        expected_executable,
+        expected_prefix,
+        expected_session,
+    )
 
 
 def associate_owned_windows(
     environment,
-    process_group_id,
+    expected_executable,
+    expected_prefix,
     steam_game_id,
     *,
     list_windows=_list_x11_windows,
     read_properties=_read_x11_window_properties,
     set_steam_game=_set_x11_steam_game,
-    get_process_group=_get_process_group,
+    verify_process=_verify_process_identity,
 ):
     """Assign the validated shortcut app ID only to owned trainer windows."""
 
     appid = _shortcut_appid(steam_game_id)
     if appid is None:
         return {'association_status': 'invalid_steam_game_id'}
-    if type(process_group_id) is not int or process_group_id <= 0:
-        return {'association_status': 'invalid_process_group'}
+    if not _is_absolute_path(expected_executable):
+        return {'association_status': 'invalid_trainer_path'}
+    if not _is_absolute_path(expected_prefix):
+        return {'association_status': 'invalid_prefix'}
     if _safe_x11_environment(environment) is None:
         return {'association_status': 'missing_display'}
 
@@ -128,6 +141,7 @@ def associate_owned_windows(
         return {'association_status': 'query_failed', **counts}
 
     deadline_exceeded = False
+    owned_windows = []
     for window in tuple(windows)[:_MAX_ASSOCIATION_WINDOWS]:
         if time.monotonic() >= deadline:
             deadline_exceeded = True
@@ -142,9 +156,24 @@ def associate_owned_windows(
             if not pid_match:
                 continue
             pid = int(pid_match.group(1))
-            if get_process_group(pid) != process_group_id:
+            session = verify_process(pid, expected_executable, expected_prefix)
+            if session is None:
                 continue
             counts['owned_window_count'] += 1
+            owned_windows.append((window, pid, session, initial))
+        except (OSError, ProcessLookupError, subprocess.SubprocessError, TimeoutError, ValueError):
+            counts['failed_window_count'] += 1
+
+    if deadline_exceeded:
+        return {'association_status': 'deadline_exceeded', **counts}
+    if len({session for _, _, session, _ in owned_windows}) > 1:
+        return {'association_status': 'ambiguous_owned_windows', **counts}
+
+    for window, pid, session, initial in owned_windows:
+        if time.monotonic() >= deadline:
+            deadline_exceeded = True
+            break
+        try:
             steam_game = re.search(r'^STEAM_GAME\(CARDINAL\)\s*=\s*(\d{1,10})\s*$', initial, re.M)
             if steam_game and int(steam_game.group(1)) == appid:
                 counts['already_associated_count'] += 1
@@ -161,7 +190,7 @@ def associate_owned_windows(
             if not confirmed_pid or int(confirmed_pid.group(1)) != pid:
                 counts['failed_window_count'] += 1
                 continue
-            if get_process_group(pid) != process_group_id:
+            if verify_process(pid, expected_executable, expected_prefix, session) != session:
                 counts['failed_window_count'] += 1
                 continue
             write_succeeded = (
@@ -187,7 +216,7 @@ def associate_owned_windows(
             if (
                 not verified_pid
                 or int(verified_pid.group(1)) != pid
-                or get_process_group(pid) != process_group_id
+                or verify_process(pid, expected_executable, expected_prefix, session) != session
                 or not verified_game
                 or int(verified_game.group(1)) != appid
             ):

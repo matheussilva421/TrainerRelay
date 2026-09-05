@@ -52,7 +52,13 @@ _HOST_RUNTIME_ENVIRONMENT_KEYS = frozenset(
 _WINDOW_ASSOCIATION_DELAYS = (5.0, 10.0, 15.0)
 _WINDOW_ASSOCIATION_SUCCESS = frozenset({'associated', 'already_associated'})
 _WINDOW_ASSOCIATION_TERMINAL = frozenset(
-    {'invalid_steam_game_id', 'invalid_process_group', 'missing_display'}
+    {
+        'invalid_steam_game_id',
+        'invalid_trainer_path',
+        'invalid_prefix',
+        'missing_display',
+        'ambiguous_owned_windows',
+    }
 )
 _WINDOW_ASSOCIATION_STATUSES = _WINDOW_ASSOCIATION_SUCCESS | _WINDOW_ASSOCIATION_TERMINAL | frozenset(
     {'query_failed', 'deadline_exceeded', 'no_owned_windows', 'partial', 'association_failed'}
@@ -837,12 +843,12 @@ class RelayWatcher:
                         and association_elapsed >= _WINDOW_ASSOCIATION_DELAYS[attempt]
                     ):
                         state.window_association_attempts += 1
-                        process_group_id = self._process_group_id(state.handle)
                         try:
                             association = await asyncio.to_thread(
                                 self._window_associator,
                                 dict(state.effective_environment or {}),
-                                process_group_id,
+                                state.trainer_path,
+                                state.prefix,
                                 steam_game_id,
                             )
                         except Exception:
@@ -871,6 +877,13 @@ class RelayWatcher:
                         if association_status == 'already_associated' and not counts['already_associated_count']:
                             malformed_result = True
                         if association_status == 'no_owned_windows' and any(counts.values()):
+                            malformed_result = True
+                        if association_status == 'ambiguous_owned_windows' and (
+                            counts['owned_window_count'] < 2
+                            or counts['associated_window_count']
+                            or counts['already_associated_count']
+                            or counts['failed_window_count']
+                        ):
                             malformed_result = True
                         if association_status == 'partial' and (
                             not counts['failed_window_count']

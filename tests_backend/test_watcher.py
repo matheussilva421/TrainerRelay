@@ -213,9 +213,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             },
         ))
         calls = []
-        self.watcher._window_associator = lambda environment, group, game_id: (
-            calls.append((environment, group, game_id)) or next(results)
-        )
+        self.watcher._window_associator = lambda *args: calls.append(args) or next(results)
 
         await self.watcher.poll_once()
         for timestamp in (5.0, 10.0, 15.0):
@@ -223,7 +221,14 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
             await self.watcher.poll_once()
 
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0][1:], (999, steam_game_id))
+        self.assertEqual(
+            calls[0][1:],
+            (
+                str(self.trainer),
+                '/home/deck/.local/share/unifideck/prefixes/game',
+                steam_game_id,
+            ),
+        )
         self.assertEqual(calls[0][0]['DISPLAY'], ':1')
         events = [call for call in self.recorder.calls if call['event'] == 'window_association']
         self.assertEqual(
@@ -273,6 +278,30 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         events = [call for call in self.recorder.calls if call['event'] == 'window_association']
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]['details']['association_status'], 'invalid_steam_game_id')
+
+    async def test_ambiguous_owned_windows_is_preserved_as_terminal_fail_closed_result(self):
+        self.discovery.environment.update({
+            'DISPLAY': ':1',
+            'SteamGameId': str((2476768691 << 32) | 0x02000000),
+        })
+        calls = []
+        self.watcher._window_associator = lambda *args: calls.append(args) or {
+            'association_status': 'ambiguous_owned_windows',
+            'owned_window_count': 2,
+            'associated_window_count': 0,
+            'already_associated_count': 0,
+            'failed_window_count': 0,
+        }
+
+        await self.watcher.poll_once()
+        for timestamp in (5.0, 10.0, 15.0):
+            self.clock_value = timestamp
+            await self.watcher.poll_once()
+
+        self.assertEqual(len(calls), 1)
+        event = next(call for call in self.recorder.calls if call['event'] == 'window_association')
+        self.assertEqual(event['details']['association_status'], 'ambiguous_owned_windows')
+        self.assertEqual(event['details']['owned_window_count'], 2)
 
     async def test_window_association_normalizes_untrusted_result_shape(self):
         self.discovery.environment.update({

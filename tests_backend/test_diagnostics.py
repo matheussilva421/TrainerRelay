@@ -180,6 +180,32 @@ class DiagnosticRecorderTests(unittest.TestCase):
 
         self.assertEqual([event["details"] for event in self.read_events()], [details])
 
+    def test_accepts_process_identity_window_association_statuses(self):
+        recorder = self.recorder()
+
+        for status, owned_count in (
+            ("invalid_trainer_path", 0),
+            ("invalid_prefix", 0),
+            ("ambiguous_owned_windows", 2),
+        ):
+            recorder.record(
+                "trainer",
+                "window_association",
+                "warning",
+                details={
+                    "association_status": status,
+                    "owned_window_count": owned_count,
+                    "associated_window_count": 0,
+                    "already_associated_count": 0,
+                    "failed_window_count": 0,
+                },
+            )
+
+        self.assertEqual(
+            [event["details"]["association_status"] for event in self.read_events()],
+            ["invalid_trainer_path", "invalid_prefix", "ambiguous_owned_windows"],
+        )
+
     def test_rejects_unbounded_or_unknown_window_association_details(self):
         recorder = self.recorder()
         invalid_details = (
