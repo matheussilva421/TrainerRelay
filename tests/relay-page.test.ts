@@ -68,10 +68,6 @@ vi.mock("../src/hooks/useCheatControls", () => ({
   useCheatControls: () => cheatControls,
 }));
 
-vi.mock("../src/components/SteamInputRadialMenu", () => ({
-  SteamInputRadialMenu: "SteamInputRadialMenu",
-}));
-
 vi.mock("@decky/ui", () => {
   const component = (name: string) => name;
   return {
@@ -98,7 +94,6 @@ vi.mock("react-icons/fa6", () => ({
 
 import { CheatControlList } from "../src/components/CheatControlList";
 import { ManualCheatEditor } from "../src/components/ManualCheatEditor";
-import { SteamInputRadialMenu } from "../src/components/SteamInputRadialMenu";
 import { TrainerFilePicker } from "../src/components/TrainerFilePicker";
 import type { TrainerRelayViewModel } from "../src/domain/relay/viewModel";
 import RelayPage from "../src/views/RelayPage";
@@ -193,7 +188,6 @@ describe("Trainer Relay page", () => {
       const nodes = descendants(RelayPage({ appid: 48_226_5568 }));
       expect(nodes.some((node) => node.type === CheatControlList)).toBe(true);
       expect(nodes.some((node) => node.type === ManualCheatEditor)).toBe(true);
-      expect(nodes.some((node) => node.type === SteamInputRadialMenu)).toBe(true);
     } finally {
       cheatControls.response = previousResponse;
       (cheatControls as { status: string }).status = previousStatus;

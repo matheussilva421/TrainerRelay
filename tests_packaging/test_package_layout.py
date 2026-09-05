@@ -119,7 +119,6 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertIn("TrainerRelay/py_modules/trainer_relay/container_reentry.py", names)
         self.assertIn("TrainerRelay/py_modules/trainer_relay/diagnostics.py", names)
         self.assertIn("TrainerRelay/py_modules/trainer_relay/diagnostic_settings.py", names)
-        self.assertIn("TrainerRelay/py_modules/trainer_relay/steam_input_probe.py", names)
         self.assertIn("TrainerRelay/data/fling_adapters_v1.json", names)
         self.assertIn("TrainerRelay/bin/TrainerRelay.InputHelper.x86.exe", names)
         self.assertIn("TrainerRelay/bin/TrainerRelay.InputHelper.x64.exe", names)
@@ -132,17 +131,8 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertFalse(any("__pycache__" in name.lower() for name in names))
         self.assertFalse(any(name.endswith((".env", ".log", ".pyc", ".map")) for name in names))
         self.assertFalse(any("node_modules" in name or "pnpm-lock" in name for name in names))
-        writable_profile_markers = ("writable-profile", "steam-input-profile", "personal-layout")
-        self.assertFalse(
-            any(
-                Path(name).suffix.lower() in {".vdf", ".acf", ".steamcontrollerconfig"}
-                or any(marker in name.lower() for marker in writable_profile_markers)
-                for name in names
-            ),
-            "probe ZIP must not contain a writable Steam Input profile",
-        )
-        self.assertIn(b'"version": "0.1.0-experimental.21.probe.1"', package_document)
-        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.21.probe.1"', main_document)
+        self.assertIn(b'"version": "0.1.0-experimental.20"', package_document)
+        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.20"', main_document)
 
     def test_manifest_hashes_match_packaged_helper_bytes(self):
         with tempfile.TemporaryDirectory() as directory:

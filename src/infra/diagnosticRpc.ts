@@ -36,30 +36,13 @@ export interface DiagnosticRpcTransport {
   clearDiagnostics: () => Promise<unknown>;
 }
 
-const categories = new Set<DiagnosticCategory>([
-  "config",
-  "games_map",
-  "process",
-  "umu",
-  "trainer",
-  "lifecycle",
-  "command",
-  "steam_input",
-]);
+const categories = new Set<DiagnosticCategory>(["config", "games_map", "process", "umu", "trainer", "lifecycle"]);
 const outcomes = new Set<DiagnosticOutcome>(["info", "accepted", "rejected", "warning", "error"]);
 const safeCode = /^[a-z0-9_]{1,64}$/;
 const identityPattern = /^(epic|gog):[^\s:]+$/;
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const cursorPattern = /^v1:[1-9]\d*:(0|[1-9]\d*)$/;
 const forbiddenDetailKey = /(token|secret|password|cookie|authorization|credential)/i;
-const steamInputEvents = new Set(["probe_completed", "preview_created", "authority_changed", "configurator_opened"]);
-const steamInputResult = /^[a-z0-9_]{1,64}$/;
-const steamInputHashPrefix = /^[0-9a-f]{8,16}$/;
-const steamInputCorrelationId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const commandIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const commandCheatIdPattern =
-  /^(?:[a-z0-9][a-z0-9._-]{0,127}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
-const commandReasons = /^[a-z0-9_]{1,64}$/;
 
 const detailKeys: Readonly<Record<string, readonly string[]>> = {
   diagnostic_mode_changed: ["enabled"],
@@ -121,47 +104,7 @@ const detailKeys: Readonly<Record<string, readonly string[]>> = {
   ],
   umu_resolved: ["source", "umu_path"],
   umu_rejected: ["reason"],
-  container_reentry_verified: [
-    "bus_name",
-    "runtime_variant",
-    "attempt_count",
-    "bus_source",
-    "app_id_source",
-    "service_marker_present",
-  ],
-  container_reentry_rejected: [
-    "reason",
-    "failure_class",
-    "probe_exit_code",
-    "bus_source",
-    "attempt_count",
-    "service_marker_present",
-  ],
-  container_reentry_confirmed: ["bus_name", "elapsed_ms"],
-  container_reentry_confirmation_failed: ["bus_name", "elapsed_ms", "failure_observed", "service_marker_present"],
-  umu_exit_diagnostics: [
-    "stdout_bytes",
-    "stderr_bytes",
-    "stdout_truncated",
-    "stderr_truncated",
-    "stdout_tail",
-    "stderr_tail",
-    "failure_class",
-    "group_member_count",
-    "group_member_names",
-    "observed_descendant_count",
-    "observed_descendant_names",
-  ],
-  trainer_spawned: [
-    "trainer_path",
-    "process_group_id",
-    "wineprefix",
-    "steam_compat_data_path",
-    "proton_verb",
-    "container_reentry",
-    "environment_key_count",
-    "runtime_flags",
-  ],
+  trainer_spawned: ["trainer_path", "process_group_id", "wineprefix", "steam_compat_data_path", "proton_verb"],
   trainer_spawn_failed: ["trainer_path", "reason"],
   trainer_running: ["trainer_path", "elapsed_ms"],
   trainer_exited: ["trainer_path", "exit_code", "elapsed_ms"],
@@ -171,50 +114,6 @@ const detailKeys: Readonly<Record<string, readonly string[]>> = {
   session_ended: [],
   owned_group_signal: ["process_group_id", "signal", "forced"],
   event_repeated: ["repeated_event", "count", "elapsed_ms"],
-  catalog_loaded: ["adapter_count"],
-  catalog_rejected: ["reason"],
-  manual_control_added: ["cheat_id", "control_count"],
-  manual_control_removed: ["cheat_id", "control_count"],
-  command_rejected: ["command_id", "cheat_id", "reason"],
-  helper_spawned: ["command_id", "cheat_id", "source"],
-  helper_completed: ["command_id", "cheat_id", "source", "outcome", "duration_ms"],
-  helper_timeout: ["command_id", "cheat_id"],
-  cooperative_acknowledged: ["command_id", "cheat_id", "revision"],
-  cooperative_stale: ["command_id", "cheat_id", "revision", "reason"],
-  cooperative_descriptor_rejected: ["reason"],
-  probe_completed: [
-    "app_id",
-    "primitive_key_count",
-    "runtime_fingerprint_prefix",
-    "trainer_hash_prefix",
-    "catalog_fingerprint_prefix",
-    "source_layout_id_hash_prefix",
-    "result_code",
-    "correlation_id",
-  ],
-  preview_created: [
-    "app_id",
-    "command_count",
-    "page_count",
-    "skipped_count",
-    "trainer_hash_prefix",
-    "catalog_fingerprint_prefix",
-    "runtime_fingerprint_prefix",
-    "source_layout_id_hash_prefix",
-    "result_code",
-    "correlation_id",
-  ],
-  authority_changed: [
-    "app_id",
-    "changed_field_count",
-    "trainer_hash_prefix",
-    "catalog_fingerprint_prefix",
-    "runtime_fingerprint_prefix",
-    "source_layout_id_hash_prefix",
-    "result_code",
-    "correlation_id",
-  ],
-  configurator_opened: ["app_id", "result_code", "correlation_id"],
 };
 
 const invalid = (): never => {
@@ -291,103 +190,13 @@ const decodeDetails = (eventName: string, input: unknown): Readonly<Record<strin
   for (const [key, value] of Object.entries(input)) {
     if (forbiddenDetailKey.test(key)) return invalid();
     if (typeof value === "string") {
-      const maximumLength =
-        eventName === "umu_exit_diagnostics" && ["stdout_tail", "stderr_tail"].includes(key) ? 1024 : 4096;
-      if (value.length > maximumLength) return invalid();
+      if (value.length > 4096) return invalid();
     } else if (!(value === null || typeof value === "boolean" || Number.isInteger(value))) {
       return invalid();
     }
     details[key] = value as DiagnosticDetailValue;
   }
-  validateCommandDetails(eventName, details);
-  validateSteamInputDetails(eventName, details);
   return details;
-};
-
-const validateCommandDetails = (eventName: string, details: Readonly<Record<string, DiagnosticDetailValue>>): void => {
-  if (["catalog_loaded", "manual_control_added", "manual_control_removed"].includes(eventName)) {
-    const count = details.adapter_count ?? details.control_count;
-    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 || count > 64) invalid();
-  }
-  if (["catalog_rejected", "cooperative_descriptor_rejected"].includes(eventName)) {
-    if (typeof details.reason !== "string" || !commandReasons.test(details.reason)) invalid();
-  }
-  if (["command_rejected", "cooperative_stale"].includes(eventName)) {
-    const reason = details.reason;
-    if (reason !== undefined && (typeof reason !== "string" || !commandReasons.test(reason))) invalid();
-    if (eventName === "cooperative_stale" && details.command_id === undefined) return;
-  }
-  if (
-    [
-      "command_rejected",
-      "helper_spawned",
-      "helper_completed",
-      "helper_timeout",
-      "cooperative_acknowledged",
-      "cooperative_stale",
-    ].includes(eventName)
-  ) {
-    if (typeof details.command_id !== "string" || !commandIdPattern.test(details.command_id)) invalid();
-    if (typeof details.cheat_id !== "string" || !commandCheatIdPattern.test(details.cheat_id)) invalid();
-  }
-  if (eventName === "helper_spawned" && !["adapter", "manual", "cooperative"].includes(String(details.source)))
-    invalid();
-  if (eventName === "helper_completed") {
-    if (!["adapter", "manual", "cooperative"].includes(String(details.source))) invalid();
-    if (!["requested", "failed", "rejected"].includes(String(details.outcome))) invalid();
-    const duration = details.duration_ms;
-    if (typeof duration !== "number" || !Number.isSafeInteger(duration) || duration < 0 || duration > 300_000)
-      invalid();
-  }
-  if (["cooperative_acknowledged", "cooperative_stale"].includes(eventName)) {
-    const revision = details.revision;
-    if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) invalid();
-  }
-};
-
-const validateSteamInputDetails = (
-  eventName: string,
-  details: Readonly<Record<string, DiagnosticDetailValue>>,
-): void => {
-  if (!steamInputEvents.has(eventName)) return;
-  const correlationId = details.correlation_id;
-  if (typeof correlationId !== "string" || !steamInputCorrelationId.test(correlationId)) {
-    invalid();
-  }
-  const appId = details.app_id;
-  if (typeof appId !== "number" || !Number.isSafeInteger(appId) || appId < 1) {
-    invalid();
-  }
-  for (const key of ["primitive_key_count", "command_count", "page_count", "skipped_count", "changed_field_count"]) {
-    const value = details[key];
-    if (value !== undefined && (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 64)) {
-      invalid();
-    }
-  }
-  for (const key of [
-    "runtime_fingerprint_prefix",
-    "trainer_hash_prefix",
-    "catalog_fingerprint_prefix",
-    "source_layout_id_hash_prefix",
-  ]) {
-    const value = details[key];
-    if (value !== undefined && (typeof value !== "string" || !steamInputHashPrefix.test(value))) {
-      invalid();
-    }
-  }
-  const resultCode = details.result_code;
-  if (resultCode !== undefined && (typeof resultCode !== "string" || !steamInputResult.test(resultCode))) {
-    invalid();
-  }
-  const required: Record<string, readonly string[]> = {
-    probe_completed: ["app_id", "primitive_key_count", "runtime_fingerprint_prefix", "result_code"],
-    preview_created: ["app_id", "command_count", "page_count", "skipped_count"],
-    authority_changed: ["app_id", "changed_field_count", "result_code"],
-    configurator_opened: ["app_id", "result_code"],
-  };
-  if (required[eventName].some((key) => details[key] === undefined)) {
-    invalid();
-  }
 };
 
 const decodeEvent = (input: unknown): DiagnosticEvent => {

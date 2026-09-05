@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import re
 import uuid
@@ -15,17 +14,6 @@ from .cheat_service import PUBLIC_CHEAT_DIAGNOSTIC_CODES
 from .config import DEFAULT_CONFIG_KEY, decode_relay_config, empty_relay_config, validate_game_config, validate_launch_identity
 from .diagnostic_settings import DIAGNOSTIC_SETTINGS_KEY, decode_diagnostic_settings
 from .hotkeys import normalize_hotkey
-from .radial_registry import (
-    RADIAL_LAYOUT_FIELDS,
-    RADIAL_LAYOUT_REGISTRY_KEY,
-    append_generated_radial_layout,
-    decode_radial_layout_registry,
-    empty_radial_layout_registry,
-    next_radial_layout_revision,
-    validate_generated_radial_layout,
-    validate_radial_layout_registry,
-)
-from .steam_input_probe import export_steam_input_probe, validate_steam_input_probe
 
 
 class RelayRpcError(ValueError):
@@ -49,55 +37,6 @@ _CHEAT_STATES = {"unknown", "enabled", "disabled"}
 _CHEAT_OPERATIONS = {"enable", "disable", "toggle"}
 _CHEAT_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_DIAGNOSTIC_UUID = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
-_HASH_PREFIX = re.compile(r"^[0-9a-f]{8,16}$")
-_STEAM_INPUT_PROBE_EVENT_FIELDS = {
-    "preview_created": frozenset(
-        {
-            "event",
-            "appId",
-            "identity",
-            "commandCount",
-            "pageCount",
-            "skippedCount",
-            "trainerHashPrefix",
-            "catalogFingerprintPrefix",
-            "runtimeFingerprintPrefix",
-            "sourceLayoutIdHashPrefix",
-            "resultCode",
-            "correlationId",
-        }
-    ),
-    "authority_changed": frozenset(
-        {
-            "event",
-            "appId",
-            "identity",
-            "changedFieldCount",
-            "trainerHashPrefix",
-            "catalogFingerprintPrefix",
-            "runtimeFingerprintPrefix",
-            "sourceLayoutIdHashPrefix",
-            "resultCode",
-            "correlationId",
-        }
-    ),
-    "configurator_opened": frozenset(
-        {"event", "appId", "identity", "resultCode", "correlationId"}
-    ),
-}
-_STEAM_INPUT_PROBE_EVENT_OUTCOMES = {
-    "preview_created": "accepted",
-    "authority_changed": "rejected",
-    "configurator_opened": "accepted",
-}
-_STEAM_INPUT_PROBE_RESULT_CODES = {
-    "preview_created": "readonly",
-    "authority_changed": "authority_changed",
-    "configurator_opened": "opened",
-}
 
 
 class RelayRpc:
@@ -117,7 +56,6 @@ class RelayRpc:
         self._downloads_dir = Path(downloads_dir)
         self._plugin_version = plugin_version
         self._cheat_service = cheat_service
-        self._radial_registry_lock = asyncio.Lock()
 
     def _load(self) -> dict[str, Any]:
         try:
@@ -141,19 +79,11 @@ class RelayRpc:
             raise RelayRpcError("config_persist_failed") from error
         self._record_diagnostic("config_persisted", "info", {"game_count": len(config["games"])})
 
-    def _record_diagnostic(
-        self,
-        event: str,
-        outcome: str,
-        details: Mapping[str, Any],
-        *,
-        category: str = "config",
-        identity: str | None = None,
-    ) -> None:
+    def _record_diagnostic(self, event: str, outcome: str, details: Mapping[str, Any]) -> None:
         if self._diagnostics is None:
             return
         try:
-            self._diagnostics.record(category, event, outcome, identity=identity, details=details)
+            self._diagnostics.record("config", event, outcome, details=details)
         except (OSError, ValueError):
             return
 
@@ -195,155 +125,6 @@ class RelayRpc:
 
     async def get_relay_config(self) -> dict[str, Any]:
         return self._load()
-
-    def _load_radial_layout_registry(self) -> dict[str, Any]:
-        try:
-            value = self._settings.getSetting(RADIAL_LAYOUT_REGISTRY_KEY, empty_radial_layout_registry())
-        except (OSError, RuntimeError) as error:
-            raise RelayRpcError("radial_registry_read_failed") from error
-        return decode_radial_layout_registry(value)
-
-    def _persist_radial_layout_registry(self, registry: dict[str, Any]) -> None:
-        safe_registry = validate_radial_layout_registry(registry)
-        try:
-            self._settings.setSetting(RADIAL_LAYOUT_REGISTRY_KEY, safe_registry)
-            self._settings.commit()
-        except (OSError, RuntimeError) as error:
-            raise RelayRpcError("radial_registry_persistence_failed") from error
-
-    async def get_radial_layout_registry(self) -> dict[str, Any]:
-        return self._load_radial_layout_registry()
-
-    async def export_steam_input_probe(self, data: Mapping[str, Any]) -> dict[str, Any]:
-        try:
-            report = validate_steam_input_probe(data)
-            result = export_steam_input_probe(report, self._downloads_dir)
-        except ValueError as error:
-            code = str(error)
-            if code not in {"invalid_steam_input_probe", "steam_input_probe_too_large"}:
-                code = "invalid_steam_input_probe"
-            raise RelayRpcError(code) from None
-        except OSError as error:
-            raise RelayRpcError("steam_input_probe_export_failed") from error
-
-        self._record_diagnostic(
-            "probe_completed",
-            "accepted",
-            {
-                "app_id": report["appId"],
-                "primitive_key_count": len(report["responsePrimitiveKeys"]),
-                "runtime_fingerprint_prefix": report["runtimeFingerprint"][:12],
-                "result_code": "readonly",
-                "correlation_id": str(uuid.uuid4()),
-            },
-            category="steam_input",
-            identity=report["identity"],
-        )
-        return result
-
-    async def record_steam_input_probe_event(self, data: Mapping[str, Any]) -> dict[str, bool]:
-        if not isinstance(data, Mapping):
-            raise RelayRpcError("invalid_steam_input_probe_event")
-        event = data.get("event")
-        fields = _STEAM_INPUT_PROBE_EVENT_FIELDS.get(event) if isinstance(event, str) else None
-        if fields is None or set(data) != fields:
-            raise RelayRpcError("invalid_steam_input_probe_event")
-        app_id = data["appId"]
-        if type(app_id) is not int or not 1 <= app_id <= 2**53 - 1:
-            raise RelayRpcError("invalid_steam_input_probe_event")
-        try:
-            identity = validate_launch_identity(data["identity"])
-        except (TypeError, ValueError):
-            raise RelayRpcError("invalid_steam_input_probe_event") from None
-        correlation_id = data["correlationId"]
-        if not isinstance(correlation_id, str) or _DIAGNOSTIC_UUID.fullmatch(correlation_id) is None:
-            raise RelayRpcError("invalid_steam_input_probe_event")
-        if data["resultCode"] != _STEAM_INPUT_PROBE_RESULT_CODES[event]:
-            raise RelayRpcError("invalid_steam_input_probe_event")
-
-        details: dict[str, str | int] = {
-            "app_id": app_id,
-            "result_code": data["resultCode"],
-            "correlation_id": correlation_id,
-        }
-        count_fields = {
-            "commandCount": "command_count",
-            "pageCount": "page_count",
-            "skippedCount": "skipped_count",
-            "changedFieldCount": "changed_field_count",
-        }
-        for wire_key, detail_key in count_fields.items():
-            if wire_key not in data:
-                continue
-            value = data[wire_key]
-            if type(value) is not int or not 0 <= value <= 64:
-                raise RelayRpcError("invalid_steam_input_probe_event")
-            details[detail_key] = value
-        hash_fields = {
-            "trainerHashPrefix": "trainer_hash_prefix",
-            "catalogFingerprintPrefix": "catalog_fingerprint_prefix",
-            "runtimeFingerprintPrefix": "runtime_fingerprint_prefix",
-            "sourceLayoutIdHashPrefix": "source_layout_id_hash_prefix",
-        }
-        for wire_key, detail_key in hash_fields.items():
-            if wire_key not in data:
-                continue
-            value = data[wire_key]
-            if not isinstance(value, str) or _HASH_PREFIX.fullmatch(value) is None:
-                raise RelayRpcError("invalid_steam_input_probe_event")
-            details[detail_key] = value
-
-        self._record_diagnostic(
-            event,
-            _STEAM_INPUT_PROBE_EVENT_OUTCOMES[event],
-            details,
-            category="steam_input",
-            identity=identity,
-        )
-        return {"accepted": True}
-
-    async def record_generated_radial_layout(self, data: Mapping[str, Any]) -> dict[str, Any]:
-        request = self._strict_request(data, set(RADIAL_LAYOUT_FIELDS))
-        try:
-            layout = validate_generated_radial_layout(request)
-        except ValueError:
-            raise RelayRpcError("invalid_radial_layout") from None
-
-        async with self._radial_registry_lock:
-            registry = self._load_radial_layout_registry()
-            try:
-                expected_revision = next_radial_layout_revision(
-                    registry,
-                    layout["appId"],
-                    layout["identity"],
-                    layout["trainerSha256"],
-                    layout["catalogFingerprint"],
-                )
-            except ValueError as error:
-                code = str(error)
-                if code == "radial_revision_exhausted":
-                    raise RelayRpcError("radial_layout_revision_exhausted") from None
-                raise RelayRpcError("invalid_radial_layout") from None
-            if layout["revision"] != expected_revision:
-                raise RelayRpcError("radial_layout_revision_conflict")
-
-            try:
-                updated = append_generated_radial_layout(registry, layout)
-            except ValueError as error:
-                code = str(error)
-                if code == "radial_registry_capacity_exhausted":
-                    raise RelayRpcError(code) from None
-                raise RelayRpcError("invalid_radial_layout") from None
-            self._persist_radial_layout_registry(updated)
-            try:
-                persisted = self._load_radial_layout_registry()
-            except RelayRpcError as error:
-                if str(error) == "radial_registry_read_failed":
-                    raise RelayRpcError("radial_registry_persistence_failed") from None
-                raise
-            if layout not in persisted["layouts"]:
-                raise RelayRpcError("radial_registry_persistence_failed")
-            return persisted
 
     async def set_relay_game_config(self, data: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(data, Mapping):

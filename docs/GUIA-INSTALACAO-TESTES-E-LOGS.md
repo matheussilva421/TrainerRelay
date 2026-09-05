@@ -1,13 +1,13 @@
 # Trainer Relay — guia de instalação, testes e logs
 
-Versão deste guia: `v0.1.0-experimental.21.probe.1`
+Versão deste guia: `v0.1.0-experimental.20`
 
 ## O que você vai precisar
 
 - Um Steam Deck com Decky Loader e UniFiDeck instalados.
 - Um atalho Epic ou GOG criado pelo UniFiDeck.
 - Um trainer Windows confiável em arquivo `.exe`.
-- O arquivo `TrainerRelay.zip` gerado localmente para `v0.1.0-experimental.21.probe.1`.
+- O arquivo `TrainerRelay.zip` gerado localmente para `v0.1.0-experimental.20`.
 
 O Trainer Relay é complementar ao CheatDeck. Continue usando o CheatDeck para
 jogos executados diretamente pelo Steam. Use o Trainer Relay somente nos
@@ -57,9 +57,9 @@ ZIP completo, sem descompactá-lo manualmente.
 Nas configurações do Decky, escolha **Install from URL** e informe:
 
 ```text
-Não há URL de release para `.21.probe.1` antes da validação física. Use o ZIP local entregue com este build.
+Não há URL de release para `.20` antes da validação física. Use o ZIP local entregue com este build.
 
-### Controles de cheat da `.21.probe.1`
+### Controles de cheat da `.20`
 
 Com o jogo UniFiDeck em execução, abra o Quick Access e selecione Trainer Relay.
 Um trainer FLiNG reconhecido pelo SHA-256 mostra automaticamente seus cheats e
@@ -126,22 +126,6 @@ processo do jogo. Uma falha de preflight fica travada para o mesmo PID e start
 time; uma nova tentativa só ocorre pelo botão **Retry** ou numa nova sessão. O
 diagnóstico registra apenas classe limitada, exit code, contagem e origem do
 barramento, sem copiar stderr nem o ambiente completo.
-
-## Steam Input radial probe
-
-Quando os controles de cheat estiverem prontos na página roteada do jogo, o
-Trainer Relay mostra o resumo opcional **Steam Input radial menu**. Esta versão
-é somente uma sonda: ela exibe a contagem de comandos/páginas e controles
-ignorados, oferece **Export safe probe report** e abre o configurador normal da
-Steam. O botão **Generate layout** permanece desativado com o motivo
-`Steam Input runtime not physically validated`.
-
-O relatório exportado contém somente metadados sanitizados e é gravado em
-`/home/deck/Downloads` com nome `TrainerRelay-steam-input-probe-...json`.
-Não contém perfil gravável, payload de Steam, conta, token, caminho privado ou
-nome completo do layout. Não aplique nenhuma alteração automaticamente; o
-checkpoint físico do Steam Deck é obrigatório antes de qualquer futura versão
-com clone de layout.
 
 ## 3. Preparar o trainer
 
@@ -385,7 +369,7 @@ launch options privadas, cookies, tokens ou credenciais.
 Copie e preencha:
 
 ```text
-Trainer Relay: v0.1.0-experimental.21.probe.1
+Trainer Relay: v0.1.0-experimental.20
 SteamOS:
 Decky Loader:
 UniFiDeck:
@@ -448,6 +432,6 @@ parte do rollback.
 
 ## Links oficiais
 
-- Build de validação: `v0.1.0-experimental.21.probe.1` (sem tag/release até o gate físico)
+- Build de validação: `v0.1.0-experimental.20` (sem tag/release até o gate físico)
 - Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
 - Estrutura oficial de ZIP Decky: https://github.com/SteamDeckHomebrew/decky-plugin-template

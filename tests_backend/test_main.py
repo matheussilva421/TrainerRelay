@@ -74,8 +74,6 @@ class FakeDiagnosticRpc:
         self.get_diagnostic_events = AsyncMock(return_value={"generation": 1, "events": []})
         self.export_diagnostics = AsyncMock(return_value={"path": "/downloads/export.txt", "bytesWritten": 1})
         self.clear_diagnostics = AsyncMock(return_value={"generation": 2})
-        self.export_steam_input_probe = AsyncMock(return_value={"path": "/downloads/probe.json", "bytesWritten": 1})
-        self.record_steam_input_probe_event = AsyncMock(return_value={"accepted": True})
 
 
 class FakeCheatRpc(FakeDiagnosticRpc):
@@ -85,13 +83,6 @@ class FakeCheatRpc(FakeDiagnosticRpc):
         self.add_manual_cheat_control = AsyncMock(return_value={"saved": True})
         self.remove_manual_cheat_control = AsyncMock(return_value={"removed": True})
         self.send_cheat_command = AsyncMock(return_value={"outcome": "requested", "state": "unknown"})
-
-
-class FakeRadialRpc(FakeDiagnosticRpc):
-    def __init__(self):
-        super().__init__()
-        self.get_radial_layout_registry = AsyncMock(return_value={"schemaVersion": 1, "layouts": []})
-        self.record_generated_radial_layout = AsyncMock(return_value={"schemaVersion": 1, "layouts": []})
 
 
 class MainWiringTests(unittest.IsolatedAsyncioTestCase):
@@ -294,35 +285,6 @@ class MainWiringTests(unittest.IsolatedAsyncioTestCase):
         rpc.add_manual_cheat_control.assert_awaited_once_with({"identity": "gog:game"})
         rpc.remove_manual_cheat_control.assert_awaited_once_with({"identity": "gog:game"})
         rpc.send_cheat_command.assert_awaited_once_with({"identity": "gog:game"})
-
-    async def test_plugin_delegates_both_radial_registry_rpcs(self):
-        rpc = FakeRadialRpc()
-        self.main._rpc = rpc
-        record = {"generatedLayoutId": "personal://123/generated"}
-
-        await self.main.Plugin.get_radial_layout_registry()
-        await self.main.Plugin.record_generated_radial_layout(record)
-
-        rpc.get_radial_layout_registry.assert_awaited_once_with()
-        rpc.record_generated_radial_layout.assert_awaited_once_with(record)
-
-    async def test_plugin_delegates_sanitized_steam_input_probe_export(self):
-        rpc = FakeDiagnosticRpc()
-        self.main._rpc = rpc
-        report = {"schemaVersion": 1}
-
-        await self.main.Plugin.export_steam_input_probe(report)
-
-        rpc.export_steam_input_probe.assert_awaited_once_with(report)
-
-    async def test_plugin_delegates_exact_steam_input_probe_metadata_event(self):
-        rpc = FakeDiagnosticRpc()
-        self.main._rpc = rpc
-        event = {"event": "configurator_opened", "appId": 123456789}
-
-        await self.main.Plugin.record_steam_input_probe_event(event)
-
-        rpc.record_steam_input_probe_event.assert_awaited_once_with(event)
 
 
 if __name__ == "__main__":

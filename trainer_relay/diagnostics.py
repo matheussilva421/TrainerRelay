@@ -19,7 +19,7 @@ MAX_DETAIL_STRING_LENGTH = 4096
 MAX_UMU_OUTPUT_TAIL_LENGTH = 1024
 DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_FILES = 5
-_CATEGORIES = {"config", "games_map", "process", "umu", "trainer", "lifecycle", "command", "steam_input"}
+_CATEGORIES = {"config", "games_map", "process", "umu", "trainer", "lifecycle", "command"}
 _OUTCOMES = {"info", "accepted", "rejected", "warning", "error"}
 _FORBIDDEN_KEY_PARTS = ("token", "secret", "password", "cookie", "authorization", "credential")
 _EXPORT_REDACTED_DETAIL_KEYS = frozenset(
@@ -182,45 +182,6 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "cooperative_acknowledged": frozenset({"command_id", "cheat_id", "revision"}),
     "cooperative_stale": frozenset({"command_id", "cheat_id", "revision", "reason"}),
     "cooperative_descriptor_rejected": frozenset({"reason"}),
-    "probe_completed": frozenset(
-        {
-            "app_id",
-            "primitive_key_count",
-            "runtime_fingerprint_prefix",
-            "trainer_hash_prefix",
-            "catalog_fingerprint_prefix",
-            "source_layout_id_hash_prefix",
-            "result_code",
-            "correlation_id",
-        }
-    ),
-    "preview_created": frozenset(
-        {
-            "app_id",
-            "command_count",
-            "page_count",
-            "skipped_count",
-            "trainer_hash_prefix",
-            "catalog_fingerprint_prefix",
-            "runtime_fingerprint_prefix",
-            "source_layout_id_hash_prefix",
-            "result_code",
-            "correlation_id",
-        }
-    ),
-    "authority_changed": frozenset(
-        {
-            "app_id",
-            "changed_field_count",
-            "trainer_hash_prefix",
-            "catalog_fingerprint_prefix",
-            "runtime_fingerprint_prefix",
-            "source_layout_id_hash_prefix",
-            "result_code",
-            "correlation_id",
-        }
-    ),
-    "configurator_opened": frozenset({"app_id", "result_code", "correlation_id"}),
 }
 
 
@@ -300,7 +261,6 @@ def _safe_details(event: str, details: Mapping[str, Any] | None) -> dict[str, st
             raise DiagnosticValidationError("diagnostic_event_rejected")
         safe[key] = value
     _validate_command_details(event, safe)
-    _validate_steam_input_details(event, safe)
     return safe
 
 
@@ -311,12 +271,6 @@ _COMMAND_CHEAT_ID_PATTERN = re.compile(
 _COMMAND_SOURCES = {"adapter", "manual", "cooperative"}
 _COMMAND_OUTCOMES = {"requested", "failed", "rejected"}
 _COMMAND_REASONS = re.compile(r"^[a-z0-9_]{1,64}$")
-_STEAM_INPUT_EVENTS = {"probe_completed", "preview_created", "authority_changed", "configurator_opened"}
-_STEAM_INPUT_RESULT = re.compile(r"^[a-z0-9_]{1,64}$")
-_STEAM_INPUT_HASH_PREFIX = re.compile(r"^[0-9a-f]{8,16}$")
-_STEAM_INPUT_CORRELATION_ID = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
 
 
 def _validate_command_details(event: str, details: Mapping[str, str | int | bool | None]) -> None:
@@ -358,42 +312,6 @@ def _validate_command_details(event: str, details: Mapping[str, str | int | bool
         revision = details.get("revision")
         if type(revision) is not int or not 0 <= revision <= 2**63 - 1:
             raise DiagnosticValidationError("diagnostic_event_rejected")
-
-
-def _validate_steam_input_details(event: str, details: Mapping[str, str | int | bool | None]) -> None:
-    if event not in _STEAM_INPUT_EVENTS:
-        return
-    correlation_id = details.get("correlation_id")
-    if not isinstance(correlation_id, str) or _STEAM_INPUT_CORRELATION_ID.fullmatch(correlation_id) is None:
-        raise DiagnosticValidationError("diagnostic_event_rejected")
-    app_id = details.get("app_id")
-    if type(app_id) is not int or not 1 <= app_id <= 2**53 - 1:
-        raise DiagnosticValidationError("diagnostic_event_rejected")
-    for key in {"primitive_key_count", "command_count", "page_count", "skipped_count", "changed_field_count"}:
-        if key in details and (type(details[key]) is not int or not 0 <= details[key] <= 64):
-            raise DiagnosticValidationError("diagnostic_event_rejected")
-    for key in {
-        "runtime_fingerprint_prefix",
-        "trainer_hash_prefix",
-        "catalog_fingerprint_prefix",
-        "source_layout_id_hash_prefix",
-    }:
-        if key in details and (
-            not isinstance(details[key], str) or _STEAM_INPUT_HASH_PREFIX.fullmatch(details[key]) is None
-        ):
-            raise DiagnosticValidationError("diagnostic_event_rejected")
-    if "result_code" in details and (
-        not isinstance(details["result_code"], str) or _STEAM_INPUT_RESULT.fullmatch(details["result_code"]) is None
-    ):
-        raise DiagnosticValidationError("diagnostic_event_rejected")
-    required = {
-        "probe_completed": {"app_id", "primitive_key_count", "runtime_fingerprint_prefix", "result_code"},
-        "preview_created": {"app_id", "command_count", "page_count", "skipped_count"},
-        "authority_changed": {"app_id", "changed_field_count", "result_code"},
-        "configurator_opened": {"app_id", "result_code"},
-    }[event]
-    if not required.issubset(details):
-        raise DiagnosticValidationError("diagnostic_event_rejected")
 
 
 class DiagnosticRecorder:

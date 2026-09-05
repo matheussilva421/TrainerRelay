@@ -1868,214 +1868,35 @@ untested.
   `docs/STEAM-DECK-VALIDATION.md` passes on a known FLiNG build and on the manual
   unknown-build fallback.
 
-### Steam Input radial-menu automation research — 2026-09-02
+### Steam Input experiment withdrawn; Epic is the only active compatibility target (2026-09-05)
 
-- Researched whether Trainer Relay can automatically reproduce the user's
-  manually configured Steam Input radial menu for UniFiDeck shortcuts. Findings
-  are recorded in
-  `docs/research/2026-09-02-steam-input-radial-menu-automation.md`.
-- Valve documents developer export/dump/bundled-manifest flows, but no supported
-  public API for a Decky plugin to mutate a user's active personal layout for a
-  non-Steam shortcut. Decky's typed Steam-client surface exposes internal edit,
-  save and selection calls, but payloads are opaque/unstable and include an
-  explicit warning around controller-configuration messages.
-- Decision recommendation, pending user approval: keep Trainer Relay's dynamic
-  Quick Access controls as the reliable primary route. Add an optional assisted
-  action that generates a separate radial-menu layout and opens Steam's normal
-  configurator for explicit review/application. Do not overwrite the active VDF
-  or silently apply an internal protobuf configuration.
-- A fully automatic apply path remains an experimental follow-up only after
-  live Deck capture proves the exact Steam-client payload/lifecycle and after
-  backup, rollback, feature detection and Steam Cloud behavior are validated.
-- No production code was changed and no implementation was authorized. Research
-  validation: `git diff --check` passed. The attachment directory remains
-  user-owned and untracked.
-
-### Steam Input radial-menu design approved — 2026-09-02
-
-- The user approved the assisted safe path and fixed the interaction contract:
-  built-in Steam Deck **left trackpad**, touch for sector selection, and a
-  **physical trackpad click** as the only command activator. Touch release must
-  never send a command.
-- Trainers with more controls use deterministic multiple pages. Each page has
-  six cheat sectors plus stable previous/next navigation sectors; navigation
-  emits no keyboard command.
-- The written specification is
-  `docs/superpowers/specs/2026-09-02-trainer-relay-steam-input-radial-menu-design.md`.
-  It requires cloning the selected layout into a new personal layout, proving
-  that the source remains selected and unchanged, and then opening Steam's
-  normal configurator for explicit review/application.
-- The private Steam Input adapter is fail-closed and runtime-fingerprint gated.
-  Unknown Steam client shapes fall back to opening the normal configurator; no
-  direct active-VDF edit, silent selection, or automatic reapplication is
-  allowed.
-- Delivery is staged because the exact export/edit lifecycle is a physical Deck
-  boundary: pure planner/registry/read-only probe first, sanitized runtime
-  fixture capture second, isolated clone adapter third, then the physical gate.
-  Static/unit success alone is not functional Steam Input validation.
-- No production implementation was made in this block. Next gate: user review
-  of the committed written spec. Only after approval should the
-  `superpowers:writing-plans` skill create the TDD implementation plan.
-
-### Steam Input radial-menu implementation plan prepared — 2026-09-02
-
-- The user approved the written specification. The TDD execution plan is
-  `docs/superpowers/plans/2026-09-02-trainer-relay-steam-input-radial-menu-plan.md`.
-- The plan has eight reviewer-sized tasks: pure planner, backend registry,
-  strict read-only Steam adapter, preview/probe build, physical capture gate,
-  fingerprinted Neptune clone profile, confirmed generation UI, and final
-  physical candidate.
-- Task 5 is a mandatory human/device checkpoint. Tasks 6-8 are forbidden unless
-  evidence proves a distinct personal-layout target, unchanged selected source,
-  writable targeting without `SetSelectedConfigForApp`, distinct re-read, and
-  safe edit cleanup. Failure preserves the read-only configurator fallback.
-- Probe version is fixed at `0.1.0-experimental.21.probe.1`; the generation
-  candidate is `0.1.0-experimental.21`. Neither authorizes a tag or GitHub
-  Release.
-- Current official Decky types were rechecked while planning. They expose
-  `GetConfigForAppAndController`, export/edit/save/select methods, and
-  `ShowControllerConfigurator`, but their editing payloads remain private and
-  the config-info registration retains an explicit breakage warning.
-- No production code was changed. Next gate: choose subagent-driven or inline
-  execution. The recommended path is subagent-driven with review after each
-  task and a hard stop after the probe build for Steam Deck evidence.
-
-### Steam Input radial-menu Task 3 complete — 2026-09-02
-
-- Implemented strict frontend decoding for `RadialLayoutRegistryV1`, bounded
-  capability snapshots, and generated-layout records in
-  `src/domain/steamInput/decoder.ts`; added the public Task 3 contracts to
-  `src/domain/steamInput/types.ts`.
-- Added `src/infra/radialLayoutRpc.ts` with exact `get_radial_layout_registry`
-  and `record_generated_radial_layout` transport boundaries and bounded RPC
-  errors.
-- Added `src/infra/steamInput/runtimeFingerprint.ts` and the fail-closed
-  `src/infra/steamInput/adapter.ts`. Probe/inspection only read
-  `GetConfigForAppAndController(appId, 0)`, configurator fallback only calls
-  `ShowControllerConfigurator(appId)`, and separate-layout creation makes no
-  Steam calls until a physically validated writable profile exists.
-- TDD evidence is recorded in
-  `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-3-report.md`:
-  missing-module RED (3 suites, 0 tests), then focused GREEN (24/24).
-- Final frontend validation: full Vitest 254/254, production and test TSC,
-  Biome across 85 files, Rollup, and `git diff --check` passed. No `any`
-  escapes the adapter, no forbidden Steam Input method was invoked, and
-  `.codex-remote-attachments/` remains preserved and unstaged.
-- Commit subject is fixed as
-  `feat: add fail-closed Steam Input probe adapter`; the final SHA and push
-  status are recorded in the session handoff after publication.
-- Runtime boundary remains explicit: this is static/unit-validated read-only
-  probing only. No physical Steam Deck capture, writable profile, layout edit,
-  save, selection, tag, or release was performed.
-
-### Steam Input radial-menu Task 3 fix round 1 — 2026-09-02
-
-- Hardened capability diagnostics from a lexical pattern to a finite public
-  allowlist; arbitrary lowercase/underscore tokens now fail closed.
-- Isolated RPC transport failures from decoder failures. Exported
-  `radialLayoutRpc.getRegistry()` and `.record()` now prove the exact Decky
-  callable names, and every transport exception becomes
-  `radial_layout_rpc_failed` without preserving private codes/details.
-- Made `responsePrimitiveTypes` mandatory and complete for every unique
-  primitive response key. Canonical fingerprints include every sorted key/type
-  pair and no private values.
-- Invalid or overlong primitive response-key names now reject the probe instead
-  of disappearing from the shape. Added account/token privacy coverage that
-  proves private values do not enter digest input.
-- Replaced the old registry freshness assertion with deep reference and
-  mutation independence checks.
-- TDD evidence: focused RED ran 31 tests with 25 pass/6 expected failures;
-  focused GREEN is 31/31. Final gates: frontend 261/261 across 34 suites,
-  production/test TSC, Biome across 85 files, Rollup, and `git diff --check`
-  passed.
-- Safety boundary unchanged: no writable authorization, no request validation
-  in `createSeparateLayout`, and zero export/edit/save/select/register calls.
-  The method remains unconditional `unsupported_runtime`; the adapter still
-  contains no `any`.
-- Detailed evidence is appended to
-  `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-3-report.md`.
-
-### Steam Input radial-menu Task 4 backend probe RED/GREEN checkpoint — 2026-09-02
-
-- Added the first Task 4 tests before production implementation in
-  `tests_backend/test_steam_input_probe.py`, `tests_backend/test_rpc.py`,
-  `tests_backend/test_main.py`, and `tests_backend/test_diagnostics.py`.
-- RED command collected 70 tests: 65 passed and 5 expected failures/errors
-  (missing `trainer_relay.steam_input_probe`, missing RPC and Plugin methods,
-  and rejected `steam_input` diagnostics category).
-- Implemented strict exact-schema probe validation, 16 KiB UTF-8/LF atomic
-  export, bounded `RelayRpc.export_steam_input_probe`, Plugin delegation, and
-  bounded `steam_input` diagnostic event validation. The report is never
-  inserted into the journal; only a summary event is recorded.
-- Focused GREEN command collected 73 tests: 73 passed, 0 failed.
-- Next: add frontend controller/menu RED tests and implement the read-only
-  preview flow. Keep `createSeparateLayout` unreachable for the shipped probe
-  adapter and preserve `.codex-remote-attachments/`.
-
-### Steam Input radial-menu Task 4 probe build complete — 2026-09-02
-
-- Completed the read-only preview UI, safe probe export, bounded diagnostics,
-  configurator fallback, and versioned probe package. Generation remains
-  disabled with `Steam Input runtime not physically validated`.
-- Full local gates: backend 287/287, frontend 273/273, packaging 7/7,
-  production/test TypeScript, Biome (89 files), Rollup, compileall, and
-  `git diff --check` all passed.
-- The first full frontend run caught a frontend/backend diagnostic-detail
-  allowlist mismatch. The existing regression test failed; root-cause tracing
-  identified omitted sanitized hash-prefix fields. The allowlist was synchronized
-  without relaxing arbitrary-field rejection, then focused 13/13 and full
-  frontend 273/273 passed.
-- Artifact: `TrainerRelay.zip`, 815884 bytes, 35 entries, packaged version
-  `0.1.0-experimental.21.probe.1`, SHA-256
-  `0D2092C69B3C18A4F303C3A1C1AC1472E75A4F1D8A0F2526CD5A2C9BEA504418`.
-  Archive inspection found zero writable Steam profile files.
-- Hard stop: Task 5 requires installation on the physical Steam Deck and a
-  sanitized probe export. Tasks 6-8 remain forbidden until `PASS_SAFE_CLONE`.
-
-### Steam Input radial-menu Task 4 fix round 1 complete — 2026-09-02
-
-- Resolved review blockers without widening the production safety boundary:
-  exact metadata-only frontend/backend RPC for `preview_created`,
-  `authority_changed`, and `configurator_opened`; fresh confirmation/export
-  authority recomputation; operation-token guards around asynchronous hashing,
-  fingerprinting, probing, and export; and probe shape taken from actual adapter
-  observation with fail-closed decoding.
-- Hardened backend schema and storage: exact Python ints reject bool/float,
-  sensitive/malformed/unbounded primitive keys reject, concurrent exports use an
-  exclusive no-overwrite reservation, and file plus supported directory fsyncs
-  protect the atomic LF JSON output.
-- Corrected modal wording and busy-state disabling while preserving permanently
-  disabled production generation. Packaging now explicitly requires
-  `steam_input_probe.py`, rejects writable Steam profiles, and README references
-  `0.1.0-experimental.21.probe.1`.
-- Strict TDD evidence: backend probe RED was 8 methods with 12 failing subtests
-  and 1 error, then an intermediate 7/8 regression and final 8/8 GREEN; metadata
-  RPC/Plugin RED was 3 methods with 8 errors, then 11/11 GREEN. Frontend RED was
-  47/59, then 59/59 GREEN. The final reviewer-only failure was fixture
-  instrumentation (`adapter.probe` was not a spy); wrapping only that fixture in
-  `vi.fn` preserved production behavior and restored focused GREEN.
-- Final Step 6 gates: backend focused 80/80, frontend focused 18/18, full backend
-  294/294, full frontend 277/277 across 36 files, packaging 7/7, Biome 89 files,
-  production/test TypeScript, Rollup, package build, and `git diff --check` all
-  passed.
-- Rebuilt artifact:
-  `C:/Users/slvma/Downloads/Github/TrainerRelay/TrainerRelay.zip`, 834878 bytes,
-  35 entries, SHA-256
-  `1F489B7F78B6D1763AD63941F7898C272F7686C16F798FA9D901DF973B133A2D`.
-  Inspection confirmed the probe module and exact version, with zero writable
-  Steam profiles, tests, caches, node modules, or source maps.
-- Safety inspection found no production export/edit/save/select/register call.
-  The shipped adapter remains read-only and generation remains unavailable;
-  physical click/focus validation is still the mandatory Task 5 boundary.
-- Detailed RED/GREEN records, all 35 ZIP entries, file scope, and self-review are
-  appended to
-  `.superpowers/sdd/2026-09-02-trainer-relay-steam-input-radial-menu-plan/task-4-report.md`.
-- Commit `c5db79d` (`fix: harden read-only Steam Input radial probe`) is pushed
-  to `origin/feat/trainer-relay`. No tag or release was created.
-  `.codex-remote-attachments/` remains user-owned and unstaged.
-- Independent fix re-review by Arya/Confucius
-  (`01a0645d-6d4f-74b1-96c9-ae654c49be33`) marked all ten findings
-  `ADDRESSED`, with final verdict `ALL ADDRESSED`.
-- Resume boundary: install this exact ZIP on the physical Steam Deck and execute
-  Task 5. Do not begin Tasks 6-8 unless the device evidence reaches
-  `PASS_SAFE_CLONE`.
+- At the user's request, the complete Steam Input/radial-menu experiment was
+  removed with a recoverable `git revert` of the 12 commits after `8fbff44`.
+  The known-working trainer sidecar and cheat-control implementation remains at
+  `0.1.0-experimental.20`; no GOG launch, trainer, helper, manual-control or
+  diagnostics behavior was intentionally changed.
+- Rebuilt `TrainerRelay.zip`: packaged version `0.1.0-experimental.20`, 33
+  entries, zero radial/Steam Input entries, SHA-256
+  `AAFB2EFCFAB88FEFFD2C5D611AD16590F2903BA586677F70DA11A5A748DCEEE0`.
+- Fresh local gates after the rollback: backend 257/257; frontend 30 files /
+  217 tests; packaging 7/7; compileall; Biome; both TypeScript checks; Rollup;
+  and `git diff --check`. The aggregate `pnpm run check` did not start because
+  the package-manager shim could not validate/download pnpm 11.5.0; the locked
+  local Biome, TypeScript, Vitest and Rollup binaries were run directly and all
+  corresponding project gates passed.
+- Static comparison with the local UniFiDeck Epic launcher confirms ordinary
+  Epic sessions intentionally use `STORE=none`, Rockstar/Epic may use
+  `STORE=egs`, and Legendary returns after spawning an orphaned UMU/Proton
+  process tree. Trainer Relay already accepts `epic`, `egs` and `none`; therefore
+  changing that allowlist would not be an evidence-based Epic fix.
+- The eight available diagnostics exports contain no `epic:` session, so the
+  physical Epic failure has not yet been localized. Do not loosen process,
+  prefix or executable matching speculatively because those checks are the
+  fail-closed boundary that protects the known-working GOG path.
+- Exact resume gate: install this rebuilt ZIP, configure one Epic UniFiDeck
+  shortcut, leave persistent diagnostics enabled, launch through the Epic
+  shortcut, wait until the game reaches its menu (or fails), export the Trainer
+  Relay TXT and preserve the game name plus `epic:<id>`. Use that evidence to
+  distinguish `games_map_identity_missing`, environment/store/prefix mismatch,
+  process-name/executable mismatch, missing container re-entry, or a later
+  trainer/helper launch failure before writing the Epic patch.
