@@ -102,7 +102,7 @@ The normal `pnpm` wrapper did not execute because it could not verify/download t
 
 - Branch: `feat/trainer-relay`.
 - Primary-source research note was committed and pushed as `1045da5 docs: add Steam UMU window research`.
-- Experimental.23 implementation, tests, validation checklist, and this handoff are pending final review, commit, and push.
+- Experimental.23 implementation, tests, validation checklist, and handoff were committed as `b73f80a fix: associate owned trainer windows with Steam` and pushed to `origin/feat/trainer-relay`.
 - Do not stage `.codex-remote-attachments/` or any ZIP artifact.
 
 Resume by reading this handoff and the research note, resolving any open review findings, rerunning affected gates, then committing the exact intended file list. Physical validation remains a separate, explicit user/device checkpoint.
