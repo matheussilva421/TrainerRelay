@@ -1,4 +1,4 @@
-# Steam Deck validation — Trainer Relay v0.1.0-experimental.20
+# Steam Deck validation — Trainer Relay v0.1.0-experimental.23
 
 This checklist is intentionally manual. The release must not be promoted to stable until one real Epic title and one real GOG title pass the checks below on a physical Steam Deck.
 
@@ -86,6 +86,15 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 - [ ] Confirm stopping Trainer Relay does not stop the game, `wineserver`, global UMU, or another trainer.
 - [ ] Review the plugin log for status/diagnostic codes only; confirm no environment dump, credential, cookie, or token is present.
 
+## Steam window association
+
+- [ ] Install experimental.23, restart the plugin/Steam as required, and start a fresh Epic game session. Do not reuse the experimental.22 trainer process.
+- [ ] Wait at least 15 seconds after `container_reentry_confirmed`. Confirm a bounded `window_association` event reports `associated` or `already_associated`, with no foreign-window writes.
+- [ ] If an early attempt reports `no_owned_windows`, allow the bounded retries to continue. If the final attempt still reports it, preserve the evidence and stop: no matching owned window was found and no window was changed.
+- [ ] In Steam's window switcher, confirm both the game and trainer appear under the same shortcut AppID and that selecting the trainer visibly switches to it.
+- [ ] Confirm the game remains controllable and closing it still terminates only the owned trainer group.
+- [ ] Repeat the GOG experimental.19 baseline with experimental.23 to detect a regression.
+
 ## Cheat controls and ephemeral helper
 
 - [ ] With the known BioShock 2 FLiNG SHA-256, confirm automatic cheat names and
@@ -151,6 +160,7 @@ Do not use `printenv`, `env`, or an unrestricted `/proc/<PID>/environ` dump in a
 | Force Sync preserves config | PENDING | PENDING | |
 | Logs contain no sensitive dump | PENDING | PASS | Bounded export reviewed; no environment or credential dump |
 | Diagnostics persist/export/clear safely | PENDING | PENDING | |
+| Trainer appears and is selectable in Steam window switcher | PENDING | PENDING | experimental.22 RED: only Mortal Shell window ID 39845891 was registered |
 
 ## Promotion gate
 

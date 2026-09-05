@@ -45,6 +45,15 @@ _EXPORT_REDACTED_DETAIL_KEYS = frozenset(
 
 EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "window_snapshot": frozenset({"probe_status", "display", "window_count", "truncated", "active_window", "window_properties"}),
+    "window_association": frozenset(
+        {
+            "association_status",
+            "owned_window_count",
+            "associated_window_count",
+            "already_associated_count",
+            "failed_window_count",
+        }
+    ),
     "diagnostic_mode_changed": frozenset({"enabled"}),
     "plugin_loaded": frozenset({"version"}),
     "plugin_unloaded": frozenset({"version"}),
@@ -185,6 +194,29 @@ EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "cooperative_descriptor_rejected": frozenset({"reason"}),
 }
 
+_WINDOW_ASSOCIATION_STATUSES = frozenset(
+    {
+        "associated",
+        "already_associated",
+        "invalid_steam_game_id",
+        "invalid_process_group",
+        "missing_display",
+        "query_failed",
+        "deadline_exceeded",
+        "no_owned_windows",
+        "partial",
+        "association_failed",
+    }
+)
+_WINDOW_ASSOCIATION_COUNT_KEYS = frozenset(
+    {
+        "owned_window_count",
+        "associated_window_count",
+        "already_associated_count",
+        "failed_window_count",
+    }
+)
+
 
 class DiagnosticValidationError(ValueError):
     pass
@@ -275,6 +307,13 @@ _COMMAND_REASONS = re.compile(r"^[a-z0-9_]{1,64}$")
 
 
 def _validate_command_details(event: str, details: Mapping[str, str | int | bool | None]) -> None:
+    if event == "window_association":
+        if details.get("association_status") not in _WINDOW_ASSOCIATION_STATUSES:
+            raise DiagnosticValidationError("diagnostic_event_rejected")
+        for key in _WINDOW_ASSOCIATION_COUNT_KEYS:
+            count = details.get(key)
+            if type(count) is not int or not 0 <= count <= 64:
+                raise DiagnosticValidationError("diagnostic_event_rejected")
     if event in {"catalog_loaded", "manual_control_added", "manual_control_removed"}:
         count = details.get("adapter_count", details.get("control_count"))
         if type(count) is not int or not 0 <= count <= 64:

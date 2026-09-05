@@ -193,6 +193,143 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]['details']['probe_status'], 'missing_display')
 
+    async def test_owned_window_association_retries_until_verified_then_stops(self):
+        steam_game_id = str((2476768691 << 32) | 0x02000000)
+        self.discovery.environment.update({'DISPLAY': ':1', 'SteamGameId': steam_game_id})
+        results = iter((
+            {
+                'association_status': 'no_owned_windows',
+                'owned_window_count': 0,
+                'associated_window_count': 0,
+                'already_associated_count': 0,
+                'failed_window_count': 0,
+            },
+            {
+                'association_status': 'associated',
+                'owned_window_count': 1,
+                'associated_window_count': 1,
+                'already_associated_count': 0,
+                'failed_window_count': 0,
+            },
+        ))
+        calls = []
+        self.watcher._window_associator = lambda environment, group, game_id: (
+            calls.append((environment, group, game_id)) or next(results)
+        )
+
+        await self.watcher.poll_once()
+        for timestamp in (5.0, 10.0, 15.0):
+            self.clock_value = timestamp
+            await self.watcher.poll_once()
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1:], (999, steam_game_id))
+        self.assertEqual(calls[0][0]['DISPLAY'], ':1')
+        events = [call for call in self.recorder.calls if call['event'] == 'window_association']
+        self.assertEqual(
+            [event['details']['association_status'] for event in events],
+            ['no_owned_windows', 'associated'],
+        )
+
+    async def test_window_association_delay_starts_when_reentry_is_confirmed(self):
+        steam_game_id = str((2476768691 << 32) | 0x02000000)
+        self.discovery.environment.update({'DISPLAY': ':1', 'SteamGameId': steam_game_id})
+        calls = []
+        self.watcher._window_associator = lambda *args: calls.append(args) or {
+            'association_status': 'associated',
+            'owned_window_count': 1,
+            'associated_window_count': 1,
+            'already_associated_count': 0,
+            'failed_window_count': 0,
+        }
+
+        await self.watcher.poll_once()
+        self.runner.handles[0]['reentry_status'] = 'retrying'
+        self.clock_value = 2.5
+        self.runner.handles[0]['reentry_status'] = 'confirmed'
+        self.runner.handles[0]['reentry_observed_at'] = 2.5
+        await self.watcher.poll_once()
+        self.clock_value = 5.0
+        await self.watcher.poll_once()
+
+        self.assertEqual(calls, [])
+
+        self.clock_value = 7.5
+        await self.watcher.poll_once()
+        self.assertEqual(len(calls), 1)
+
+    async def test_missing_steam_game_id_records_one_terminal_association_event(self):
+        calls = []
+        self.watcher._window_associator = lambda *args: calls.append(args) or {
+            'association_status': 'invalid_steam_game_id',
+        }
+
+        await self.watcher.poll_once()
+        for timestamp in (5.0, 10.0, 15.0):
+            self.clock_value = timestamp
+            await self.watcher.poll_once()
+
+        self.assertEqual(len(calls), 1)
+        events = [call for call in self.recorder.calls if call['event'] == 'window_association']
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['details']['association_status'], 'invalid_steam_game_id')
+
+    async def test_window_association_normalizes_untrusted_result_shape(self):
+        self.discovery.environment.update({
+            'DISPLAY': ':1',
+            'SteamGameId': str((2476768691 << 32) | 0x02000000),
+        })
+        self.watcher._window_associator = lambda *args: {
+            'association_status': 'invented',
+            'owned_window_count': 999,
+            'associated_window_count': 'one',
+        }
+
+        await self.watcher.poll_once()
+        self.clock_value = 5.0
+        await self.watcher.poll_once()
+
+        event = [call for call in self.recorder.calls if call['event'] == 'window_association'][0]
+        self.assertEqual(
+            event['details'],
+            {
+                'association_status': 'association_failed',
+                'owned_window_count': 0,
+                'associated_window_count': 0,
+                'already_associated_count': 0,
+                'failed_window_count': 0,
+            },
+        )
+
+    async def test_window_association_rejects_non_mapping_and_inconsistent_success(self):
+        self.discovery.environment.update({
+            'DISPLAY': ':1',
+            'SteamGameId': str((2476768691 << 32) | 0x02000000),
+        })
+        results = iter((
+            None,
+            {
+                'association_status': 'associated',
+                'owned_window_count': 1,
+                'associated_window_count': 0,
+                'already_associated_count': 0,
+                'failed_window_count': 0,
+            },
+        ))
+        self.watcher._window_associator = lambda *args: next(results)
+
+        await self.watcher.poll_once()
+        self.clock_value = 5.0
+        await self.watcher.poll_once()
+        self.clock_value = 10.0
+        await self.watcher.poll_once()
+
+        events = [call for call in self.recorder.calls if call['event'] == 'window_association']
+        self.assertEqual(
+            [event['details']['association_status'] for event in events],
+            ['association_failed', 'association_failed'],
+        )
+
     async def test_launch_becomes_running_after_three_seconds(self):
         await self.watcher.poll_once()
         self.assertEqual(self.watcher.status(self.identity)["state"], "launching")

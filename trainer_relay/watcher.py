@@ -24,7 +24,7 @@ from .diagnostics import (
 )
 from .environment import build_sanitized_environment
 from .games_map import load_games_map
-from .window_probe import collect_window_snapshot
+from .window_probe import associate_owned_windows, collect_window_snapshot
 from .helper_manifest import read_pe_architecture, sha256_file
 from .process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity, normalize_wine_path
 from .types import CommandContext, CommandContextError, DiscoveryState, RelayStatus
@@ -49,6 +49,15 @@ _HOST_RUNTIME_ENVIRONMENT_KEYS = frozenset(
     }
 )
 
+_WINDOW_ASSOCIATION_DELAYS = (5.0, 10.0, 15.0)
+_WINDOW_ASSOCIATION_SUCCESS = frozenset({'associated', 'already_associated'})
+_WINDOW_ASSOCIATION_TERMINAL = frozenset(
+    {'invalid_steam_game_id', 'invalid_process_group', 'missing_display'}
+)
+_WINDOW_ASSOCIATION_STATUSES = _WINDOW_ASSOCIATION_SUCCESS | _WINDOW_ASSOCIATION_TERMINAL | frozenset(
+    {'query_failed', 'deadline_exceeded', 'no_owned_windows', 'partial', 'association_failed'}
+)
+
 
 @dataclass
 class _RelayState:
@@ -62,6 +71,7 @@ class _RelayState:
     rejected_preflight_session: SessionIdentity | None = None
     expected_reentry_bus: str | None = None
     reentry_confirmed: bool = False
+    reentry_confirmed_at: float | None = None
     service_marker_present: bool = False
     effective_environment: dict[str, str] | None = None
     prefix: str | None = None
@@ -70,6 +80,8 @@ class _RelayState:
     trainer_sha256: str | None = None
     session_prefix: str | None = None
     window_snapshot_at: float | None = None
+    window_association_attempts: int = 0
+    window_association_complete: bool = False
 
 
 class RelayWatcher:
@@ -99,6 +111,7 @@ class RelayWatcher:
         self._clock = clock
         self._sleep = sleep
         self._diagnostics = diagnostics or NullDiagnosticRecorder()
+        self._window_associator = associate_owned_windows
         self._states: dict[str, _RelayState] = {}
         self._state_lock = threading.RLock()
         self._stopped = False
@@ -182,12 +195,15 @@ class RelayWatcher:
         state.launched_at = None
         state.expected_reentry_bus = None
         state.reentry_confirmed = False
+        state.reentry_confirmed_at = None
         state.service_marker_present = False
         state.effective_environment = None
         state.prefix = None
         state.umu_run = None
         state.trainer_path = None
         state.trainer_sha256 = None
+        state.window_association_attempts = 0
+        state.window_association_complete = False
 
     async def _stop_owned(self, state: _RelayState, identity: str | None = None) -> None:
         await self._acquire_state_lock()
@@ -776,6 +792,7 @@ class RelayWatcher:
                 )
                 if confirmed_within_deadline and not state.reentry_confirmed:
                     state.reentry_confirmed = True
+                    state.reentry_confirmed_at = reentry_observed_at
                     confirmation_elapsed = max(0.0, reentry_observed_at - state.launched_at)
                     self._record(
                         "umu",
@@ -808,6 +825,76 @@ class RelayWatcher:
                     self._set_state(state, RelayStatus.FAILED, "container_reentry_confirmation_failed")
                     return
                 if state.reentry_confirmed and elapsed >= 3.0:
+                    steam_game_id = (state.effective_environment or {}).get('SteamGameId', '')
+                    attempt = state.window_association_attempts
+                    association_elapsed = max(
+                        0.0,
+                        now - (state.reentry_confirmed_at if state.reentry_confirmed_at is not None else now),
+                    )
+                    if (
+                        not state.window_association_complete
+                        and attempt < len(_WINDOW_ASSOCIATION_DELAYS)
+                        and association_elapsed >= _WINDOW_ASSOCIATION_DELAYS[attempt]
+                    ):
+                        state.window_association_attempts += 1
+                        process_group_id = self._process_group_id(state.handle)
+                        try:
+                            association = await asyncio.to_thread(
+                                self._window_associator,
+                                dict(state.effective_environment or {}),
+                                process_group_id,
+                                steam_game_id,
+                            )
+                        except Exception:
+                            association = {'association_status': 'association_failed'}
+                        if not isinstance(association, Mapping):
+                            association = {}
+                        association_status = association.get('association_status', 'association_failed')
+                        malformed_result = association_status not in _WINDOW_ASSOCIATION_STATUSES
+
+                        def bounded_count(key):
+                            nonlocal malformed_result
+                            value = association.get(key, 0)
+                            if type(value) is not int or not 0 <= value <= 64:
+                                malformed_result = True
+                                return 0
+                            return value
+
+                        counts = {
+                            'owned_window_count': bounded_count('owned_window_count'),
+                            'associated_window_count': bounded_count('associated_window_count'),
+                            'already_associated_count': bounded_count('already_associated_count'),
+                            'failed_window_count': bounded_count('failed_window_count'),
+                        }
+                        if association_status == 'associated' and not counts['associated_window_count']:
+                            malformed_result = True
+                        if association_status == 'already_associated' and not counts['already_associated_count']:
+                            malformed_result = True
+                        if association_status == 'no_owned_windows' and any(counts.values()):
+                            malformed_result = True
+                        if association_status == 'partial' and (
+                            not counts['failed_window_count']
+                            or not counts['associated_window_count'] + counts['already_associated_count']
+                        ):
+                            malformed_result = True
+                        if malformed_result:
+                            association_status = 'association_failed'
+                            counts = {key: 0 for key in counts}
+                        details = {'association_status': association_status, **counts}
+                        self._record(
+                            'trainer',
+                            'window_association',
+                            'accepted' if details['association_status'] in _WINDOW_ASSOCIATION_SUCCESS else 'warning',
+                            identity=identity,
+                            session=state.session,
+                            details=details,
+                        )
+                        if (
+                            details['association_status'] in _WINDOW_ASSOCIATION_SUCCESS
+                            or details['association_status'] in _WINDOW_ASSOCIATION_TERMINAL
+                            or state.window_association_attempts >= len(_WINDOW_ASSOCIATION_DELAYS)
+                        ):
+                            state.window_association_complete = True
                     if (elapsed >= 10.0 and state.window_snapshot_at != state.launched_at
                             and getattr(self._diagnostics, 'enabled', False) is True):
                         state.window_snapshot_at = state.launched_at

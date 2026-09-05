@@ -166,6 +166,46 @@ class DiagnosticRecorderTests(unittest.TestCase):
 
         self.assertEqual([event["details"] for event in self.read_events()], [verified, confirmed, failed])
 
+    def test_accepts_only_bounded_window_association_counts(self):
+        recorder = self.recorder()
+        details = {
+            "association_status": "associated",
+            "owned_window_count": 1,
+            "associated_window_count": 1,
+            "already_associated_count": 0,
+            "failed_window_count": 0,
+        }
+
+        recorder.record("trainer", "window_association", "accepted", details=details)
+
+        self.assertEqual([event["details"] for event in self.read_events()], [details])
+
+    def test_rejects_unbounded_or_unknown_window_association_details(self):
+        recorder = self.recorder()
+        invalid_details = (
+            {
+                "association_status": "invented",
+                "owned_window_count": 0,
+                "associated_window_count": 0,
+                "already_associated_count": 0,
+                "failed_window_count": 0,
+            },
+            {
+                "association_status": "associated",
+                "owned_window_count": 65,
+                "associated_window_count": 1,
+                "already_associated_count": 0,
+                "failed_window_count": 0,
+            },
+        )
+
+        for details in invalid_details:
+            with self.subTest(details=details):
+                with self.assertRaisesRegex(DiagnosticValidationError, "diagnostic_event_rejected"):
+                    recorder.record("trainer", "window_association", "warning", details=details)
+
+        self.assertEqual(recorder.stats()["eventCount"], 0)
+
     def test_rejects_umu_output_tail_larger_than_the_runner_retention_limit(self):
         recorder = self.recorder()
         details = {
