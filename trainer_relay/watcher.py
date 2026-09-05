@@ -24,6 +24,7 @@ from .diagnostics import (
 )
 from .environment import build_sanitized_environment
 from .games_map import load_games_map
+from .window_probe import collect_window_snapshot
 from .helper_manifest import read_pe_architecture, sha256_file
 from .process import CandidateDecision, DiscoveryResult, ProcessDiscoverer, SessionIdentity, normalize_wine_path
 from .types import CommandContext, CommandContextError, DiscoveryState, RelayStatus
@@ -68,6 +69,7 @@ class _RelayState:
     trainer_path: str | None = None
     trainer_sha256: str | None = None
     session_prefix: str | None = None
+    window_snapshot_at: float | None = None
 
 
 class RelayWatcher:
@@ -806,6 +808,17 @@ class RelayWatcher:
                     self._set_state(state, RelayStatus.FAILED, "container_reentry_confirmation_failed")
                     return
                 if state.reentry_confirmed and elapsed >= 3.0:
+                    if (elapsed >= 10.0 and state.window_snapshot_at != state.launched_at
+                            and getattr(self._diagnostics, 'enabled', False) is True):
+                        state.window_snapshot_at = state.launched_at
+                        try:
+                            snapshot = await asyncio.to_thread(
+                                collect_window_snapshot, dict(discovery.environment or {}),
+                            )
+                        except Exception:
+                            snapshot = {'probe_status': 'probe_failed'}
+                        self._record('trainer', 'window_snapshot', 'info', identity=identity,
+                                     session=state.session, details=snapshot)
                     if state.state != RelayStatus.RUNNING:
                         self._record(
                             "trainer",

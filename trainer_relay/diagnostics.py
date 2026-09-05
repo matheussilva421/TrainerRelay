@@ -44,6 +44,7 @@ _EXPORT_REDACTED_DETAIL_KEYS = frozenset(
 )
 
 EVENT_DETAIL_KEYS: dict[str, frozenset[str]] = {
+    "window_snapshot": frozenset({"probe_status", "display", "window_count", "truncated", "active_window", "window_properties"}),
     "diagnostic_mode_changed": frozenset({"enabled"}),
     "plugin_loaded": frozenset({"version"}),
     "plugin_unloaded": frozenset({"version"}),

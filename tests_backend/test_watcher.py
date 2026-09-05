@@ -180,6 +180,19 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.directory.cleanup()
 
+    async def test_window_snapshot_is_recorded_once_while_trainer_is_running(self):
+        from unittest.mock import patch
+        self.recorder.enabled = True
+        await self.watcher.poll_once()
+        self.clock_value = 12
+        with patch('trainer_relay.watcher.collect_window_snapshot', return_value={'probe_status': 'missing_display'}) as probe:
+            await self.watcher.poll_once()
+            await self.watcher.poll_once()
+        probe.assert_called_once()
+        events = [call for call in self.recorder.calls if call['event'] == 'window_snapshot']
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['details']['probe_status'], 'missing_display')
+
     async def test_launch_becomes_running_after_three_seconds(self):
         await self.watcher.poll_once()
         self.assertEqual(self.watcher.status(self.identity)["state"], "launching")

@@ -107,6 +107,7 @@ const detailKeys: Readonly<Record<string, readonly string[]>> = {
   trainer_spawned: ["trainer_path", "process_group_id", "wineprefix", "steam_compat_data_path", "proton_verb"],
   trainer_spawn_failed: ["trainer_path", "reason"],
   trainer_running: ["trainer_path", "elapsed_ms"],
+  window_snapshot: ["probe_status", "display", "window_count", "truncated", "active_window", "window_properties"],
   trainer_exited: ["trainer_path", "exit_code", "elapsed_ms"],
   trainer_retry_scheduled: ["retry_count", "delay_ms"],
   trainer_manual_retry: ["retry_count"],
