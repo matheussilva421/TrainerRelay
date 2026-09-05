@@ -23,6 +23,8 @@ No production changes, package generation, installation, game manipulation or ne
 
 Git delivery: attempted documentation-only staging failed with index.lock permission denied; subsequent commit/push failed with dubious ownership. No global safe.directory setting changed. A command-scoped safe.directory status check succeeded and confirmed this note remains untracked. Do not stage the pre-existing test change or remote attachments.
 
-Independent local-source research agent `01a073ff-1f24-7251-8281-29bcb32e9fcd` is still running at checkpoint; expected output `docs/notes/2026-09-05-preexisting-test-evidence.md`. Retrieve its result before duplicating that analysis.
+Independent local-source research agent `01a073ff-1f24-7251-8281-29bcb32e9fcd` completed `docs/notes/2026-09-05-preexisting-test-evidence.md`; main agent read the result. It confirms the pending test does not model temporal provenance or demonstrate Epic visibility. No production correction follows from this test alone.
 
 Follow-up continuation: elevated CEF GET timed out again after 5 seconds. Agent wait returned nonterminal timeout; expected research file not yet present. No restart or duplicate research launched. Previous turn classified as progress (new test/network evidence); current device blocker has recurred for two goal turns, not yet the three-turn blocked threshold. Staging area verified empty before retrying documentation-only Git delivery.
+
+Delivery subsequently recovered using elevated Git with invocation-only safe.directory: checkpoint commit `50ad6eb` pushed successfully to `origin/feat/trainer-relay`. Research completed after that push; this final documentation update incorporates its result. No new tests executed in the follow-up, no new ZIP, and physical Epic validation remains blocked on restored Deck access/current IP confirmation.
