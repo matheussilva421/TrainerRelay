@@ -1900,3 +1900,7 @@ untested.
   distinguish `games_map_identity_missing`, environment/store/prefix mismatch,
   process-name/executable mismatch, missing container re-entry, or a later
   trainer/helper launch failure before writing the Epic patch.
+- GitHub checkpoint: rollback commit `b1c7f6c` was pushed to
+  `origin/feat/trainer-relay`. The final documentation-only checkpoint records
+  this commit and the physical Epic evidence gate; `.codex-remote-attachments/`
+  remains local, untracked and untouched.
