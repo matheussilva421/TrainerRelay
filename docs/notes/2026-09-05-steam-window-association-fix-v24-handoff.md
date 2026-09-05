@@ -53,7 +53,7 @@ Experimental.24 replaces that check with stable process identity: exact trainer 
 - Last pushed commit before this correction: `b8a8dd5`.
 - Implementation/research commit: `cd170e7 fix: identify Steam trainer windows across launcher service`.
 - Immutable diff review against `b8a8dd5` found no remaining Standards or Spec findings. The review checked the ADR/session-identity contract, the physical RED topology, fail-closed ambiguity, diagnostic status propagation and X11 write revalidation.
-- Push for experimental.24: pending at this checkpoint.
+- Commits `cd170e7` and `997021e` pushed to `origin/feat/trainer-relay`; no release or tag was created because physical validation remains pending.
 - `.codex-remote-attachments/` remains untracked and must not be read, modified or staged.
 - Existing experimental.23 artifact is superseded. Do not install it.
 - Root `TrainerRelay.zip` remains the separate experimental.22 artifact: 754,825 bytes, 34 entries, SHA-256 `83FF43CE6F935371847E54C50061BFB73304732E3D05BDC745431ABAA9A494C1`.
