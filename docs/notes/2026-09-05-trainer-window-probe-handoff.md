@@ -36,3 +36,32 @@ radial work or speculative visibility fix is part of this change.
 
 Git: changes are intended for feat/trainer-relay with commit/push in this turn;
 local attachment directory excluded. No remote Deck installation performed.
+
+## .windows.2: non-EWMH server fallback
+
+The user supplied TrainerRelay-diagnostics-20260905-211431.txt. Header confirms
+.21.windows.1 and enabled diagnostics. At 21:13:15.497 UTC trainer_running was
+recorded, then at 21:13:22.488 window_snapshot returned display=:1,
+probe_status=client_list_unavailable. Session ended at 21:14:20.321 and owned
+group 25664 received SIGTERM at 21:14:20.384. This establishes failure of the
+EWMH enumeration method, not absence of a window or the cause of invisibility.
+
+Added xwininfo -root -tree fallback when _NET_CLIENT_LIST is absent. Parse only
+leading window IDs, deduplicate them and consult the existing finite property
+list. Titles are discarded, including ID-like text inside titles. Existing
+two-second deadline, eight-window cap and no-shell/read-only contract remain.
+Missing xwininfo reports unavailable rather than zero windows. Tree truncation
+is flagged. Only the game's DISPLAY is inspected; other displays remain unknown.
+
+RED reproduced client_list_unavailable instead of expected ok_tree; GREEN
+confirmed fallback, ID parsing, privacy and unavailable-tool behavior. Complete
+backend 264/264 and packaging 7/7 passed; compileall, Rollup and diff check passed.
+No frontend behavior changed. Files changed: window_probe.py, its tests,
+main.py/package.json/packaging version assertions and this handoff.
+
+Artifact: TrainerRelay.zip, .21.windows.2, SHA-256
+2BAF425B4B92475D87BA790818B58EB4802880FCD8FA2106BCDF025A7E7927FD.
+Commit/push target feat/trainer-relay; no device install performed. Next capture:
+install .windows.2, keep diagnostics enabled, launch Mortal Shell, wait at least
+15 seconds after trainer launch and export TXT. Window invisibility remains
+unresolved until actual window metadata can be obtained.

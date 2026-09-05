@@ -131,8 +131,8 @@ class TrainerRelayPackageLayoutTests(unittest.TestCase):
         self.assertFalse(any("__pycache__" in name.lower() for name in names))
         self.assertFalse(any(name.endswith((".env", ".log", ".pyc", ".map")) for name in names))
         self.assertFalse(any("node_modules" in name or "pnpm-lock" in name for name in names))
-        self.assertIn(b'"version": "0.1.0-experimental.21.windows.1"', package_document)
-        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.21.windows.1"', main_document)
+        self.assertIn(b'"version": "0.1.0-experimental.21.windows.2"', package_document)
+        self.assertIn(b'PLUGIN_VERSION = "0.1.0-experimental.21.windows.2"', main_document)
 
     def test_manifest_hashes_match_packaged_helper_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
