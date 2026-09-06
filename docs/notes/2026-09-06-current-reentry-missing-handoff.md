@@ -28,3 +28,44 @@ Actual X11 trainer window0x3600001 is titled FLiNG Trainer, PID25860, 780x640 at
 Preparation completed after game close confirmation: CEF SharedJSContext BB4C83EBC1E2031A227465B047DB217D rediscovered. RegisterForAppDetails confirmed exact expected launcher and options. Guarded SetAppLaunchOptions changed only app2476768691 from `epic:0055e45ce7654c55aade646467349e83` to `UMU_CONTAINER_NSENTER=1 %command% epic:0055e45ce7654c55aade646467349e83`. A subsequent AppDetails callback returned exact expected new value (`verified:true`), and subscription unregistered. This is runtime Steam readback, NOT proof of persistence across reboot or trainer functionality. No package installation, code change, test run, or game restart. Next user launches game normally; agent then checks environment, trainer process and real windows. Rollback via same Steam API to exact recorded original value if needed; do not write live VDF directly.
 
 User confirmed game closed. Direct SSH `ps -p 24119,24126 -o pid,comm` returned no process rows (exit1), confirming those session PIDs ended. No shortcut changes applied yet. CEF target discovery request is pending in tool cell42; do not assume it failed or repeat a mutation. Local Steam API adapter confirms SetAppLaunchOptions and RegisterForAppDetails with strLaunchOptions/strShortcutExe readback, unregister on completion. Prefer this supported existing preparation route over writing shortcuts.vdf while Steam is running. Research note completed and read: running-lifecycle-research.md; it clarifies outer-process status limits but does not explain missing reentry in current session. No tests/production modifications at this checkpoint.
+
+## Black trainer and UniDeck restoration checkpoint
+
+The manual Gamescope association trial produced a second Steam window, but the
+user reported that selecting it showed a completely black FLiNG surface with no
+controls. An X11 frame capture confirmed a black 1280x800 frame with only the
+cursor. The live trainer window was the expected PID25860/window0x3600001; the
+trial had set `STEAM_GAME=2476768691` and `_NET_WM_WINDOW_OPACITY=4294967295`.
+Therefore window registration alone is not a functional fix, and the proposed
+opacity/remap behavior must not be shipped.
+
+Primary-source comparison found Valve Proton issue #9999 reporting the same
+class of Decky/FLiNG accessibility regression on newer Proton 11, but this Deck
+already has a physically functional BioShock 2 GOG trainer under GE-Proton11-6.
+Store causality remains unproved; the Mortal Shell trainer build and its layered
+window behavior are material differences.
+
+A temporary A/B proposal changed only Steam app2476768691's forced compatibility
+tool to `GE-Proton11-1`; it was never launched in that state. After the user
+warned to preserve UniDeck, the setting was immediately restored to
+`GE-Proton11-6-x86_64`. Live AppDetails and Steam config.vdf now both confirm
+that exact restored tool, priority250. Live AppDetails also confirms the
+critical shortcut launch option remains exactly
+`UMU_CONTAINER_NSENTER=1 %command% epic:0055e45ce7654c55aade646467349e83`.
+No prefix migration or file deletion occurred.
+
+An attempted programmatic `RunGame` used the wrong launch context and created a
+Mortal Shell process on DISPLAY=:0 rather than the prior Steam-controlled
+DISPLAY=:1. Gamescope published only app769 and no Mortal Shell focus window.
+That malformed attempt was terminated with SIGTERM only to its exact game PIDs;
+the user-observed failure was caused by this launch context, not evidence of
+prefix damage. A later corrected API launch still did not reproduce the normal
+Steam UI context reliably and must not be used again. Current game/trainer PIDs
+are stopped. Next human checkpoint: user presses Play normally on Mortal Shell
+in the Steam library and leaves the launch running. Confirm DISPLAY=:1 and a
+focusable game window before any trainer-only virtual-desktop experiment.
+
+Temporary local diagnostic scripts were deleted and the unrelated unfinished
+window-probe test draft was removed. The remote SSH key/service still require
+cleanup only after the full objective is complete. No production implementation
+or package is currently a validated fix.
