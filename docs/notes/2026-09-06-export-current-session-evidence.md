@@ -18,4 +18,6 @@ Git: documentation-only note; commit/push attempted after creation. Original exp
 
 ## Access checkpoint after user confirmed game still open
 
+Update: user authorized temporary SSH, entered Desktop mode and confirmed `systemctl is-active sshd` returned active. Fresh read-only TCP check from PC confirms port22 reachable at 192.168.1.247. No SSH authentication attempted and no password from the supplied photo used or retained in this note. User was advised to change any password exposed in that photo. Authentication and host-key verification remain pending; reachable port is not authenticated access. Disable temporary service with `sudo systemctl stop sshd` when diagnosis ends. Fresh Gaming Mode reproduction will be needed after Desktop setup.
+
 Read-only TCP checks of known ports 22 and 18081 both unavailable (2-second bounded attempts). Local main.py/RPC inspection exposes diagnostic journal reads, not an on-demand arbitrary X11 property query. Existing window snapshot is truncated and lacks the association fields needed. No new X11 properties were collected; no claim that STEAM_GAME is absent is justified yet. Need user-coordinated terminal/SSH access or an explicitly approved diagnostic deployment. Do not enable services or install a new version implicitly. No tests or production changes in this checkpoint.
