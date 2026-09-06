@@ -76,6 +76,32 @@
           ]
         }
       ]
+    },
+    {
+      "id": "mortal-shell-fling-plus-16",
+      "sha256": "872935c570a105d81db056264e540ffc254b2ee3cf63407afa9be65eaca41fb8",
+      "peArchitecture": "x64",
+      "trainerLabel": "Mortal Shell v1.0-Build.08.25.21 Plus 16 Trainer",
+      "supportedIdentities": ["epic:0055e45ce7654c55aade646467349e83"],
+      "disableAllHotkey": {"modifiers": ["ctrl", "shift"], "key": "HOME"},
+      "cheats": [
+        {"id": "god-mode", "label": "God Mode/Ignore Hit", "hotkey": {"modifiers": [], "key": "NUMPAD1"}},
+        {"id": "infinite-health", "label": "Infinite Health", "hotkey": {"modifiers": [], "key": "NUMPAD2"}},
+        {"id": "infinite-stamina", "label": "Infinite Stamina", "hotkey": {"modifiers": [], "key": "NUMPAD3"}},
+        {"id": "infinite-resolve", "label": "Infinite Resolve", "hotkey": {"modifiers": [], "key": "NUMPAD4"}},
+        {"id": "max-poise", "label": "Max Poise/No Knock Back", "hotkey": {"modifiers": [], "key": "NUMPAD5"}},
+        {"id": "hardening-no-cooldown", "label": "Hardening No Cooldown", "hotkey": {"modifiers": [], "key": "NUMPAD6"}},
+        {"id": "game-speed", "label": "Set Game Speed", "hotkey": {"modifiers": [], "key": "NUMPAD7"}},
+        {"id": "move-speed", "label": "Set Move Speed", "hotkey": {"modifiers": [], "key": "NUMPAD8"}},
+        {"id": "infinite-items", "label": "Infinite Items", "hotkey": {"modifiers": [], "key": "NUMPAD9"}},
+        {"id": "super-damage", "label": "Super Damage/One Hit Kill", "hotkey": {"modifiers": [], "key": "NUMPAD0"}},
+        {"id": "damage-multiplier", "label": "Damage Multiplier", "hotkey": {"modifiers": [], "key": "DECIMAL"}},
+        {"id": "defense-multiplier", "label": "Defense Multiplier", "hotkey": {"modifiers": [], "key": "ADD"}},
+        {"id": "stamina-multiplier", "label": "Stamina Multiplier", "hotkey": {"modifiers": [], "key": "SUBTRACT"}},
+        {"id": "infinite-tar", "label": "Infinite Tar", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD1"}},
+        {"id": "tar-multiplier", "label": "Tar Multiplier", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD2"}},
+        {"id": "always-drop-glimpse", "label": "Enemies Always Drop Glimpse", "hotkey": {"modifiers": ["ctrl"], "key": "NUMPAD3"}}
+      ]
     }
   ]
 }

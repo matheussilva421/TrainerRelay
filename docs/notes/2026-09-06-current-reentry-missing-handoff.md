@@ -124,3 +124,50 @@ confirms the controls and at least one safe interaction path. If startup or the
 trainer regresses, stop only Trainer Relay and restore the preserved `.22`
 archive through a controlled Decky reinstall; do not alter UniFiDeck, Proton,
 the real prefix, or the shortcut compatibility checkbox.
+
+## Experimental.25 physical failure and experimental.26 candidate
+
+The physical `.25` gate failed. Gamescope correctly registered both the Mortal
+Shell game and the `TrainerRelay - Wine Desktop` parent under app2476768691,
+but direct X11 captures and the user's observation showed only a white/blue
+desktop. The FLiNG child had `WS_EX_LAYERED` and
+`_NET_WM_WINDOW_OPACITY=0`; a guarded, reversible opacity-only trial changed
+that exact PID/window to full opacity and produced a completely black frame.
+The original zero value was restored. No remap, game property, compatibility
+setting, prefix file, or UniFiDeck setting was changed.
+
+An isolated GE-Proton10-34 A/B used the exact trainer SHA-256 in the disposable
+prefix `/home/deck/.cache/trainerrelay-diagnostics/layered-ge10.vstWAV`.
+It rendered the complete 780x666 FLiNG interface and all 16 Mortal Shell
+controls; unlike GE-Proton11-6, its child published no zero-opacity property.
+The transient `trainerrelay-ge10-layered-test.service` was stopped and is
+inactive. This proves a Wine 11 layered-window rendering regression for this
+trainer, not a corrupt executable or an Epic/UniFiDeck launch failure. The
+isolated trainer could identify the game name but is not accepted as proof that
+it can patch a process owned by the real prefix. UMU automatically updated its
+shared `steamrt3` runtime to `3.0.20260805.254768` during this isolated launch;
+no further runtime download/update test should be started without explicit
+approval. The disposable prefix and temporary captures still require cleanup.
+
+The `.26` candidate uses the product's existing exact-hash adapter and one-shot
+InputHelper path instead of relying on the broken FLiNG surface. The packaged
+catalog now binds SHA-256
+`872935c570a105d81db056264e540ffc254b2ee3cf63407afa9be65eaca41fb8`
+only to `epic:0055e45ce7654c55aade646467349e83`, x64, with the 16 hotkeys
+observed from the correctly rendered GE10 window. The watcher again launches
+Epic trainers directly, so `.26` will not create the unusable virtual desktop;
+GOG remains on the same direct path. TDD REDs were observed for the missing
+catalog entry, Epic virtual-desktop routing, and stale `.25` package version.
+After the minimum changes: 107 focused backend tests passed, the complete
+backend suite passed 292/292, packaging passed 7/7, frontend passed 217/217 in
+30 files, and Biome, both TypeScript checks, and Rollup were green.
+
+Artifact: `artifacts/TrainerRelay-v0.1.0-experimental.26.zip`, 34 entries,
+776012 bytes, SHA-256
+`FEEEFC686ED96502E9C8789A4ADB50BE86D7D970E668A14FDA5AC1A1401552BF`.
+It is not installed yet. Next: preserve the installed `.25`, install `.26`
+through Decky's authenticated route while the normal game session remains
+healthy, confirm the white desktop disappears, verify the 16 controls through
+backend RPC and Decky UI, then send one safe command and obtain physical effect
+confirmation. Never enable Steam Force Compat or use Steam API RunGame for this
+UniFiDeck shortcut.

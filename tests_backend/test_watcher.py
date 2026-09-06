@@ -399,7 +399,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.recorder.calls[3]["session"].to_wire(), {"pid": 10, "startTime": 20})
         self.assertEqual(self.discoverer.expected_sessions, [None, self.session])
 
-    async def test_epic_trainer_requests_virtual_desktop_without_changing_gog_default(self):
+    async def test_epic_trainer_uses_direct_launch_without_a_broken_virtual_desktop(self):
         identity = "epic:game"
         discovery = DiscoveryResult(
             "session",
@@ -427,7 +427,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
 
         await watcher.poll_once()
 
-        self.assertEqual(runner.virtual_desktop_requests, [True])
+        self.assertEqual(runner.virtual_desktop_requests, [False])
 
     async def test_spawn_replaces_private_game_runtime_roots_with_the_verified_host_context(self):
         self.discovery.environment.update(

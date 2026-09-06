@@ -10,6 +10,7 @@ from trainer_relay.cheat_catalog import CheatCatalog, load_packaged_catalog, pac
 ROOT = Path(__file__).resolve().parents[1]
 BS2_SHA256 = "313ce3e30029bc88a27113ed2224ab8f66a8d62c82670c3508bd60af07157401"
 INFINITE_SHA256 = "4aed63db45d25cc61acc94369f60c841c9f4252b86f88b4760b259f1ab552474"
+MORTAL_SHELL_SHA256 = "872935c570a105d81db056264e540ffc254b2ee3cf63407afa9be65eaca41fb8"
 
 
 def hotkey(key, modifiers=None):
@@ -50,6 +51,26 @@ class CheatCatalogTests(unittest.TestCase):
         self.assertEqual(infinite.cheats[14].hotkeys, (hotkey("F1"), hotkey("F2"), hotkey("F3"), hotkey("F4")))
         self.assertEqual(bs2.disable_all_hotkey, hotkey("HOME"))
         self.assertEqual(infinite.disable_all_hotkey, hotkey("HOME"))
+
+    def test_packaged_catalog_resolves_exact_mortal_shell_epic_trainer(self):
+        catalog = load_packaged_catalog()
+
+        mortal_shell = catalog.resolve(
+            MORTAL_SHELL_SHA256,
+            "epic:0055e45ce7654c55aade646467349e83",
+        )
+
+        self.assertIsNotNone(mortal_shell)
+        self.assertEqual(mortal_shell.trainer_label, "Mortal Shell v1.0-Build.08.25.21 Plus 16 Trainer")
+        self.assertEqual(mortal_shell.pe_architecture, "x64")
+        self.assertEqual(len(mortal_shell.cheats), 16)
+        self.assertEqual(mortal_shell.cheats[0].hotkey, hotkey("NUMPAD1"))
+        self.assertEqual(mortal_shell.cheats[10].hotkey, hotkey("DECIMAL"))
+        self.assertEqual(mortal_shell.cheats[11].hotkey, hotkey("ADD"))
+        self.assertEqual(mortal_shell.cheats[12].hotkey, hotkey("SUBTRACT"))
+        self.assertEqual(mortal_shell.cheats[13].hotkey, hotkey("NUMPAD1", ["ctrl"]))
+        self.assertEqual(mortal_shell.disable_all_hotkey, hotkey("HOME", ["ctrl", "shift"]))
+        self.assertIsNone(catalog.resolve(MORTAL_SHELL_SHA256, "gog:0055e45ce7654c55aade646467349e83"))
 
     def test_unknown_hash_fails_closed_and_identity_restrictions_apply(self):
         with tempfile.TemporaryDirectory() as directory:
