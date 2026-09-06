@@ -17,6 +17,10 @@ Direct authenticated read-only SSH investigation, experimental.22 still installe
 
 ## Fresh launch after preparation
 
+### Physical association trial: insufficient
+
+User confirms trainer absent from selection. Direct trial verified exact trainer cmdline/prefix/PID25860 and stable start time, WM_NAME FLiNG Trainer, window0x3600001. STEAM_GAME absent before trial; xprop set to2476768691 succeeded and read back. Fresh CEF m_mapAppWindows still contained only [39845891] for app2476768691, not trainer window56623105. Thus setting STEAM_GAME on the already-created window alone is insufficient; do NOT install .24 as a validated fix. Rolled back only added STEAM_GAME after checking owner and value; readback not found confirms restoration. No cheats/focus/package changes. Next investigate Gamescope/Steam window registration beyond this property, using primary source and controlled runtime evidence; persistent implementation remains unproven.
+
 User launched again. Direct SSH confirms game PID25706 Dungeonhaven.ex, shipping PID25712, trainer PID25860 Mortal Shell v1, all with UMU_CONTAINER_NSENTER=1 and DISPLAY=:1. Journal at 11:04:12 UTC records verified service and trainer_spawned, 11:04:15 reentry_confirmed, 11:04:16 trainer_running. This validates launch preparation for this session, NOT reboot persistence.
 
 Actual X11 trainer window0x3600001 is titled FLiNG Trainer, PID25860, 780x640 at250,80; WM_STATE Normal, xwininfo Map State IsViewable, normal window type, no transient owner or NET_WM_STATE, STEAM_GAME absent. Game window0x2600003 remains separate. Unlike the prior unmapped EOS window, this is an identified trainer window. Steam switcher association, user-visible selection and cheat function remain unverified. No window properties/focus changed or cheats activated. Next check Steam switcher recognition/user selection; do not conflate X11 IsViewable with Gamescope foreground visibility. No automated tests executed.
