@@ -207,3 +207,39 @@ key/service, and the physical gate itself. Next physical step: user launches
 Mortal Shell normally from Steam (Force Compat unchecked), then confirm no Wine
 desktop window is created, the 16 named controls appear in Trainer Relay, and
 one command produces a real in-game effect.
+
+## FLiNG visible-window path: mono + session-kill root causes (in progress)
+
+Physical goal reverted to the user's original request: a real, visible FLiNG
+window with cheat clicks, not the `.26` InputHelper-only path. With the game
+running (GE-Proton11-6, wineserver 935), a direct-outside-container launch of
+the exact FLiNG exe on the real prefix was retested. Three independent root
+causes were found for the earlier "trainer dies/never paints" evidence:
+
+1. `KillUserProcesses=True` in
+   `/etc/systemd/logind.conf.d/killuserprocesses.conf` killed every detached
+   test process whenever the SSH session dropped. This invalidated earlier
+   "mono dies during init" conclusions. Mitigation used for testing:
+   `systemd-run --user --unit=trainerrelay-test` (survives SSH drops).
+2. The earlier GE10-mono swap into GE-Proton11-6 left a dangling
+   `wine-mono -> wine-mono-10.4.1` symlink (directory never copied), so the
+   trainer died with `mscoree.dll.CorBindToRuntime` unimplemented.
+3. After copying `wine-mono-10.4.1` from GE-Proton10-34 into
+   `GE-Proton11-6/files/share/wine/mono/` (backup
+   `wine-mono.ge11-6.bak -> wine-mono-11.2.0` intact), the trainer now runs
+   stably, initializes CLR, creates UI, and its window
+   `0x3600001 "Mortal Shell v1.0-Build.08.25.21 Plus 16 Trainer"` maps at
+   780x666 with `_NET_WM_WINDOW_OPACITY` ABSENT (the GE11 zero-opacity
+   layered-window defect is not published anymore), matching the known-good
+   GE10 render geometry exactly.
+
+Launcher used: `/tmp/tr_direct.sh` (GE11-6 wine binaries, real prefix,
+DISPLAY=:1), wrapper `/tmp/tr_run4.sh`, log `/tmp/tr_direct_run4.log`
+`(519 lines, steady)`. `xdotool windowactivate` cannot work: gamescope's
+steamcompmgr has no `_NET_ACTIVE_WINDOW`. Unmap/remap of the window was applied
+to force gamescope refocus; user visual confirmation pending. Note:
+`spectacle -b` cannot capture the gamescope root from SSH. Cheat
+effect/toggling and the permanent plugin fix are still pending. No UniFiDeck,
+compatibility, prefix-game or Steam settings were changed; the mono swap is
+reversible via the backup symlink and must be either restored or made part of
+the plugin fix decision later.
