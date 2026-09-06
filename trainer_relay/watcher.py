@@ -394,6 +394,7 @@ class RelayWatcher:
                     trainer_path,
                     safe_environment,
                     expected_reentry_bus=str(reentry.bus_name),
+                    virtual_desktop=identity.startswith("epic:"),
                 )
             )
             state.expected_reentry_bus = str(reentry.bus_name)

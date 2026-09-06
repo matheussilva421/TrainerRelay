@@ -69,3 +69,58 @@ Temporary local diagnostic scripts were deleted and the unrelated unfinished
 window-probe test draft was removed. The remote SSH key/service still require
 cleanup only after the full objective is complete. No production implementation
 or package is currently a validated fix.
+
+## Forced-compat regression recovery and experimental.25 deployment
+
+The user restored normal Mortal Shell launching by clearing Steam's **Force the
+use of a specific Steam Play compatibility tool** checkbox on the UniFiDeck
+shortcut. Read-only runtime verification then confirmed the healthy topology:
+the Steam reaper and UniFiDeck/UMU descendants were all in
+`app-steam-app2476768691-12654.scope`, used `DISPLAY=:1`, and Gamescope exposed
+app2476768691 plus the 1280x800 Mortal Shell window. The regression was caused
+by the diagnostic compatibility-tool API trial: restoring the GE-Proton11-6
+name still left Force Compat enabled on the UniFiDeck launcher. Do not set a
+compatibility tool on this shortcut again. UniFiDeck itself supplies GE-Proton
+to UMU; wrapping the launcher with Steam Proton changes the launch context.
+
+The black FLiNG surface was reduced independently. A disposable copied prefix
+proved that `umu-run explorer.exe /desktop=TrainerRelay,800x680 <trainer>`
+creates an opaque `TrainerRelay - Wine Desktop` parent containing a 780x640
+`FLiNG Trainer` child. The transient service was stopped and the validated
+temporary prefix `/home/deck/.cache/trainerrelay-diagnostics/mortal-shell-prefix.T1Zgi4`
+was removed; the real UniFiDeck prefix was not copied back or modified by that
+cleanup. Review of the current official CheatDeck source confirmed it only
+uses Proton's `PROTON_REMOTE_DEBUG_CMD` path and has no non-Steam/Gamescope
+window repair; its non-Steam issue #26 is closed as not planned. Those legacy
+variables were not restored to the UniFiDeck shortcut.
+
+TDD added an Epic-only Wine virtual-desktop launch. `OwnedTrainerRunner.spawn`
+now accepts `virtual_desktop`; the watcher requests it only for identities with
+the `epic:` scheme. GOG retains the exact direct `umu-run <trainer>` argv. The
+version is `0.1.0-experimental.25`. Focused RED failed on the missing argument
+and Epic routing, then passed after the minimum implementation. Validation:
+69 runner/watcher tests pass; all 291 backend tests pass; 217 frontend tests in
+30 files pass; lint, both TypeScript checks, Rollup build, and 7 packaging tests
+pass. The normal `pnpm run check` wrapper could not verify/download pnpm 11.5.0
+from the registry, so the already-installed pinned binaries were invoked
+directly for the equivalent frontend gates.
+
+Artifact `artifacts/TrainerRelay-v0.1.0-experimental.25.zip` has 34 entries,
+774223 bytes and SHA-256
+`94D8521318987F9C2546F3A1DD1DF7761F76DB6DFC5B80AE8BA7B95D92463BA5`.
+PC and Deck hashes matched. Before installation, the exact `.22` folder and
+settings were archived under
+`/home/deck/Downloads/TrainerRelay-rollback-20260906-0921/` with SHA256SUMS.
+Decky's authenticated `utilities/install_plugin`/confirm flow installed `.25`.
+Journal records clean unload of `.22`, installation/load of `.25`; loader and
+frontend report `.25`, and a read-only backend RPC returned schemaVersion1 with
+the two configured games preserved. The game was closed during deployment.
+
+Next physical gate: launch Mortal Shell normally from Steam with Force Compat
+still unchecked. Verify the game remains on DISPLAY=:1, the new Epic trainer is
+hosted in `TrainerRelay - Wine Desktop`, Gamescope offers a usable second
+window, and the FLiNG controls visibly render. Do not claim fixed until the user
+confirms the controls and at least one safe interaction path. If startup or the
+trainer regresses, stop only Trainer Relay and restore the preserved `.22`
+archive through a controlled Decky reinstall; do not alter UniFiDeck, Proton,
+the real prefix, or the shortcut compatibility checkbox.

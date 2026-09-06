@@ -119,6 +119,33 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(handle.process_group_id, process.pid)
         self.assertIn(handle, runner.owned)
 
+    def test_spawns_epic_trainer_inside_named_wine_virtual_desktop(self):
+        calls = []
+        process = FakeProcess()
+
+        def popen(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return process
+
+        runner = OwnedTrainerRunner("/home/deck/umu-run", popen_factory=popen)
+        trainer = "/games/My Trainer.EXE"
+        runner.spawn(
+            SessionIdentity(7, 99),
+            trainer,
+            {"SAFE": "yes"},
+            virtual_desktop=True,
+        )
+
+        self.assertEqual(
+            calls[0][0],
+            [
+                "/home/deck/umu-run",
+                "explorer.exe",
+                "/desktop=TrainerRelay,800x680",
+                trainer,
+            ],
+        )
+
     def test_exit_diagnostics_drains_bounds_and_sanitizes_umu_output(self):
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / "fake-umu.py"

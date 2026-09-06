@@ -23,12 +23,21 @@ class FakeRunner:
         self.spawn_calls = []
         self.stop_calls = []
         self.expected_reentry_buses = []
+        self.virtual_desktop_requests = []
 
     @property
     def owned(self):
         return tuple(self.handles)
 
-    def spawn(self, session, trainer_executable, environment, *, expected_reentry_bus=None):
+    def spawn(
+        self,
+        session,
+        trainer_executable,
+        environment,
+        *,
+        expected_reentry_bus=None,
+        virtual_desktop=False,
+    ):
         handle = {
             "session": session,
             "exit_code": None,
@@ -39,6 +48,7 @@ class FakeRunner:
         self.handles.append(handle)
         self.spawn_calls.append((session, trainer_executable, environment))
         self.expected_reentry_buses.append(expected_reentry_bus)
+        self.virtual_desktop_requests.append(virtual_desktop)
         return handle
 
     def poll(self, handle):
@@ -367,6 +377,7 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.watcher.status(self.identity)["state"], "running")
         self.assertEqual(len(self.runner.spawn_calls), 1)
         self.assertEqual(self.runner.expected_reentry_buses, ["com.steampowered.Appabc"])
+        self.assertEqual(self.runner.virtual_desktop_requests, [False])
         self.assertEqual(
             [call["event"] for call in self.recorder.calls],
             [
@@ -387,6 +398,36 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(self.recorder.calls[3]["session"].to_wire(), {"pid": 10, "startTime": 20})
         self.assertEqual(self.discoverer.expected_sessions, [None, self.session])
+
+    async def test_epic_trainer_requests_virtual_desktop_without_changing_gog_default(self):
+        identity = "epic:game"
+        discovery = DiscoveryResult(
+            "session",
+            session=self.session,
+            environment={
+                "WINEPREFIX": str(self.prefix),
+                "PROTONPATH": "/proton",
+                "GAMEID": "game",
+                "STORE": "epic",
+            },
+        )
+        runner = FakeRunner()
+        watcher = RelayWatcher(
+            {"schemaVersion": 1, "games": {identity: {"enabled": True, "trainerPath": str(self.trainer)}}},
+            games_map_path="/games.map",
+            map_loader=lambda _: GamesMapResult({identity: GamesMapEntry(identity, "/games/game.exe")}),
+            process_discoverer=FakeDiscoverer(discovery),
+            umu_resolver=lambda: UmuResolution(Path("/umu-run"), "bundled"),
+            container_probe=self.container_probe,
+            runner=runner,
+            diagnostics=self.recorder,
+            home="/home/deck",
+            clock=lambda: self.clock_value,
+        )
+
+        await watcher.poll_once()
+
+        self.assertEqual(runner.virtual_desktop_requests, [True])
 
     async def test_spawn_replaces_private_game_runtime_roots_with_the_verified_host_context(self):
         self.discovery.environment.update(

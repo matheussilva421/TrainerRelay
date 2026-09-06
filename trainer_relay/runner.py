@@ -285,6 +285,7 @@ class OwnedTrainerRunner:
         environment: Mapping[str, str],
         *,
         expected_reentry_bus: str | None = None,
+        virtual_desktop: bool = False,
     ) -> RunnerHandle:
         spawn_environment = dict(environment)
         success_marker = (
@@ -298,8 +299,16 @@ class OwnedTrainerRunner:
             else None
         )
         umu_run = self.umu_run() if callable(self.umu_run) else self.umu_run
+        argv = [str(umu_run), trainer_executable]
+        if virtual_desktop:
+            argv = [
+                str(umu_run),
+                "explorer.exe",
+                "/desktop=TrainerRelay,800x680",
+                trainer_executable,
+            ]
         process = self._popen(
-            [str(umu_run), trainer_executable],
+            argv,
             cwd=str(Path(trainer_executable).parent),
             env=spawn_environment,
             shell=False,
