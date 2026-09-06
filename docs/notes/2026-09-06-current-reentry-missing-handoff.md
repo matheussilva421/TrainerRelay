@@ -171,3 +171,39 @@ healthy, confirm the white desktop disappears, verify the 16 controls through
 backend RPC and Decky UI, then send one safe command and obtain physical effect
 confirmation. Never enable Steam Force Compat or use Steam API RunGame for this
 UniFiDeck shortcut.
+
+## Experimental.26 installed on the Deck
+
+`.26` is now installed. Before installing, `.25` and its settings were archived
+under `/home/deck/Downloads/TrainerRelay-rollback-20260906-0957/`. The first
+`tar` reported `TrainerRelay/diagnostics: file changed as we read it`, so a
+second archive excluding only that volatile directory was created and verified:
+`TrainerRelay-experimental.25-stable.tar` (SHA-256
+`bb81ee4db126030e2c11f0b799db1e967379b4cce9bde272eb6f1dc9efe55747`) and
+`settings.tar` (`3a86ed016dca905e06d91476353c9ac606c1e704571e55f108b1c090aa1c42df`).
+
+The `.26` ZIP was copied to `/home/deck/Downloads/` and its Deck SHA-256 matched
+the PC artifact exactly. Installation used Decky's authenticated
+`utilities/install_plugin` + `utilities/confirm_plugin_install` route from the
+`SharedJSContext` CEF target (`87CFFBA7C814C12F769825F6F20BA81F`); the earlier
+Big Picture target has no `DeckyBackend` and rejected the call without
+installing anything. A first confirm attempt failed with `KeyError` because the
+request id had already been consumed, so the request and confirm were issued in
+one call.
+
+Post-install verification: both `package.json` and `main.py` report
+`0.1.0-experimental.26`; the installed catalog at
+`/home/deck/homebrew/plugins/TrainerRelay/data/fling_adapters_v1.json` lists
+`mortal-shell-fling-plus-16`, x64, 16 cheats, bound to
+`epic:0055e45ce7654c55aade646467349e83`; the plugin backend restarted as PID
+20677. The game session ended during installation, so the `.25` trainer and its
+white `TrainerRelay - Wine Desktop` are gone. A read-only backend RPC returns
+`waiting_for_game` / `relay_not_running`, which is correct with no game running.
+
+Cleanup completed: the transient GE10 unit is inactive, the 676 MB disposable
+prefix `layered-ge10.vstWAV` and the temporary `/tmp` captures were deleted, and
+the real UniFiDeck prefix is intact. Still outstanding: the temporary SSH
+key/service, and the physical gate itself. Next physical step: user launches
+Mortal Shell normally from Steam (Force Compat unchecked), then confirm no Wine
+desktop window is created, the 16 named controls appear in Trainer Relay, and
+one command produces a real in-game effect.
