@@ -15,3 +15,7 @@ Source: user-provided `G:/Meu Drive/Steam Deck/TrainerRelay-diagnostics-20260906
 Do not ask for more photographs of old diagnostic entries. Next inspect current window association properties and exact PID/executable linkage through a bounded read-only device probe, then use an isolated physical association trial or reviewed candidate with backup/rollback. Experimental.24 remains uninstalled/unvalidated. Pending local test must not be silently staged or used as proof of this symptom. No claim of Epic functionality PASS.
 
 Git: documentation-only note; commit/push attempted after creation. Original export and remote attachments remain untouched.
+
+## Access checkpoint after user confirmed game still open
+
+Read-only TCP checks of known ports 22 and 18081 both unavailable (2-second bounded attempts). Local main.py/RPC inspection exposes diagnostic journal reads, not an on-demand arbitrary X11 property query. Existing window snapshot is truncated and lacks the association fields needed. No new X11 properties were collected; no claim that STEAM_GAME is absent is justified yet. Need user-coordinated terminal/SSH access or an explicitly approved diagnostic deployment. Do not enable services or install a new version implicitly. No tests or production changes in this checkpoint.
