@@ -31,4 +31,6 @@ Delivery subsequently recovered using elevated Git with invocation-only safe.dir
 
 ## Blocked audit
 
+Resumed goal with shorter wording (analyze, verify, research, test, correct): fresh blocked audit starts at one recurrence. Read-only Git/test inspection found the same pending test and no new runtime evidence; elevated CEF request again timed out after 5 seconds. No new test execution or implementation. Need current Deck address/access, or clarification if the updated objective intends a different target. Do not infer success from the shortened objective.
+
 Third consecutive goal turn with the same device-access blocker: elevated CEF GET again timed out after 5 seconds. Previous turn made progress by finishing and publishing the bounded research (`5c8f784`); research is now terminal, with no outstanding agent work. Current Git status shows no tracked divergence, the original pending test change and untouched untracked attachments. No new tests, code changes or device actions. The objective is NOT achieved: actual opening, switchability and in-game functionality on Epic remain unverified. Mark goal blocked pending user confirmation that the Deck is awake and its current IP, then rediscover live state and resume the physical validation steps above. Do not generate another candidate merely to replace missing runtime evidence.
