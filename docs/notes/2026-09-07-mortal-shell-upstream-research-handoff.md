@@ -40,3 +40,11 @@ GitHub: os cinco documentos foram commitados em `fb4b503` (`docs: research Morta
 Verificação final: índice continha somente os cinco documentos esperados; `git diff --cached --check` sem erros; 9 links locais dos três documentos novos conferidos, nenhum ausente. Nenhum build, ZIP, instalação, tag ou release. O working tree continua sujo pelas alterações preexistentes e scratch de pesquisa; isso é intencional e não representa implementação parcial feita nesta etapa.
 
 Retomada operacional: começar pelo plano após .36, tarefa 1 (avaliador), depois separar os ambientes e medir manifesto real. Não confundir os dois RED locais com o crash físico; nenhum teste no Deck foi feito. Persistem causa inicial desconhecida, implementação futura e gates de estabilidade/seletor/clique/cheat/GOG. A coleta de ambiente usa campos permitidos; nenhum argumento EOS/token ou ambiente bruto deve entrar em logs publicados.
+
+## Encerramento da sessão — 2026-09-07
+
+O usuário solicitou a interrupção e um relatório final. Não foram feitas novas tentativas no Deck após a instalação experimental `.37` não aparecer carregada no probe. O relatório completo está em [2026-09-07-mortal-shell-final-status-report.md](2026-09-07-mortal-shell-final-status-report.md).
+
+Nesta última fase, foram concluídos localmente, sob TDD, o veredito de saída precoce, a separação raiz UMU/prefixo Wine, o ambiente interno explícito, o diretório do launch-client, o perfil multiarch e um coletor sanitizado de sessão. Os testes focados e de packaging passaram, mas a validação física permaneceu RED/incompleta. O jogo e o trainer não devem ser declarados corrigidos.
+
+Estado para retomada: preservar UniFiDeck, GOG e Force Compatibility desligado; não assumir `.37` instalada; investigar primeiro os logs do Decky que expliquem `plugin_version: null` e a ausência do diretório do plugin. Depois, retomar pelo A0 do plano e usar o avaliador/coletor novos antes de qualquer ensaio FLiNG.
