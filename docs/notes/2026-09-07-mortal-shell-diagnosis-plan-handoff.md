@@ -60,3 +60,24 @@ O Git administrativo está em `Mods/.worktrees/trainer-relay-source/.git/worktre
 Arquivos desta sessão: somente este handoff e o plano listado acima. Código de produto e testes preexistentes preservados. Reversão deste trabalho documental: remover somente os dois documentos ou reverter os commits documentais específicos, mantendo as alterações anteriores.
 
 Pendências: executar o plano quando solicitado, obter receita manual reproduzível, validar estado atual do Deck e cumprir gates físicos. Próximo agente deve começar por `git status`, ler o plano e reproduzir o comando de 2 testes antes de editar; não recomeçar pesquisa ampla nem empacotar o working tree atual.
+
+## Implementação retomada após autorização explícita — `.36` (2026-09-07)
+
+- O usuário autorizou implementar o plano e continuar até resolver o objetivo físico, mantendo Force Compatibility desligado e preservando o UniFiDeck.
+- TDD RED reproduzido em `tests_backend/test_runner.py`: um `Popen` falso sem processo filho/saída fazia a rota `container_reentry` retornar `confirmed`; o comando também não emitia um ACK próprio dentro do launch-client.
+- Correção mínima implementada em `trainer_relay/runner.py`: `container_reentry` não usa mais timestamp pré-`Popen`; executa `sh -c` dentro do `steam-runtime-launch-client`, emite `TRAINER_RELAY_REENTRY_ACK session=<pid>/<start_time> bus=<bus>` e somente então faz `exec env ... wine trainer.exe`. O ACK é aceito apenas quando a linha exata corresponde à sessão e ao barramento esperados. Host-direct não fabrica confirmação de reentrada; a rota genérica UMU preserva o marcador existente.
+- GREEN: suíte do runner `22/22`; módulos afetados `134/134`.
+- Gates locais da `.36`: Vitest `225/225`, backend completo aprovado, packaging aprovado, Biome/lint aprovado, TypeScript aprovado, `compileall` aprovado e Rollup/build aprovado.
+- Pacote: `TrainerRelay.zip`, versão `0.1.0-experimental.36`, SHA-256 `68c989eb3b8c183ca58930680a8bd7a4a06420bb2993601b19b7e94b31b8f3e6`.
+- Deck: `.36` instalada pelo fluxo oficial Decky; hash coincidiu; rollback `.35` + settings preservado em `/home/deck/Downloads/TrainerRelay-rollback-20260907-1205/`; probe confirmou `.36` carregada, runtime Mono10 presente e nenhum jogo ativo.
+- Preparação reversível: launch option verificada como `UMU_CONTAINER_NSENTER=1 %command% epic:0055e45ce7654c55aade646467349e83`; Epic habilitado pelo RPC oficial; GOG continua habilitado. Não foi usada Force Compatibility.
+- Checkpoint humano atual: abrir Mortal Shell pelo UniFiDeck normal, chegar ao menu/cena jogável sem tocar nos cheats e comunicar `pronto`. O próximo monitoramento deve começar a partir desse ponto; não assumir que os eventos antigos `.35` provam o ACK novo.
+
+## `.36` físico concluído — ACK comprovado, RED de estabilidade e restauração (2026-09-07)
+
+- O usuário comunicou `pronto` e o ensaio `.36` foi executado com o atalho temporário/controle oficial descrito acima. O novo evento não foi inferido pelo runner: o ACK veio do comando executado dentro do `steam-runtime-launch-client`.
+- Linha observada: `container_reentry_verified` `15:04:00.920Z`; `trainer_spawned` `15:04:00.929Z`; `container_reentry_confirmed` `15:04:02.966Z` (`27 ms`); `trainer_running` `15:04:05.016Z`; `session_ended` `15:04:06.755Z`; limpeza do grupo do trainer em `15:04:06.811Z` com `SIGTERM` não forçado, PGID `50728`.
+- O usuário confirmou que jogo e trainer fecharam. Não houve `trainer_exited` antes de `session_ended`, então o Relay não foi a origem demonstrada do primeiro encerramento.
+- Inventário remoto somente leitura (`15:03:00Z` em diante): `CrashReportClient.log` abriu e terminou com `RequestExit` normal; `77b099ad.game.log` contém cancelamentos de tarefas Xalia durante o fechamento; não há dump, exceção fatal, sinal externo ou erro explícito de `Dungeonhaven.exe`. A causa continua não identificada.
+- Restauração executada e verificada: opção Steam voltou a `epic:0055e45ce7654c55aade646467349e83`; perfil Epic ficou `enabled=false`; `deck_live_probe` retornou `WAITING_FOR_GAME`; GOG segue habilitado; Force Compatibility não foi tocado.
+- Interpretação: o `.36` corrige o significado de `container_reentry_confirmed`, mas não a estabilidade. A próxima medição precisa distinguir saída própria do jogo, sinal externo, desaparecimento/efeito do wineserver e interação específica do FLiNG; não repetir delay ou outra rota sem esse observável.
