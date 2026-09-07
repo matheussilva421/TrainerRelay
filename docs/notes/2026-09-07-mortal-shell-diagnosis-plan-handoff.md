@@ -1,5 +1,19 @@
 # Handoff — análise e plano Mortal Shell / FLiNG
 
+## Revisão vigente após novos documentos `.34`/`.35`
+
+O usuário reenviou o handoff nativo e o relatório consolidado, agora atualizados, e manifestou frustração com as tentativas. Foi feita somente análise local/documentação, sem pedir nova abertura do jogo, sem acessar o Deck e sem implementar correção.
+
+O plano recebeu uma revisão prioritária no início: o fluxo original de reconstruir host-direct e repetir a referência manual está superado. Documentos registram RED pós-menu `.34`, RED manual fora do watcher e RED `.35` via launch-client. A causa da saída do jogo permanece aberta. Estado remoto final vem dos documentos e não foi revalidado: `.35`, Epic desativado, atalho original, GOG habilitado, jogo/trainer fechados.
+
+Achado local novo: o runner marca `reentry_ready_at` antes de `Popen` na rota privada de container. Harness com runner real e processo falso, sem executar filho nem receber ACK, retornou `confirmed`; assert esperando `pending` produziu RED. Logo, o evento `container_reentry_confirmed` sozinho não prova execução no container. O argv nessa rota chama launch-client + env + Wine privado; variável `PROTON_VERB=runinprefix` não prova chamada ao script Proton. Não confundir esse defeito de telemetria com causa confirmada do encerramento.
+
+A receita manual local usa wineserver privado, `lib64` incondicional e ambiente herdado do systemd, divergindo da descrição histórica. Não alegar replay idêntico sem reconciliar hashes do script realmente executado. A asserção Mono foi registrada no trainer e não estabelece por si só a causa da saída do jogo.
+
+Verificação atual: `python -m unittest tests_backend.test_runtime_profile tests_backend.test_mortal_shell_run_verdict tests_backend.test_runner tests_backend.test_watcher tests_backend.test_process -q`; 113 testes, 113 passaram, 0 falharam, 2,983 s. Reprodução adicional: 1 assert, falhou pelo motivo esperado. Sem nova suíte completa/build/pacote/teste físico. Apenas plano e este handoff alterados nesta revisão; código preexistente `.35` preservado.
+
+Retomada: ler primeiro a revisão vigente do plano. Priorizar sinal confiável de reentrada, reconciliação de artefatos e observável de saída; só propor experimento físico depois de definir o que ele distingue. Não repetir delay, host-direct ou troca de rota às cegas. Histórico e números abaixo são da análise anterior à implementação `.33`–`.35`.
+
 ## Escopo e estado
 
 Pedido desta sessão: analisar o problema e criar um plano usando diagnosing-bugs e systematic-debugging. As recomendações do relatório fornecido são evidência/contexto, não autorização para instalar, ativar ou continuar a implementação parcial. Nenhum código de produto foi alterado nesta sessão; nenhum comando remoto foi executado.

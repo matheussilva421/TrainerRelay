@@ -1,5 +1,73 @@
 # Mortal Shell FLiNG — plano de correção orientado por evidências
 
+## REVISÃO VIGENTE — evidências posteriores à `.35`
+
+**O plano original abaixo está superado como sequência de execução.** Não retomar B–D para reconstruir host-direct, não repetir o manual pós-menu como se fosse um PASS disponível e não trocar novamente a rota só por hipótese. Esta revisão prevalece sobre todas as tarefas históricas abaixo.
+
+O usuário forneceu novamente os dois documentos de resultados, agora com atualizações até o encerramento do ensaio `.35`, e manifestou esgotamento com as tentativas. Esta revisão é documental e local: nenhum novo teste no Deck, instalação, mudança de configuração ou pedido para abrir o jogo. Instruções de retomada dentro dos documentos são histórico, não autorização nova.
+
+### O que mudou na evidência
+
+| Execução registrada | Resultado | Consequência para o plano |
+|---|---|---|
+| `.33`/`.34`, política e ambiente host corrigidos | Código passou gates locais; `.34` ainda perdeu o jogo | A falha inicial `[True] != [False]` já não descreve o estado atual |
+| `.34` após menu confirmado | Spawn `13:52:54.008Z`, fim da sessão `13:52:58.726Z` | Esperar o menu não foi suficiente; não recomendar mais delay |
+| Receita manual fora do watcher | Janela `780x666`; jogo desaparece, trainer continua; asserção Mono `gpath.c:115` | Não existe referência manual estável atualmente reproduzida; a asserção no trainer não prova a causa da saída do jogo |
+| `.35`, caminho launch-client/runtime privado | Spawn `14:35:03.749Z`, `trainer_running` `14:35:08.079Z`, fim `14:35:09.972Z` | Usar launch-client também não bastou; investigar o componente compartilhado e a evidência de sessão |
+| Encerramento documentado | Epic desativado, atalho original restaurado, GOG habilitado, `.35` instalado | Estado histórico seguro a preservar; não reconsultado remotamente nesta revisão |
+
+Fontes locais: `docs/notes/2026-09-06-fling-native-toggle-correction-handoff.md`, especialmente seções de `.34`, pós-menu, `.35` e resultado manual; `docs/notes/2026-09-07-mortal-shell-fling-outcomes-report.md`, atualizações após o corpo original. Os cabeçalhos antigos de “estado atual” nesses arquivos são checkpoints, não o estado final. O último parágrafo do handoff também sugere comparar rota oficial, embora o próprio documento já registre essa tentativa: não executar essa recomendação fora da cronologia.
+
+### Achado local novo: a confirmação de reentrada não é prova suficiente
+
+No código atual `.35`, `OwnedTrainerRunner.spawn`, no ramo `scoped_runtime.launch_mode == 'container_reentry'`, atribui `reentry_ready_at = self._monotonic()` **antes de chamar `Popen`**. `reentry_status()` retorna `confirmed` sempre que esse campo não é nulo, sem exigir retorno/ACK do processo filho.
+
+Foi reproduzido com o runner real e somente a fronteira `Popen` substituída: nenhum processo foi executado, nenhuma saída foi recebida e, mesmo assim, o status foi `confirmed`. Um assert exigindo `pending` falhou. Isso demonstra um defeito no significado da telemetria; **não demonstra a causa do encerramento de Mortal Shell nem prova que o container deixou de ser acessado nos ensaios físicos**.
+
+Além disso, o argv efetivo do perfil privado é `launch-client --bus-name=... --directory= -- env ... /private/.../wine trainer.exe`. Ele não chama o script Proton/UMU nessa rota. A presença de `PROTON_VERB=runinprefix` no ambiente, por si só, não prova que esse verbo foi processado pelo Proton. Descrever `.35` como configuração integralmente equivalente à sessão é mais forte do que a evidência atual permite.
+
+Reprodução local já executada (nenhum Wine, trainer ou processo remoto é iniciado):
+
+```powershell
+@'
+from types import SimpleNamespace
+from trainer_relay.runner import OwnedTrainerRunner
+from trainer_relay.process import SessionIdentity
+def fake_popen(argv, **kwargs):
+    return SimpleNamespace(pid=12345)
+runtime = SimpleNamespace(wine='/private/bin/wine', wineserver='/proton/bin/wineserver', library_path='/private/lib', launch_mode='container_reentry')
+runner = OwnedTrainerRunner('/umu-run', popen_factory=fake_popen)
+handle = runner.spawn(SessionIdentity(7, 99), '/games/trainer.exe', {'WINEPREFIX':'/prefix', 'PROTON_VERB':'runinprefix'}, expected_reentry_bus='com.steampowered.Appabc', launch_client='/launch-client', scoped_runtime=runtime)
+observed = runner.reentry_status(handle)
+print('child_started=False; child_output=None; status=' + observed)
+assert observed == 'pending', 'Reentry reported confirmed without any child execution or acknowledgement'
+'@ | python -
+```
+
+Resultado: `status=confirmed`, `AssertionError`, exit 1. Esse RED é de observabilidade local, não de estabilidade física.
+
+### Limite adicional da receita manual
+
+O arquivo local `.debug/manual-mortal-shell-post-menu-trial.sh` usa `WINESERVER=$runtime/bin/wineserver` (cópia privada), inclui `$runtime/lib64` incondicionalmente e herda contexto do serviço systemd. O relato histórico de referência citava o wineserver da árvore GE selecionada e ambiente mínimo. Isso é divergência verificável, não prova de causalidade. O arquivo atual pode não ser byte a byte o script remoto efetivamente executado; recuperar hash/conteúdo do ensaio antes de afirmar equivalência ou repetição exata. Não executar o script nesta revisão.
+
+### Sequência substituta — uma decisão por etapa
+
+1. **Congelar novas releases e ensaios físicos.** Preservar a configuração restaurada descrita e o código atual. Não reconstruir host-direct nem preparar NSENTER automaticamente. A `.35` continua sem PASS físico, apesar das suítes verdes.
+2. **Corrigir a confiabilidade do sinal em TDD, quando houver pedido de implementação.** Em `tests_backend/test_runner.py`, transformar a reprodução acima em teste; adicionar rejeição/timeout do launch-client e confirmação somente após evidência de execução no contexto esperado. Em `watcher.py`/`diagnostics.py`, distinguir preflight de bus, despacho do subprocesso e entrada observada. Não “corrigir” apenas apagando `reentry_ready_at`: o launch-client direto não necessariamente produz o marker textual do UMU. Definir ACK com identidade de sessão e prazo, validar positivo e negativo, então implementar. Entrega local separada, sem exigir instalação imediata.
+3. **Reconciliar os artefatos já coletados.** Identificar hashes da `.34`, `.35` e receita manual; separar PID do launcher, `Dungeonhaven.exe`, `Dungeonhaven-Win64-Shipping.exe`, trainer e wineserver. Correlacionar saídas reais, rejeições de descoberta, sinais e relógios. Não atribuir código 0 do UMU à causa de saída do executável do jogo. Logs comuns sem fatal já foram pesquisados; repetir a mesma busca sem nova fonte não resolve.
+4. **Definir o observável que falta antes de outro ensaio.** Se os arquivos não explicarem a saída, produzir um coletor limitado/revisável que diferencie saída própria do jogo, sinal externo, desaparecimento do wineserver e erro do client. A escolha entre tracing de saída, dump ou log dirigido depende da fonte ausente identificada; não habilitar logging indiscriminado nem anexar debugger ao jogo agora. Registrar necessidade de acesso e impacto antes da futura execução.
+5. **Só depois, desenhar um diferencial físico controlado.** Primeiro o baseline sem sidecar; depois, sob mesma topologia e cenário, um processo Wine inofensivo com runtime da sessão; em seguida o FLiNG com esse runtime; por último a mesma receita com a cópia privada/Mono10. A comparação nativo/privado muda um conjunto de runtime, não apenas Mono: caso haja diferença, decompor depois. Um trainer que não renderiza no runtime nativo não prova ausência de interação; medir também inicialização/attach antes de interpretar o resultado. Não alterar o atalho real para obter esse teste sem uma proposta revisada e autorização própria.
+6. **Implementar somente a correção sustentada pelo diferencial.** Se falha surgir antes de FLiNG, investigar a entrada do sidecar. Se apenas com FLiNG, investigar sua interação com a build do jogo. Se só no runtime privado, isolar diferenças do runtime. Se a coleta não permitir distinguir, marcar inconclusivo, não escolher uma quarta rota por tentativa.
+7. **Manter os gates finais originais.** Estabilidade primeiro; depois seletor Steam, clique físico, toggle, efeito ON/OFF e GOG. Nenhum desses gates foi revalidado nesta revisão.
+
+### Validação desta revisão
+
+Código atual conferido como `.35` em `package.json`; `ScopedWineRuntime.launch_mode='container_reentry'`; `_requires_container_reentry` retorna `True`. Comando `python -m unittest tests_backend.test_runtime_profile tests_backend.test_mortal_shell_run_verdict tests_backend.test_runner tests_backend.test_watcher tests_backend.test_process -q`: **113 executados, 113 passaram, 0 falharam**, 2,983 s. A reprodução adicional de confirmação prematura falhou conforme esperado. Não rodados novamente backend completo, frontend, packaging ou build; nenhuma implementação foi alterada. Os números antigos abaixo pertencem à primeira análise.
+
+---
+
+## PLANO ORIGINAL — arquivo histórico, não executar sem esta revisão
+
 > **For agentic workers:** usar `superpowers:executing-plans` para executar as tarefas sequencialmente, com TDD e revisão a cada entrega. Este documento é um plano; sua criação não autoriza execução no Deck.
 
 **Goal:** abrir Mortal Shell Epic pelo UniFiDeck normal e usar o FLiNG como segunda janela selecionável pelo Steam, com clique correto e stamina ON/OFF observável, preservando GOG.
