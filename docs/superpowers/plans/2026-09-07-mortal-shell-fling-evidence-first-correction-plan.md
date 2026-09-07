@@ -1,5 +1,7 @@
 # Mortal Shell FLiNG — plano de correção orientado por evidências
 
+> **Sequência substituída após .36:** usar [plano de resolução após .36](2026-09-07-mortal-shell-post36-resolution-plan.md) e [pesquisa upstream consolidada](../../research/2026-09-07-mortal-shell-upstream-resolution-research.md). O ACK já foi corrigido e validado na .36, mas a estabilidade continua RED. As etapas abaixo permanecem como histórico; não retomar host-direct nem corrigir novamente a confirmação antiga.
+
 ## REVISÃO VIGENTE — evidências posteriores à `.35`
 
 **O plano original abaixo está superado como sequência de execução.** Não retomar B–D para reconstruir host-direct, não repetir o manual pós-menu como se fosse um PASS disponível e não trocar novamente a rota só por hipótese. Esta revisão prevalece sobre todas as tarefas históricas abaixo.

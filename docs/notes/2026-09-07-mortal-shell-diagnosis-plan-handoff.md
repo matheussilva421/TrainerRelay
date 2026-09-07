@@ -1,5 +1,7 @@
 # Handoff — análise e plano Mortal Shell / FLiNG
 
+> **Retomada vigente após pesquisa upstream .36:** ler [handoff da pesquisa](2026-09-07-mortal-shell-upstream-research-handoff.md), [relatório com fontes](../research/2026-09-07-mortal-shell-upstream-resolution-research.md) e [plano novo](../superpowers/plans/2026-09-07-mortal-shell-post36-resolution-plan.md). O defeito ACK citado na revisão .35 abaixo já foi corrigido; a causa do encerramento segue aberta. A pesquisa atual não executou novos ensaios no Deck.
+
 ## Revisão vigente após novos documentos `.34`/`.35`
 
 O usuário reenviou o handoff nativo e o relatório consolidado, agora atualizados, e manifestou frustração com as tentativas. Foi feita somente análise local/documentação, sem pedir nova abertura do jogo, sem acessar o Deck e sem implementar correção.
