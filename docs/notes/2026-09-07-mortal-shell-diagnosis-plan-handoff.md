@@ -39,7 +39,9 @@ O RED local mede uma falha de integração, não a saída física do jogo. O PAS
 
 ## GitHub e retomada
 
-Origin: `https://github.com/matheussilva421/TrainerRelay.git`. Nenhum commit/push deste checkpoint. Ao terminar, publicar somente os dois documentos desta sessão, verificando o índice antes. Não incluir EXE, `.debug`, anexos ou código parcial.
+Origin: `https://github.com/matheussilva421/TrainerRelay.git`. Plano e handoff commitados em `f6616ca` (`docs: plan evidence-driven Mortal Shell FLiNG correction`) e enviados com sucesso a `origin/feat/trainer-relay`. Este registro de publicação é um complemento documental. Nenhum EXE, `.debug`, anexo ou código parcial entrou no commit. Não houve tag, release, pacote ou instalação.
+
+O Git administrativo está em `Mods/.worktrees/trainer-relay-source/.git/worktrees/trainer-relay`. O primeiro staging foi impedido por permissão de `index.lock`; a execução elevada encontrou ownership diferente entre sandbox e usuário. Resolvido por `git -c safe.directory=C:/Users/slvma/Downloads/Github/TrainerRelay ...` apenas nos comandos autorizados, sem alterar configuração global. Índice conferido e `git diff --cached --check` sem erros antes do commit.
 
 Arquivos desta sessão: somente este handoff e o plano listado acima. Código de produto e testes preexistentes preservados. Reversão deste trabalho documental: remover somente os dois documentos ou reverter os commits documentais específicos, mantendo as alterações anteriores.
 
